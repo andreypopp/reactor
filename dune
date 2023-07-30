@@ -1,0 +1,10 @@
+(library
+  (name react_server_components)
+  (public_name react_server_components)
+  (modules :standard \ example)
+  (libraries lwt containers dream))
+
+(executable
+  (name example)
+  (modules example)
+  (libraries react_server_components dream))
