@@ -10,7 +10,7 @@ module React_element = struct
     | El_null : t
     | El_text : string -> t
     | El_many : children -> t
-    | El_html : string * html_props * children -> t
+    | El_html : string * html_props * children option -> t
     | El_thunk : (unit -> t) -> t
     | El_async_thunk : (unit -> t Lwt.t) -> t
     | El_client_thunk : {
@@ -42,20 +42,44 @@ module React_element = struct
   let textf fmt = ksprintf text fmt
   let thunk f = El_thunk f
   let async_thunk f = El_async_thunk f
-  let suspense children = El_html ("$Sreact.suspense", [], children)
+  let suspense children = El_html ("$Sreact.suspense", [], Some children)
 
   let client_thunk ?(import_name = "") import_module props =
     El_client_thunk { import_module; import_name; props }
 
-  type html_element = ?className:string -> ?href:string -> children -> t
+  type html_element =
+    ?className:string ->
+    ?href:string ->
+    ?dangerously_set_inner_html:string ->
+    children ->
+    t
 
   let html tag_name : html_element =
-   fun ?className ?href children ->
+   fun ?className ?href ?dangerously_set_inner_html children ->
+    let children =
+      match children, dangerously_set_inner_html with
+      | children, None -> Some children
+      | [], Some _ -> None
+      | _, Some _ ->
+          failwith
+            "cannot have children and dangerously_set_inner_html at the \
+             same time"
+    in
     let props =
-      [ "className", className; "href", href ]
+      let string v = `String v in
+      let dangerously_set_inner_html =
+        Option.map
+          (fun html -> `Assoc [ "__html", `String html ])
+          dangerously_set_inner_html
+      in
+      [
+        "className", Option.map string className;
+        "href", Option.map string href;
+        "dangerouslySetInnerHTML", dangerously_set_inner_html;
+      ]
       |> List.filter_map ~f:(function
            | _, None -> None
-           | n, Some v -> Some (n, `String v))
+           | n, Some v -> Some (n, v))
     in
     El_html (tag_name, props, children)
 
@@ -87,7 +111,9 @@ module Render_to_model = struct
       | React_element.El_null -> `Null
       | El_text s -> `String s
       | El_many els -> `List (List.map els ~f:to_model)
-      | El_html (tag_name, props, children) ->
+      | El_html (tag_name, props, None) ->
+          `List [ `String "$"; `String tag_name; `Null; `Assoc props ]
+      | El_html (tag_name, props, Some children) ->
           `List
             [
               `String "$";

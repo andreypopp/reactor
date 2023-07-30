@@ -19,7 +19,12 @@ module React_element : sig
   val textf : ('a, unit, string, t) format4 -> 'a
   (** Like [text] but allows to use printf formatting. *)
 
-  type html_element = ?className:string -> ?href:string -> children -> t
+  type html_element =
+    ?className:string ->
+    ?href:string ->
+    ?dangerously_set_inner_html:string ->
+    children ->
+    t
 
   val html : string -> html_element
   (** Render HTML element. *)
