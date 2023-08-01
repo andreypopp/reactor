@@ -1,7 +1,7 @@
 open React
 
 let%component sidebar ~title children =
-  div ~className:"some" [| text title; text "WORLD"; div children |]
+  div ~className:"some" [| text title; text "WORLD!!"; div children |]
 
 module%export_component App = struct
   type props = { title : string; children : element }
@@ -9,7 +9,7 @@ module%export_component App = struct
   let make props =
     div
       [|
-        h1 [| text props.title |];
+        h1 [| text props.title; text "!!!" |];
         sidebar ~title:"sidebar" [||];
         div ~className:"footer" [| props.children; props.children |];
       |]

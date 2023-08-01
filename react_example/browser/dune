@@ -1,7 +1,6 @@
 (melange.emit
  (target output)
  (libraries react_browser)
- (modules example)
  (preprocess
   (pps melange.ppx react_ppx))
  (module_systems commonjs))
@@ -20,7 +19,7 @@
  (target ./bundle.js)
  (deps
   ./__boot.js
-  (source_tree ./output))
+  (source_tree .))
  (action
   (run
    esbuild
