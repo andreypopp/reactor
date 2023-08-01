@@ -220,7 +220,7 @@ let rec cleanup_all xs =
 let cleanup_all xs =
   let loc = Location.none in
   match !mode with
-  | Melange -> [%stri open React_js] :: xs
+  | Melange -> [%stri open React_browser] :: xs
   | Export -> [%stri open React_server] :: cleanup_all xs
 
 let () =

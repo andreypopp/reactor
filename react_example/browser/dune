@@ -1,6 +1,6 @@
 (melange.emit
  (target output)
- (libraries react_js)
+ (libraries react_browser)
  (modules example)
  (preprocess
   (pps melange.ppx react_ppx))
@@ -14,7 +14,7 @@
    %{target}
    (progn
     (run echo "import './output/react/react_example/browser/example.js';")
-    (run echo "import '%{lib-private:react_js:runtime.js}';")))))
+    (run echo "import '%{lib-private:react_browser:runtime.js}';")))))
 
 (rule
  (target ./bundle.js)

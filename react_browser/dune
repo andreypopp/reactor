@@ -1,6 +1,5 @@
 (library
- (name react_js)
- (modules react)
+ (name react_browser)
  (modes melange)
  (preprocess
   (pps melange.ppx)))
