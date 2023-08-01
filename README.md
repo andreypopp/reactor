@@ -1,5 +1,5 @@
-# react_server_components
+# react
 
 **WARNING: EXPERIMENTAL, DO NOT USE**
 
-React Server Components (RSC) for OCaml.
+React for OCaml.

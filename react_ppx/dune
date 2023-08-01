@@ -1,0 +1,12 @@
+(library
+ (name react_ppx)
+ (modules ppx)
+ ; (flags :standard -w -9)
+ (libraries ppxlib)
+ (preprocess (pps ppxlib.metaquot))
+ (kind ppx_rewriter))
+
+(executable
+ (name ppx_test)
+ (modules ppx_test)
+ (libraries react_ppx ppxlib))

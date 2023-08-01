@@ -1,7 +1,8 @@
+open Printf
 open Lwt.Infix
 
 module UI = struct
-  open React_server_components
+  open React_server
   open React_element
 
   module Card = struct
@@ -11,15 +12,11 @@ module UI = struct
       div [ h1 [ text title ]; div children ]
   end
 
-  module Time = struct
-    let make label = client_thunk "Time" [ "label", `Element label ]
-  end
-
   let app _req =
     div ~className:"sans-serif h-100"
       [
-        h1 [ textf "React_server_components" ];
-        Time.make (text "Current time is");
+        h1 [ textf "React_server" ];
+        Example.App.make { title = "some"; children = text "CHILDREN" };
         suspense
           [ Card.make ~title:"Sample Card 1" ~delay:1. [ text "HELLO" ] ];
         suspense
@@ -30,11 +27,17 @@ module UI = struct
 end
 
 let () =
+  let project_root = Sys.getenv "OPAMSWITCH" in
+  let dirname = Filename.dirname __FILE__ in
   Dream.run
   @@ Dream.logger
   @@ Dream.router
        [
          Dream.get "/runtime.js"
-           (React_server_components.esbuild "./runtime.js" ~sourcemap:true);
-         Dream.get "/" (React_server_components.render UI.app);
+           (Dream.from_filesystem
+              (sprintf "%s/_build/default/%s/../browser" project_root
+                 dirname)
+              "bundle.js");
+         Dream.get "/"
+           (React_server.render ~scripts:[ "/runtime.js" ] UI.app);
        ]

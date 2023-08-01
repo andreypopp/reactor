@@ -1,0 +1,3 @@
+(library
+  (name react_server)
+  (libraries lwt containers dream))

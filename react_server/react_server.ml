@@ -16,25 +16,13 @@ module React_element = struct
     | El_client_thunk : {
         import_module : string;
         import_name : string;
-        props : (string * json_model) list;
+        props : client_props;
       }
         -> t
 
   and children = t list
   and html_props = (string * json) list
-
-  and json_model =
-    [ `Null
-    | `Bool of bool
-    | `Int of int
-    | `Intlit of string
-    | `Float of float
-    | `String of string
-    | `Assoc of (string * json_model) list
-    | `List of json_model list
-    | `Tuple of json_model list
-    | `Variant of string * json_model option
-    | `Element of t ]
+  and client_props = (string * [ json | `Element of t ]) list
 
   let null = El_null
   let many els = El_many els
@@ -92,6 +80,10 @@ module React_element = struct
   let h1 = html "h1"
   let h2 = html "h2"
   let h3 = html "h3"
+end
+
+module React = struct
+  type element = React_element.t
 end
 
 module Render_to_model = struct
@@ -157,25 +149,21 @@ module Render_to_model = struct
           in
           ctx.push_rendering
             (Some (idx, sprintf "I%s" (Yojson.Safe.to_string ref)));
-          let props = json_model_to_model ctx (`Assoc props) in
-          `List [ `String "$"; `String (sprintf "$%i" idx); `Null; props ]
+          let props = List.map props ~f:(json_model_to_model ctx) in
+          `List
+            [
+              `String "$";
+              `String (sprintf "$%i" idx);
+              `Null;
+              `Assoc props;
+            ]
     in
     to_model el
 
-  and json_model_to_model ctx (m : React_element.json_model) : json =
-    match m with
-    | (`Null | `Bool _ | `Int _ | `Intlit _ | `Float _ | `String _) as
-      json ->
-        json
-    | `Assoc xs ->
-        `Assoc
-          (List.map xs ~f:(fun (k, v) -> k, json_model_to_model ctx v))
-    | `List xs -> `List (List.map xs ~f:(json_model_to_model ctx))
-    | `Tuple xs -> `Tuple (List.map xs ~f:(json_model_to_model ctx))
-    | `Variant (name, None) -> `Variant (name, None)
-    | `Variant (name, Some j) ->
-        `Variant (name, Some (json_model_to_model ctx j))
-    | `Element element -> to_model ctx element
+  and json_model_to_model ctx (name, jsony) =
+    match jsony with
+    | `Element element -> name, to_model ctx element
+    | #json as jsony -> name, (jsony :> json)
 
   let render el on_chunk =
     let rendering, push_rendering = Lwt_stream.create () in
@@ -187,7 +175,7 @@ module Render_to_model = struct
     Lwt_stream.iter_s on_chunk ctx.rendering
 end
 
-let esbuild ?(sourcemap = false) entry : Dream.handler =
+let esbuild ?(sourcemap = false) entries : Dream.handler =
  fun _ ->
   (* TODO: stream from esbuild to response instead *)
   let args =
@@ -196,11 +184,10 @@ let esbuild ?(sourcemap = false) entry : Dream.handler =
       (if sourcemap then Some "--sourcemap" else None);
       Some "--bundle";
       Some "--loader:.js=jsx";
-      Some entry;
     ]
   in
   Lwt_process.pread
-    ("esbuild", List.filter_map ~f:Fun.id args |> Array.of_list)
+    ("esbuild", List.filter_map ~f:Fun.id args @ entries |> Array.of_list)
   >>= fun data ->
   Dream.respond data ~headers:[ "Content-type", "text/javascript" ]
 
@@ -220,7 +207,6 @@ let render ?(scripts = []) ?(links = []) f : Dream.handler =
         |> String.concat ~sep:"\n"
       in
       let scripts =
-        let scripts = "/runtime.js" :: scripts in
         List.map scripts ~f:(sprintf {|<script src=%S></script>|})
         |> String.concat ~sep:"\n"
       in

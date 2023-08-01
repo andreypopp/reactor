@@ -1,0 +1,31 @@
+(melange.emit
+ (target output)
+ (libraries react_js)
+ (modules example)
+ (preprocess
+  (pps melange.ppx react_ppx))
+ (module_systems commonjs))
+
+(rule
+ (target ./__boot.js)
+ (deps ./output/react/react_example/browser/example.js)
+ (action
+  (with-stdout-to
+   %{target}
+   (progn
+    (run echo "import './output/react/react_example/browser/example.js';")
+    (run echo "import '%{lib-private:react_js:runtime.js}';")))))
+
+(rule
+ (target ./bundle.js)
+ (deps
+  ./__boot.js
+  (source_tree ./output))
+ (action
+  (run
+   esbuild
+   --log-level=warning
+   --bundle
+   --loader:.js=jsx
+   --outfile=%{target}
+   ./__boot.js)))

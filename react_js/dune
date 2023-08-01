@@ -1,0 +1,7 @@
+(library
+ (name react_js)
+ (modules react)
+ (modes melange)
+ (preprocess
+  (pps melange.ppx)))
+

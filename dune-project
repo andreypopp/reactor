@@ -1,6 +1,8 @@
 (lang dune 3.9)
 
-(name react_server_components)
+(using melange 0.1)
+
+(name react_server)
 
 (generate_opam_files true)
 
@@ -16,7 +18,8 @@
 (documentation https://url/to/documentation)
 
 (package
- (name react_server_components)
+ (allow_empty)
+ (name react_server)
  (synopsis "React Server Components for OCaml")
  (description "Allow to define React Server Components in OCaml")
  (depends ocaml dune lwt containers dream)

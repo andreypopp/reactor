@@ -1,3 +1,5 @@
+type json = Yojson.Safe.t
+
 (** DSL for constructing UI elements, this module is intended to be openned. *)
 module React_element : sig
   type t
@@ -50,23 +52,15 @@ module React_element : sig
   val suspense : children -> t
   (** Renders a React Suspense boundary. *)
 
-  type json_model =
-    [ `Assoc of (string * json_model) list
-    | `Bool of bool
-    | `Element of t
-    | `Float of float
-    | `Int of int
-    | `Intlit of string
-    | `List of json_model list
-    | `Null
-    | `String of string
-    | `Tuple of json_model list
-    | `Variant of string * json_model option ]
+  type client_props = (string * [ json | `Element of t ]) list
 
-  val client_thunk :
-    ?import_name:string -> string -> (string * json_model) list -> t
+  val client_thunk : ?import_name:string -> string -> client_props -> t
   (** This instructs to render a client components in browser which is
       implemented in JavaScript. *)
+end
+
+module React : sig
+  type element = React_element.t
 end
 
 val render :
@@ -76,7 +70,7 @@ val render :
   Dream.handler
 (** Serve React Server Component. *)
 
-val esbuild : ?sourcemap:bool -> string -> Dream.handler
+val esbuild : ?sourcemap:bool -> string list -> Dream.handler
 (** Serve esbuild bundle. 
 
     This requires [esbuild] executable to be on your [$PATH].
