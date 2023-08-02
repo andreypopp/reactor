@@ -1,13 +1,5 @@
 (executable
  (name main)
- (libraries react_server dream ppx_yojson_conv_lib)
+ (libraries react_server dream example_native)
  (preprocess
   (pps ppx_yojson_conv)))
-
-(rule
- (target example.ml)
- (deps ../browser/example.ml)
- (action
-  (with-stdout-to
-   %{target}
-   (run ../../react_ppx/ppx_test.exe -export ../browser/example.ml))))

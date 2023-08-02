@@ -16,7 +16,8 @@ module UI = struct
     div ~className:"sans-serif h-100"
       [
         h1 [ textf "React_server" ];
-        Example.App.make { title = "Title"; children = text "CHILDREN" };
+        Example_native.Example.App.make
+          { title = "Title"; children = text "CHILDREN" };
         suspense
           [ Card.make ~title:"Sample Card 1" ~delay:1. [ text "HELLO" ] ];
         suspense
