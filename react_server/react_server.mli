@@ -1,32 +1,27 @@
 type json = Yojson.Safe.t
 
 (** DSL for constructing UI elements, this module is intended to be openned. *)
-module React_element : sig
-  type t
+module React : sig
+  type element
   (** An abstract UI specification, see [React_element] below for how to
     construct values of such type. *)
 
-  type children = t list
+  type children = element array
   (** Just a convenience, should be replaced by JSX syntax. *)
 
-  val null : t
+  val null : element
   (** An element which renders nothing. *)
 
-  val many : children -> t
+  val many : children -> element
   (** An element which renders multiple elements. *)
 
-  val text : string -> t
+  val text : string -> element
   (** An element which renders [text]. *)
 
-  val textf : ('a, unit, string, t) format4 -> 'a
+  val textf : ('a, unit, string, element) format4 -> 'a
   (** Like [text] but allows to use printf formatting. *)
 
-  type html_element =
-    ?className:string ->
-    ?href:string ->
-    ?dangerously_set_inner_html:string ->
-    children ->
-    t
+  type html_element = ?className:string -> children -> element
 
   val html : string -> html_element
   (** Render HTML element. *)
@@ -41,32 +36,29 @@ module React_element : sig
   val h2 : html_element
   val h3 : html_element
 
-  val thunk : (unit -> t) -> t
+  val thunk : (unit -> element) -> element
   (** [thunk f props children] renders an element tree produced by [f props
       children]. *)
 
-  val async_thunk : (unit -> t Lwt.t) -> t
+  val async_thunk : (unit -> element Lwt.t) -> element
   (** [async_thunk f props children] works the same as [thunk f props children]
       but is asynchronous. *)
 
-  val suspense : children -> t
+  val suspense : children -> element
   (** Renders a React Suspense boundary. *)
 
-  type client_props = (string * [ json | `Element of t ]) list
+  type client_props = (string * [ json | `Element of element ]) list
 
-  val client_thunk : ?import_name:string -> string -> client_props -> t
+  val client_thunk :
+    ?import_name:string -> string -> client_props -> element -> element
   (** This instructs to render a client components in browser which is
       implemented in JavaScript. *)
-end
-
-module React : sig
-  type element = React_element.t
 end
 
 val render :
   ?scripts:string list ->
   ?links:string list ->
-  (Dream.request -> React_element.t) ->
+  (Dream.request -> React.element) ->
   Dream.handler
 (** Serve React Server Component. *)
 

@@ -1,8 +1,8 @@
 open Ppxlib
 
-type mode = Export | Melange
+type target = Target_native | Target_js
 
-let mode = ref Melange
+let mode = ref Target_js
 
 let longident label =
   { txt = Longident.Lident label.txt; loc = label.loc }
@@ -12,8 +12,9 @@ let ident label =
   pexp_ident ~loc:label.loc (longident label)
 
 module Ext_component = struct
-  let expand ~ctxt pat expr =
-    let open Ast_builder.Default in
+  open Ast_builder.Default
+
+  let expand_js ~ctxt pat expr =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
     let label =
       match pat.ppat_desc with
@@ -59,6 +60,32 @@ module Ext_component = struct
         let [%p pat] = fun props -> [%e unpack_expr] in
         [%e pack_expr]]
 
+  let expand_native ~ctxt pat expr =
+    let loc = Expansion_context.Extension.extension_point_loc ctxt in
+    let args, body =
+      let rec collect_props acc expr =
+        match expr.pexp_desc with
+        | Pexp_fun
+            (label, _, ({ ppat_desc = Ppat_var arg; _ } as pat), expr) ->
+            collect_props ((label, pat, arg) :: acc) expr
+        | Pexp_fun (_, _, _, _) -> failwith "not an arg"
+        | _ -> acc, expr
+      in
+      collect_props [] expr
+    in
+    let pack_expr =
+      ListLabels.fold_left args
+        ~init:[%expr React_server.React.thunk (fun () -> [%e body])]
+        ~f:(fun body (label, pat, _name) ->
+          pexp_fun ~loc label None pat body)
+    in
+    [%stri let [%p pat] = [%e pack_expr]]
+
+  let expand ~ctxt pat expr =
+    match !mode with
+    | Target_js -> expand_js ~ctxt pat expr
+    | Target_native -> expand_native ~ctxt pat expr
+
   let ext =
     let pattern =
       let open Ast_pattern in
@@ -73,6 +100,8 @@ module Ext_component = struct
 end
 
 module Ext_export_component = struct
+  open Ast_builder.Default
+
   let deriving_yojson ~loc =
     {
       attr_loc = loc;
@@ -80,8 +109,7 @@ module Ext_export_component = struct
       attr_payload = PStr [ [%stri yojson_of] ];
     }
 
-  let expand_export ~ctxt items =
-    let open Ast_builder.Default in
+  let expand_native ~ctxt items =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
     let props = ref None in
     let items =
@@ -138,23 +166,25 @@ module Ext_export_component = struct
     @ [
         [%stri
           let make props =
-            React_server.React_element.client_thunk "App"
-              [%e props_fields]];
+            React_server.React.client_thunk "App" [%e props_fields]
+              (React_server.React.thunk (fun () -> make props))];
       ]
 
+  let expand_js ~ctxt items =
+    let loc = Expansion_context.Extension.extension_point_loc ctxt in
+    items
+    @ [%str
+        let make props = React.unsafe_create_element make props
+        let () = React.Exported_components.register "App" make]
+
   let expand ~ctxt name expr =
-    let open Ast_builder.Default in
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
     match expr.pmod_desc with
     | Pmod_structure items ->
         let items =
           match !mode with
-          | Melange ->
-              items
-              @ [%str
-                  let make props = React.unsafe_create_element make props
-                  let () = React.Exported_components.register "App" make]
-          | Export -> expand_export ~ctxt items
+          | Target_js -> expand_js ~ctxt items
+          | Target_native -> expand_native ~ctxt items
         in
         pstr_module ~loc
           (module_binding ~loc ~name:{ loc; txt = name }
@@ -171,62 +201,16 @@ module Ext_export_component = struct
          Extension.Context.structure_item pattern expand)
 end
 
-let rec cleanup_all xs =
-  List.filter_map
-    (fun (x : structure_item) ->
-      match x.pstr_desc with
-      | Pstr_eval _ -> None
-      | Pstr_value _ -> None
-      | Pstr_primitive _ -> None
-      | Pstr_type _ -> Some x
-      | Pstr_typext _ -> Some x
-      | Pstr_exception _ -> Some x
-      | Pstr_module
-          ({
-             pmb_expr = { pmod_desc = Pmod_structure str; _ } as pmb_expr;
-             _;
-           } as pmb) ->
-          let str = cleanup_all str in
-          Some
-            {
-              x with
-              pstr_desc =
-                Pstr_module
-                  {
-                    pmb with
-                    pmb_expr =
-                      { pmb_expr with pmod_desc = Pmod_structure str };
-                  };
-            }
-      | Pstr_module _ -> None
-      | Pstr_recmodule _ -> None
-      | Pstr_modtype _ -> Some x
-      | Pstr_open _ -> Some x
-      | Pstr_class _ -> None
-      | Pstr_class_type _ -> None
-      | Pstr_include _ -> None
-      | Pstr_attribute _ -> None
-      | Pstr_extension ((name, PStr str), attrs)
-        when name.txt = "export_component" ->
-          let str = cleanup_all str in
-          Some
-            {
-              x with
-              pstr_desc = Pstr_extension ((name, PStr str), attrs);
-            }
-      | Pstr_extension _ -> None)
-    xs
-
-let cleanup_all xs =
+let preprocess_impl xs =
   let loc = Location.none in
   match !mode with
-  | Melange -> [%stri open React_browser] :: xs
-  | Export -> [%stri open React_server] :: cleanup_all xs
+  | Target_js -> [%stri open React_browser] :: xs
+  | Target_native -> [%stri open React_server] :: xs
 
 let () =
-  Driver.add_arg "-export"
-    (Unit (fun () -> mode := Export))
+  Driver.add_arg "-native"
+    (Unit (fun () -> mode := Target_native))
     ~doc:"only keep RSC export";
   Driver.register_transformation
     ~rules:[ Ext_component.ext; Ext_export_component.ext ]
-    ~preprocess_impl:cleanup_all "react_jsx"
+    ~preprocess_impl "react_jsx"

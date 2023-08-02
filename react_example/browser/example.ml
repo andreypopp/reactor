@@ -15,6 +15,6 @@ module%export_component App = struct
       |]
 end
 
-let () =
-  let app = sidebar ~title:"title" [| text "body"; text "another" |] in
-  print_endline (render_to_string app)
+(* let () = *)
+(*   let app = sidebar ~title:"title" [| text "body"; text "another" |] in *)
+(*   print_endline (render_to_string app) *)

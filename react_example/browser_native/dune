@@ -2,7 +2,7 @@
  (name example_native)
  (libraries react_server ppx_yojson_conv_lib)
  (preprocess
-  (pps react_ppx -export ppx_yojson_conv)))
+  (pps react_ppx -native ppx_yojson_conv)))
 
 (copy_files#
  (files ../browser/**[!.pp].ml))

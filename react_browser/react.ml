@@ -1,4 +1,5 @@
 type element
+type children = element array
 
 let yojson_of_element _ = assert false
 
@@ -13,7 +14,7 @@ type html_props
 external html_props :
   ?key:string ->
   ?className:string ->
-  ?children:element array ->
+  ?children:children ->
   unit ->
   html_props = ""
 [@@bs.obj]
@@ -22,8 +23,10 @@ external html' : string -> html_props -> element array -> element
   = "createElement"
 [@@bs.module "react"] [@@bs.variadic]
 
-let html name ?key ?className children =
-  html' name (html_props ?key ?className ()) children
+type html_element = ?className:string -> children -> element
+
+let html name : html_element =
+ fun ?className children -> html' name (html_props ?className ()) children
 
 let div = html "div"
 let span = html "span"
