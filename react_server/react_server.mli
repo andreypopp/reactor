@@ -23,9 +23,13 @@ module React : sig
 
   type html_element = ?className:string -> children -> element
 
-  val html : string -> html_element
+  val h : string -> html_element
   (** Render HTML element. *)
 
+  val html : html_element
+  val body : html_element
+  val head : html_element
+  val title : html_element
   val div : html_element
   val span : html_element
   val li : html_element
@@ -63,6 +67,12 @@ module React : sig
   [@@alert
     browser_only
       "React.use_effect' is only available for client side components"]
+
+  val use : 'a Lwt.t -> 'a
+  [@@alert
+    browser_only
+      "React.use is only available for client side components, use async \
+       components on server instead"]
 end
 
 module React_browser : sig
@@ -73,8 +83,16 @@ module React_browser : sig
 
     val use_effect : (unit -> unit -> unit) -> 'a array -> unit
     val use_effect' : (unit -> unit) -> 'a array -> unit
+    val use : 'a Lwt.t -> 'a
   end
 end
+
+val render_to_html :
+  ?scripts:string list ->
+  ?links:string list ->
+  (Dream.request -> React.element) ->
+  Dream.handler
+(** Serve React Server Component. *)
 
 val render :
   ?scripts:string list ->

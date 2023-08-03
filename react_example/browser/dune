@@ -19,6 +19,7 @@
  (target ./bundle.js)
  (deps
   ./__boot.js
+  %{lib-private:react_browser:runtime.js}
   (source_tree .))
  (action
   (run

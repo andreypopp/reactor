@@ -10,17 +10,36 @@ module UI = struct
     div [| h1 [| text title |]; div children |]
 
   let app _req =
-    div ~className:"sans-serif h-100"
+    html
       [|
-        h1 [| textf "React_server" |];
-        Example_native.Example.App.make
-          { title = "Title"; children = text "CHILDREN" };
-        suspense
-          [| card ~title:"Sample Card 1" ~delay:1. [| text "HELLO" |] |];
-        suspense
-          [| card ~title:"Sample Card 1" ~delay:2. [| text "HELLO" |] |];
-        suspense
-          [| card ~title:"Sample Card 1" ~delay:3. [| text "HELLO" |] |];
+        head
+          [|
+            title [| text "React with native React Server Components" |];
+          |];
+        body
+          [|
+            div ~className:"sans-serif h-100"
+              [|
+                h1 [| textf "React_server" |];
+                Example_native.Example.App.make
+                  { title = "Title"; children = text "CHILDREN" };
+                suspense
+                  [|
+                    card ~title:"Sample Card 1" ~delay:1.
+                      [| text "HELLO" |];
+                  |];
+                suspense
+                  [|
+                    card ~title:"Sample Card 1" ~delay:2.
+                      [| text "HELLO" |];
+                  |];
+                suspense
+                  [|
+                    card ~title:"Sample Card 1" ~delay:3.
+                      [| text "HELLO" |];
+                  |];
+              |];
+          |];
       |]
 end
 
@@ -38,4 +57,6 @@ let () =
               "bundle.js");
          Dream.get "/"
            (React_server.render ~scripts:[ "/runtime.js" ] UI.app);
+         Dream.get "/ssr"
+           (React_server.render_to_html ~scripts:[ "/runtime.js" ] UI.app);
        ]
