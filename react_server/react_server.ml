@@ -8,6 +8,11 @@ type json = Yojson.Safe.t
 module React = struct
   type element =
     | El_null : element
+    | El_suspense : {
+        children : children;
+        fallback : children;
+      }
+        -> element
     | El_text : string -> element
     | El_many : children -> element
     | El_html : string * html_props * children option -> element
@@ -31,7 +36,9 @@ module React = struct
   let textf fmt = ksprintf text fmt
   let thunk f = El_thunk f
   let async_thunk f = El_async_thunk f
-  let suspense children = El_html ("$Sreact.suspense", [], Some children)
+
+  let suspense ?(fallback = [| null |]) children =
+    El_suspense { children; fallback }
 
   let client_thunk ?(import_name = "") import_module props thunk =
     El_client_thunk { import_module; import_name; props; thunk }
@@ -109,6 +116,19 @@ module Render_to_model = struct
                  )
                 :: props);
             ]
+      | El_suspense { children; fallback = _ } ->
+          `List
+            [
+              `String "$";
+              `String "$Sreact.suspense";
+              `Null;
+              `Assoc
+                [
+                  ( "children",
+                    `List (Array.to_list children |> List.map ~f:to_model)
+                  );
+                ];
+            ]
       | El_thunk f ->
           let tree = f () in
           to_model tree
@@ -169,6 +189,87 @@ module Render_to_model = struct
     if ctx.waiting = 0 then ctx.push_rendering None;
     Lwt_stream.iter_s on_chunk ctx.rendering
 end
+
+(* module Render_to_html = struct *)
+(*   type ctx = { *)
+(*     mutable idx : int; *)
+(*     mutable waiting : int; *)
+(*     rendering : (int * string) Lwt_stream.t; *)
+(*     push_rendering : (int * string) option -> unit; *)
+(*   } *)
+
+(*   let use_idx ctx = *)
+(*     ctx.idx <- ctx.idx + 1; *)
+(*     ctx.idx *)
+
+(*   let rec to_html ctx el = *)
+(*     let rec to_html = function *)
+(*       | React.El_null -> `Null *)
+(*       | El_text s -> `String s *)
+(*       | El_many els -> `List (Array.to_list els |> List.map ~f:to_html) *)
+(*       | El_html (tag_name, props, None) -> *)
+(*           `List [ `String "$"; `String tag_name; `Null; `Assoc props ] *)
+(*       | El_html (tag_name, props, Some children) -> *)
+(*           `List *)
+(*             [ *)
+(*               `String "$"; *)
+(*               `String tag_name; *)
+(*               `Null; *)
+(*               `Assoc *)
+(*                 (( "children", *)
+(*                    `List (Array.to_list children |> List.map ~f:to_html) *)
+(*                  ) *)
+(*                 :: props); *)
+(*             ] *)
+(*       | El_suspense { children; fallback = _ } -> *)
+(*           `List *)
+(*             [ *)
+(*               `String "$"; *)
+(*               `String "$Sreact.suspense"; *)
+(*               `Null; *)
+(*               `Assoc *)
+(*                 [ *)
+(*                   ( "children", *)
+(*                     `List (Array.to_list children |> List.map ~f:to_html) *)
+(*                   ); *)
+(*                 ]; *)
+(*             ] *)
+(*       | El_thunk f -> *)
+(*           let tree = f () in *)
+(*           to_html tree *)
+(*       | El_async_thunk f -> ( *)
+(*           let tree = f () in *)
+(*           match Lwt.state tree with *)
+(*           | Lwt.Return tree -> to_html tree *)
+(*           | Lwt.Fail exn -> raise exn *)
+(*           | Lwt.Sleep -> *)
+(*               let idx = use_idx ctx in *)
+(*               ctx.waiting <- ctx.waiting + 1; *)
+(*               Lwt.async (fun () -> *)
+(*                   Lwt.map *)
+(*                     (fun tree -> *)
+(*                       let json = to_html tree in *)
+(*                       ctx.push_rendering *)
+(*                         (Some (idx, Yojson.Safe.to_string json)); *)
+(*                       ctx.waiting <- ctx.waiting - 1; *)
+(*                       if ctx.waiting = 0 then ctx.push_rendering None) *)
+(*                     tree); *)
+(*               `String (sprintf "$L%i" idx)) *)
+(*       | El_client_thunk *)
+(*           { import_module = _; import_name = _; props = _; thunk } -> *)
+(*           to_html thunk *)
+(*     in *)
+(*     to_html el *)
+
+(*   let render el on_chunk = *)
+(*     let rendering, push_rendering = Lwt_stream.create () in *)
+(*     let ctx = { rendering; push_rendering; waiting = 0; idx = 0 } in *)
+(*     let idx = ctx.idx in *)
+(*     ctx.push_rendering *)
+(*       (Some (idx, Yojson.Safe.to_string (to_html ctx el))); *)
+(*     if ctx.waiting = 0 then ctx.push_rendering None; *)
+(*     Lwt_stream.iter_s on_chunk ctx.rendering *)
+(* end *)
 
 let esbuild ?(sourcemap = false) entries : Dream.handler =
  fun _ ->

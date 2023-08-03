@@ -44,7 +44,7 @@ module React : sig
   (** [async_thunk f props children] works the same as [thunk f props children]
       but is asynchronous. *)
 
-  val suspense : children -> element
+  val suspense : ?fallback:children -> children -> element
   (** Renders a React Suspense boundary. *)
 
   type client_props = (string * [ json | `Element of element ]) list

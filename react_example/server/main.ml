@@ -5,12 +5,9 @@ module UI = struct
   open React_server
   open React
 
-  module Card = struct
-    let make ~delay ~title children =
-      async_thunk @@ fun () ->
-      Lwt_unix.sleep delay >|= fun () ->
-      div [| h1 [| text title |]; div children |]
-  end
+  let%async_component card ~delay ~title children =
+    Lwt_unix.sleep delay >|= fun () ->
+    div [| h1 [| text title |]; div children |]
 
   let app _req =
     div ~className:"sans-serif h-100"
@@ -19,17 +16,11 @@ module UI = struct
         Example_native.Example.App.make
           { title = "Title"; children = text "CHILDREN" };
         suspense
-          [|
-            Card.make ~title:"Sample Card 1" ~delay:1. [| text "HELLO" |];
-          |];
+          [| card ~title:"Sample Card 1" ~delay:1. [| text "HELLO" |] |];
         suspense
-          [|
-            Card.make ~title:"Sample Card 1" ~delay:2. [| text "HELLO" |];
-          |];
+          [| card ~title:"Sample Card 1" ~delay:2. [| text "HELLO" |] |];
         suspense
-          [|
-            Card.make ~title:"Sample Card 1" ~delay:3. [| text "HELLO" |];
-          |];
+          [| card ~title:"Sample Card 1" ~delay:3. [| text "HELLO" |] |];
       |]
 end
 

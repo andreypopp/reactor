@@ -2,4 +2,4 @@
  (name main)
  (libraries react_server dream example_native)
  (preprocess
-  (pps ppx_yojson_conv)))
+  (pps react_ppx -native ppx_yojson_conv)))
