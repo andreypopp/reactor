@@ -234,7 +234,7 @@ module Ext_export_component = struct
             | _ ->
                 [%expr
                   ([%yojson_of: [%t pld_type]] [%e prop]
-                    :> [ json | `Element of React.element ])]
+                    :> [ React_server.json | `Element of React.element ])]
           in
           [%expr ([%e name], [%e value]) :: [%e xs]])
         [%expr []] props
@@ -283,7 +283,7 @@ let preprocess_impl xs =
   let loc = Location.none in
   match !mode with
   | Target_js -> [%stri open React_browser] :: xs
-  | Target_native -> [%stri open React_server] :: xs
+  | Target_native -> [%stri open React_server.React_browser] :: xs
 
 let () =
   Driver.add_arg "-native"

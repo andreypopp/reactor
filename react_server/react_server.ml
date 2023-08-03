@@ -83,6 +83,17 @@ module React = struct
   let h1 = html "h1"
   let h2 = html "h2"
   let h3 = html "h3"
+  let use_effect _thunk _deps = assert false
+  let use_effect' _thunk _deps = assert false
+end
+
+module React_browser = struct
+  module React = struct
+    include React
+
+    let use_effect _thunk _deps = ()
+    let use_effect' _thunk _deps = ()
+  end
 end
 
 module Render_to_model = struct

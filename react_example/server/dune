@@ -1,5 +1,6 @@
 (executable
  (name main)
  (libraries react_server dream example_native)
+ (flags :standard -alert ++browser_only)
  (preprocess
   (pps react_ppx -native ppx_yojson_conv)))

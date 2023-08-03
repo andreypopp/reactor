@@ -53,6 +53,27 @@ module React : sig
     ?import_name:string -> string -> client_props -> element -> element
   (** This instructs to render a client components in browser which is
       implemented in JavaScript. *)
+
+  val use_effect : (unit -> unit -> unit) -> 'a array -> unit
+  [@@alert
+    browser_only
+      "React.use_effect is only available for client side components"]
+
+  val use_effect' : (unit -> unit) -> 'a array -> unit
+  [@@alert
+    browser_only
+      "React.use_effect' is only available for client side components"]
+end
+
+module React_browser : sig
+  module React : sig
+    type element = React.element
+
+    include module type of React with type element := element
+
+    val use_effect : (unit -> unit -> unit) -> 'a array -> unit
+    val use_effect' : (unit -> unit) -> 'a array -> unit
+  end
 end
 
 val render :

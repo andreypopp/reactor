@@ -43,6 +43,13 @@ let h6 = html "h6"
 external render_to_string : element -> string = "renderToString"
 [@@bs.module "react-dom/server"]
 
+external use_effect' : (unit -> unit) -> 'a array -> unit = "useEffect"
+[@@bs.module "react"]
+
+external use_effect : (unit -> unit -> unit) -> 'a array -> unit
+  = "useEffect"
+[@@bs.module "react"]
+
 module Exported_components = struct
   type exported_component =
     | Exported_component : ('props -> element) -> exported_component

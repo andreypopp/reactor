@@ -1,6 +1,7 @@
 open React
 
 let%component sidebar ~title children =
+  let () = use_effect' (fun () -> print_endline "effect") [||] in
   div ~className:"some" [| text title; text "WORLD!!"; div children |]
 
 module%export_component App = struct
