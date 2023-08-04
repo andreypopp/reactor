@@ -4,9 +4,12 @@ open Printf
 open Lwt.Infix
 
 type json = Yojson.Safe.t
+(* used to transfer props to/from browser *)
+
 type any_promise = Any_promise : 'a Lwt.t -> any_promise
 
 exception Suspend of any_promise
+(* React.use raises this when the promise is not resolved yet *)
 
 module React = struct
   type element =
@@ -48,27 +51,9 @@ module React = struct
 
   let html' tag_name : html_element =
    fun ?className children ->
-    (* let children = *)
-    (*   match children, dangerously_set_inner_html with *)
-    (*   | children, None -> Some children *)
-    (*   | [||], Some _ -> None *)
-    (*   | _, Some _ -> *)
-    (*       failwith *)
-    (* "cannot have children and dangerously_set_inner_html at the \ *)
-       (*          same time" *)
-    (* in *)
     let props =
       let string v = `String v in
-      (* let dangerously_set_inner_html = *)
-      (*   Option.map *)
-      (*     (fun html -> `Assoc [ "__html", `String html ]) *)
-      (*     dangerously_set_inner_html *)
-      (* in *)
-      [
-        "className", Option.map string className;
-        (* "href", Option.map string href; *)
-        (* "dangerouslySetInnerHTML", dangerously_set_inner_html; *)
-      ]
+      [ "className", Option.map string className ]
       |> List.filter_map ~f:(function
            | _, None -> None
            | n, Some v -> Some (n, v))
@@ -120,19 +105,35 @@ module React_browser = struct
   end
 end
 
-module Render_to_model = struct
+module Render_to_model : sig
+  val render : React.element -> (Buffer.t -> unit Lwt.t) -> unit Lwt.t
+end = struct
   type ctx = {
     mutable idx : int;
     mutable waiting : int;
-    push : (int * string) option -> unit;
+    push : Buffer.t option -> unit;
   }
 
   let use_idx ctx =
     ctx.idx <- ctx.idx + 1;
     ctx.idx
 
-  let rec to_model ctx el =
-    let rec to_model = function
+  let push_ref ctx idx ref =
+    let buf = Buffer.create 256 in
+    Buffer.add_string buf (sprintf "%x:I" idx);
+    Yojson.Safe.write_json buf ref;
+    Buffer.add_char buf '\n';
+    ctx.push (Some buf)
+
+  let push ctx idx json =
+    let buf = Buffer.create (4 * 1024) in
+    Buffer.add_string buf (sprintf "%x:" idx);
+    Yojson.Safe.write_json buf json;
+    Buffer.add_char buf '\n';
+    ctx.push (Some buf)
+
+  let rec to_model ctx idx el =
+    let rec to_model' = function
       | React.El_null -> `Null
       | El_text s -> `String s
       | El_html (tag_name, props, None) ->
@@ -145,7 +146,7 @@ module Render_to_model = struct
               `Null;
               `Assoc
                 (( "children",
-                   `List (Array.to_list children |> List.map ~f:to_model)
+                   `List (Array.to_list children |> List.map ~f:to_model')
                  )
                 :: props);
             ]
@@ -158,29 +159,20 @@ module Render_to_model = struct
               `Assoc
                 [
                   ( "children",
-                    `List (Array.to_list children |> List.map ~f:to_model)
+                    `List (Array.to_list children |> List.map ~f:to_model')
                   );
                 ];
             ]
-      | El_thunk f ->
-          let tree = f () in
-          to_model tree
+      | El_thunk f -> to_model' (f ())
       | El_async_thunk f -> (
           let tree = f () in
           match Lwt.state tree with
-          | Lwt.Return tree -> to_model tree
+          | Lwt.Return tree -> to_model' tree
           | Lwt.Fail exn -> raise exn
           | Lwt.Sleep ->
               let idx = use_idx ctx in
               ctx.waiting <- ctx.waiting + 1;
-              Lwt.async (fun () ->
-                  Lwt.map
-                    (fun tree ->
-                      let json = to_model tree in
-                      ctx.push (Some (idx, Yojson.Safe.to_string json));
-                      ctx.waiting <- ctx.waiting - 1;
-                      if ctx.waiting = 0 then ctx.push None)
-                    tree);
+              Lwt.async (fun () -> Lwt.map (to_model ctx idx) tree);
               `String (sprintf "$L%i" idx))
       | El_client_thunk { import_module; import_name; props; thunk = _ }
         ->
@@ -194,8 +186,8 @@ module Render_to_model = struct
                 "async", `Bool false;
               ]
           in
-          ctx.push (Some (idx, sprintf "I%s" (Yojson.Safe.to_string ref)));
-          let props = List.map props ~f:(json_model_to_model ctx) in
+          push_ref ctx idx ref;
+          let props = List.map props ~f:json_model_to_model in
           `List
             [
               `String "$";
@@ -203,20 +195,18 @@ module Render_to_model = struct
               `Null;
               `Assoc props;
             ]
+    and json_model_to_model (name, jsony) =
+      match jsony with
+      | `Element element -> name, to_model' element
+      | #json as jsony -> name, (jsony :> json)
     in
-    to_model el
-
-  and json_model_to_model ctx (name, jsony) =
-    match jsony with
-    | `Element element -> name, to_model ctx element
-    | #json as jsony -> name, (jsony :> json)
+    push ctx idx (to_model' el);
+    if ctx.waiting = 0 then ctx.push None
 
   let render el on_chunk =
     let rendering, push = Lwt_stream.create () in
     let ctx = { push; waiting = 0; idx = 0 } in
-    let idx = ctx.idx in
-    ctx.push (Some (idx, Yojson.Safe.to_string (to_model ctx el)));
-    if ctx.waiting = 0 then ctx.push None;
+    to_model ctx ctx.idx el;
     Lwt_stream.iter_s on_chunk rendering
 end
 
@@ -455,8 +445,8 @@ let render_to_html ?(scripts = []) ?(links = []) f : Dream.handler =
   match Dream.header req "accept" with
   | Some "application/react.component" ->
       Dream.stream (fun stream ->
-          Render_to_model.render (f req) @@ fun (idx, data) ->
-          Dream.write stream (sprintf "%i:%s\n" idx data) >>= fun () ->
+          Render_to_model.render (f req) @@ fun data ->
+          Dream.write stream (Buffer.contents data) >>= fun () ->
           Dream.flush stream)
   | _ ->
       Dream.stream (fun stream ->
@@ -493,8 +483,8 @@ let render ?(scripts = []) ?(links = []) f : Dream.handler =
   match Dream.header req "accept" with
   | Some "application/react.component" ->
       Dream.stream (fun stream ->
-          Render_to_model.render (f req) @@ fun (idx, data) ->
-          Dream.write stream (sprintf "%i:%s\n" idx data) >>= fun () ->
+          Render_to_model.render (f req) @@ fun data ->
+          Dream.write stream (Buffer.contents data) >>= fun () ->
           Dream.flush stream)
   | _ ->
       let links =
