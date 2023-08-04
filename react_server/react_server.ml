@@ -6,12 +6,12 @@ open Lwt.Infix
 type json = Yojson.Safe.t
 (* used to transfer props to/from browser *)
 
-type any_promise = Any_promise : 'a Lwt.t -> any_promise
-
-exception Suspend of any_promise
-(* React.use raises this when the promise is not resolved yet *)
-
 module React = struct
+  type any_promise = Any_promise : 'a Lwt.t -> any_promise
+
+  exception Suspend of any_promise
+  (** React.use raises this when the promise is not resolved yet *)
+
   type element =
     | El_null : element
     | El_suspense : {
@@ -32,7 +32,7 @@ module React = struct
         -> element
 
   and children = element array
-  and html_props = (string * json) list
+  and html_props = (string * [ `String of string | `Bool of bool ]) list
   and client_props = (string * [ json | `Element of element ]) list
 
   let null = El_null
@@ -107,6 +107,7 @@ end
 
 module Render_to_model : sig
   val make_element : string -> (string * json) list -> json
+  val make_suspense : [ `Loaded of json list | `Suspended of int ] -> json
   val make_ref : string -> string -> json
   val render : React.element -> (Buffer.t -> unit Lwt.t) -> unit Lwt.t
 end = struct
@@ -134,8 +135,14 @@ end = struct
     Buffer.add_char buf '\n';
     ctx.push (Some buf)
 
-  let make_element tag_name props =
+  let make_element tag_name (props : (string * json) list) =
     `List [ `String "$"; `String tag_name; `Null; `Assoc props ]
+
+  let make_suspense children =
+    make_element "$Sreact.suspense"
+      (match children with
+      | `Loaded children -> [ "children", `List children ]
+      | `Suspended idx -> [ "children", `String (sprintf "$L%i" idx) ])
 
   let make_ref import_module import_name =
     `Assoc
@@ -153,19 +160,18 @@ end = struct
       | El_html (tag_name, props, children) ->
           let props =
             match children with
-            | None -> props
+            | None -> (props :> (string * json) list)
             | Some children ->
                 let children =
                   Array.to_list children |> List.map ~f:to_model'
                 in
-                ("children", `List children) :: props
+                ("children", `List children)
+                :: (props :> (string * json) list)
           in
           make_element tag_name props
       | El_suspense { children; fallback = _ } ->
-          let children =
-            Array.to_list children |> List.map ~f:to_model'
-          in
-          make_element "$Sreact.suspense" [ "children", `List children ]
+          make_suspense
+            (`Loaded (Array.to_list children |> List.map ~f:to_model'))
       | El_thunk f -> to_model' (f ())
       | El_async_thunk f -> (
           let tree = f () in
@@ -203,26 +209,12 @@ module Render_to_html = struct
   type ctx = {
     mutable idx : int;
     mutable waiting : int;
-    push : (string * (int * string)) option -> unit;
+    push : (Html.t * (int * string)) option -> unit;
   }
 
   let use_idx ctx =
     ctx.idx <- ctx.idx + 1;
     ctx.idx
-
-  let emit_html tag_name props children =
-    let attrs =
-      List.map props ~f:(fun (name, value) ->
-          let name =
-            match name with "className" -> "class" | name -> name
-          in
-          sprintf "%s=%s" name (Yojson.Safe.to_string value))
-      |> String.concat ~sep:" "
-    in
-    match children with
-    | None -> sprintf {|<%s %s/>|} tag_name attrs
-    | Some children ->
-        sprintf {|<%s %s>%s</%s>|} tag_name attrs children tag_name
 
   type mode = Mode_server | Mode_client
 
@@ -231,66 +223,68 @@ module Render_to_html = struct
     $RC=function(b,c,e){c=document.getElementById(c);c.parentNode.removeChild(c);var a=document.getElementById(b);if(a){b=a.previousSibling;if(e)b.data="$!",a.setAttribute("data-dgst",e);else{e=b.parentNode;a=b.nextSibling;var f=0;do{if(a&&8===a.nodeType){var d=a.data;if("/$"===d)if(0===f)break;else f--;else"$"!==d&&"$?"!==d&&"$!"!==d||f++}d=a.nextSibling;e.removeChild(a);a=d}while(a);for(;c.firstChild;)e.insertBefore(c.firstChild,a);b.data="$"}b._reactRetry&&b._reactRetry()}};
     |}
 
+  let emit_chunk idx html =
+    Html.splice
+      [
+        Html.node "div"
+          [ "hidden", `Bool true; "id", `String (sprintf "S:%i" idx) ]
+          (Some [ html ]);
+        Html.raw
+          (sprintf {|<script>%s$RC("B:%i", "S:%i")</script>|}
+             instruction_RC idx idx);
+      ]
+
+  let emit_placeholder idx =
+    Html.raw
+      (sprintf {|<!--$?--><template id="B:%i"></template><!--/$-->|} idx)
+
   let to_html ctx mode el =
     let rec to_html this mode = function
-      | React.El_null -> Lwt.return ("", `Null)
-      | El_text s -> Lwt.return (s, `String s)
+      | React.El_null -> Lwt.return (Html.text "", `Null)
+      | El_text s -> Lwt.return (Html.text s, `String s)
       | El_html (tag_name, props, None) ->
           Lwt.return
-            ( emit_html tag_name props None,
-              Render_to_model.make_element tag_name props )
+            ( Html.node tag_name props None,
+              Render_to_model.make_element tag_name
+                (props :> (string * json) list) )
       | El_html (tag_name, props, Some children) ->
           to_html_many this mode children >|= fun (html, model) ->
-          ( emit_html tag_name props (Some html),
+          ( Html.node tag_name props (Some [ html ]),
             Render_to_model.make_element tag_name
-              (("children", model) :: props) )
+              (("children", model) :: (props :> (string * json) list)) )
       | El_suspense { children; fallback = _ } -> (
           match mode with
           | Mode_client -> (
               match Array.length children with
               | 0 ->
                   Lwt.return
-                    ( {|<!--$?--><!--/$-->|},
-                      Render_to_model.make_element "$Sreact.suspense" []
-                    )
+                    ( Html.raw {|<!--$?--><!--/$-->|},
+                      Render_to_model.make_suspense (`Loaded []) )
               | _ ->
                   let restart () = to_html_many this mode children in
-                  let rec wait (Any_promise promise) =
+                  let rec wait (React.Any_promise promise) =
                     promise >>= fun _ ->
                     Lwt.catch restart (function
-                      | Suspend any_promise -> wait any_promise
+                      | React.Suspend any_promise -> wait any_promise
                       | exn -> Lwt.fail exn)
                     >>= fun v ->
                     this >|= fun () -> v
                   in
                   Lwt.catch restart (function
-                    | Suspend any_promise ->
+                    | React.Suspend any_promise ->
                         let idx = use_idx ctx in
                         ctx.waiting <- ctx.waiting + 1;
                         Lwt.async (fun () ->
                             wait any_promise >|= fun (html, json) ->
-                            let html =
-                              sprintf {|<div hidden id="S:%i">%s</div>|}
-                                idx html
-                            in
-                            let hydrate =
-                              sprintf
-                                {|<script>%s$RC("B:%i", "S:%i")</script>|}
-                                instruction_RC idx idx
-                            in
+                            let html = emit_chunk idx html in
                             ctx.push
                               (Some
-                                 ( html ^ hydrate,
-                                   (idx, Yojson.Safe.to_string json) ));
+                                 (html, (idx, Yojson.Safe.to_string json)));
                             ctx.waiting <- ctx.waiting - 1;
                             if ctx.waiting = 0 then ctx.push None);
                         Lwt.return
-                          ( sprintf
-                              {|<!--$?--><template id="B:%i"></template><!--/$-->|}
-                              idx,
-                            Render_to_model.make_element
-                              "$Sreact.suspense"
-                              [ "children", `String (sprintf "$L%i" idx) ]
+                          ( emit_placeholder idx,
+                            Render_to_model.make_suspense (`Suspended idx)
                           )
                     | exn -> Lwt.fail exn))
           | Mode_server -> (
@@ -302,31 +296,18 @@ module Render_to_html = struct
                   Lwt.async (fun () ->
                       promise >>= fun (html, json) ->
                       this >|= fun () ->
-                      let html =
-                        sprintf {|<div hidden id="S:%i">%s</div>|} idx
-                          html
-                      in
-                      let hydrate =
-                        sprintf {|<script>%s$RC("B:%i", "S:%i")</script>|}
-                          instruction_RC idx idx
-                      in
+                      let html = emit_chunk idx html in
                       ctx.push
-                        (Some
-                           ( html ^ hydrate,
-                             (idx, Yojson.Safe.to_string json) ));
+                        (Some (html, (idx, Yojson.Safe.to_string json)));
                       ctx.waiting <- ctx.waiting - 1;
                       if ctx.waiting = 0 then ctx.push None);
                   Lwt.return
-                    ( sprintf
-                        {|<!--$?--><template id="B:%i"></template><!--/$-->|}
-                        idx,
-                      Render_to_model.make_element "$Sreact.suspense"
-                        [ "children", `String (sprintf "$L%i" idx) ] )
+                    ( emit_placeholder idx,
+                      Render_to_model.make_suspense (`Suspended idx) )
               | Return (html, json) ->
                   Lwt.return
                     ( html,
-                      Render_to_model.make_element "$Sreact.suspense"
-                        [ "children", json ] )
+                      Render_to_model.make_suspense (`Loaded [ json ]) )
               | Fail exn -> Lwt.fail exn))
       | El_thunk f -> to_html this mode (f ())
       | El_async_thunk f -> (
@@ -338,19 +319,21 @@ module Render_to_html = struct
           let idx = use_idx ctx in
           let ref = Render_to_model.make_ref import_module import_name in
           ctx.push
-            (Some ("", (idx, sprintf "I%s" (Yojson.Safe.to_string ref))));
+            (Some
+               ( Html.text "",
+                 (idx, sprintf "I%s" (Yojson.Safe.to_string ref)) ));
           Lwt_list.map_p (json_model_to_model this mode) props
           >|= fun props ->
           let model =
             Render_to_model.make_element (sprintf "$%i" idx) props
           in
           html, model
-    and to_html_many this mode els =
+    and to_html_many this mode els : (Html.t * json) Lwt.t =
       Array.to_list els
       |> Lwt_list.map_p (to_html this mode)
       >|= List.split
-      >|= fun (html, model) ->
-      String.concat ~sep:"<!-- -->" html, `List model
+      >|= fun (htmls, model) ->
+      Html.splice htmls ~sep:"<!-- -->", `List model
     and json_model_to_model this mode (name, jsony) =
       match jsony with
       | `Element element ->
@@ -389,9 +372,9 @@ let render_to_html ?(scripts = []) ?(links = []) f : Dream.handler =
   match Dream.header req "accept" with
   | Some "application/react.component" ->
       Dream.stream (fun stream ->
-          Render_to_model.render (f req) @@ fun data ->
-          Dream.write stream (Buffer.contents data) >>= fun () ->
-          Dream.close stream)
+          Render_to_model.render (f req) (fun data ->
+              Dream.write stream (Buffer.contents data) >>= fun () ->
+              Dream.flush stream))
   | _ ->
       Dream.stream (fun stream ->
           Dream.write stream
@@ -414,23 +397,21 @@ let render_to_html ?(scripts = []) ?(links = []) f : Dream.handler =
           Dream.write stream (sprintf {|%s%s|} links scripts)
           >>= fun () ->
           Render_to_html.render (f req) (fun (html, (idx, json)) ->
-              Dream.write stream (sprintf "%s\n" (emit_model idx json))
-              >>= fun () ->
-              Dream.write stream (sprintf "%s\n" html) >>= fun () ->
-              (* Dream.write stream (sprintf "%i:%s\n" idx data) >>= fun () -> *)
-              Dream.flush stream)
+              Dream.write stream (emit_model idx json) >>= fun () ->
+              Dream.write stream (sprintf "%s\n" (Html.to_string html))
+              >>= fun () -> Dream.flush stream)
           >>= fun () ->
-          Dream.write stream "<script>window.SSRClose();</script>"
-          >>= fun () -> Dream.close stream)
+          Dream.write stream "<script>window.SSRClose();</script>")
 
 let render ?(scripts = []) ?(links = []) f : Dream.handler =
  fun req ->
   match Dream.header req "accept" with
   | Some "application/react.component" ->
       Dream.stream (fun stream ->
-          Render_to_model.render (f req) @@ fun data ->
-          Dream.write stream (Buffer.contents data) >>= fun () ->
-          Dream.close stream)
+          Render_to_model.render (f req) (fun data ->
+              Dream.write stream (Buffer.contents data) >>= fun () ->
+              Dream.flush stream)
+          >>= fun () -> Dream.write stream "")
   | _ ->
       let links =
         List.map links
