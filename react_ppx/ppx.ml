@@ -253,7 +253,7 @@ module Ext_export_component = struct
     items
     @ [%str
         let make props = React.unsafe_create_element make props
-        let () = React.Exported_components.register "App" make]
+        let () = React_browser.Component_map.register "App" make]
 
   let expand ~ctxt name expr =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in

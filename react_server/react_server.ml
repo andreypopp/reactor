@@ -17,7 +17,6 @@ module React = struct
       }
         -> element
     | El_text : string -> element
-    | El_many : children -> element
     | El_html : string * html_props * children option -> element
     | El_thunk : (unit -> element) -> element
     | El_async_thunk : (unit -> element Lwt.t) -> element
@@ -34,7 +33,6 @@ module React = struct
   and client_props = (string * [ json | `Element of element ]) list
 
   let null = El_null
-  let many els = El_many els
   let text s = El_text s
   let textf fmt = ksprintf text fmt
   let thunk f = El_thunk f
@@ -93,25 +91,32 @@ module React = struct
   let h3 = html' "h3"
   let use_effect _thunk _deps = assert false
   let use_effect' _thunk _deps = assert false
+
+  type 'a promise = 'a Lwt.t
+
   let use _promise = assert false
 end
 
 module React_browser = struct
+  module Promise = struct
+    type 'a promise = 'a Lwt.t
+
+    let sleep secs = Lwt_unix.sleep secs
+  end
+
   module React = struct
     include React
 
     let use_effect _thunk _deps = ()
     let use_effect' _thunk _deps = ()
 
+    type 'a promise = 'a Lwt.t
+
     let use promise =
       match Lwt.state promise with
       | Return v -> v
       | Sleep -> raise (Suspend (Any_promise promise))
       | Fail exn -> raise exn
-
-    type 'a promise = 'a Lwt.t
-
-    let sleep secs = Lwt_unix.sleep secs
   end
 end
 
@@ -130,7 +135,6 @@ module Render_to_model = struct
     let rec to_model = function
       | React.El_null -> `Null
       | El_text s -> `String s
-      | El_many els -> `List (Array.to_list els |> List.map ~f:to_model)
       | El_html (tag_name, props, None) ->
           `List [ `String "$"; `String tag_name; `Null; `Assoc props ]
       | El_html (tag_name, props, Some children) ->
@@ -252,7 +256,6 @@ module Render_to_html = struct
     let rec to_html this mode = function
       | React.El_null -> Lwt.return ("", `Null)
       | El_text s -> Lwt.return (s, `String s)
-      | El_many els -> to_html_many this mode els
       | El_html (tag_name, props, None) ->
           Lwt.return
             ( emit_html tag_name props None,
@@ -484,22 +487,6 @@ let render_to_html ?(scripts = []) ?(links = []) f : Dream.handler =
               Dream.flush stream)
           >>= fun () ->
           Dream.write stream "<script>window.SSRClose();</script>")
-
-let esbuild ?(sourcemap = false) entries : Dream.handler =
- fun _ ->
-  (* TODO: stream from esbuild to response instead *)
-  let args =
-    [
-      Some "esbuild";
-      (if sourcemap then Some "--sourcemap" else None);
-      Some "--bundle";
-      Some "--loader:.js=jsx";
-    ]
-  in
-  Lwt_process.pread
-    ("esbuild", List.filter_map ~f:Fun.id args @ entries |> Array.of_list)
-  >>= fun data ->
-  Dream.respond data ~headers:[ "Content-type", "text/javascript" ]
 
 let render ?(scripts = []) ?(links = []) f : Dream.handler =
  fun req ->

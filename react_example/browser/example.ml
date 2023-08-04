@@ -12,7 +12,7 @@ module%export_component App = struct
   type props = { title : string; children : element }
 
   let make props =
-    let promise = sleep 1.0 in
+    let promise = Promise.sleep 1.0 in
     div
       [|
         h1 [| text props.title; text "!!!" |];
