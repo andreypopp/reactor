@@ -106,6 +106,8 @@ module React_browser = struct
 end
 
 module Render_to_model : sig
+  val make_element : string -> (string * json) list -> json
+  val make_ref : string -> string -> json
   val render : React.element -> (Buffer.t -> unit Lwt.t) -> unit Lwt.t
 end = struct
   type ctx = {
@@ -132,37 +134,38 @@ end = struct
     Buffer.add_char buf '\n';
     ctx.push (Some buf)
 
+  let make_element tag_name props =
+    `List [ `String "$"; `String tag_name; `Null; `Assoc props ]
+
+  let make_ref import_module import_name =
+    `Assoc
+      [
+        "id", `String import_module;
+        "name", `String import_name;
+        "chunks", `List [];
+        "async", `Bool false;
+      ]
+
   let rec to_model ctx idx el =
     let rec to_model' = function
       | React.El_null -> `Null
       | El_text s -> `String s
-      | El_html (tag_name, props, None) ->
-          `List [ `String "$"; `String tag_name; `Null; `Assoc props ]
-      | El_html (tag_name, props, Some children) ->
-          `List
-            [
-              `String "$";
-              `String tag_name;
-              `Null;
-              `Assoc
-                (( "children",
-                   `List (Array.to_list children |> List.map ~f:to_model')
-                 )
-                :: props);
-            ]
+      | El_html (tag_name, props, children) ->
+          let props =
+            match children with
+            | None -> props
+            | Some children ->
+                let children =
+                  Array.to_list children |> List.map ~f:to_model'
+                in
+                ("children", `List children) :: props
+          in
+          make_element tag_name props
       | El_suspense { children; fallback = _ } ->
-          `List
-            [
-              `String "$";
-              `String "$Sreact.suspense";
-              `Null;
-              `Assoc
-                [
-                  ( "children",
-                    `List (Array.to_list children |> List.map ~f:to_model')
-                  );
-                ];
-            ]
+          let children =
+            Array.to_list children |> List.map ~f:to_model'
+          in
+          make_element "$Sreact.suspense" [ "children", `List children ]
       | El_thunk f -> to_model' (f ())
       | El_async_thunk f -> (
           let tree = f () in
@@ -177,28 +180,14 @@ end = struct
       | El_client_thunk { import_module; import_name; props; thunk = _ }
         ->
           let idx = use_idx ctx in
-          let ref =
-            `Assoc
-              [
-                "id", `String import_module;
-                "name", `String import_name;
-                "chunks", `List [];
-                "async", `Bool false;
-              ]
-          in
+          let ref = make_ref import_module import_name in
           push_ref ctx idx ref;
-          let props = List.map props ~f:json_model_to_model in
-          `List
-            [
-              `String "$";
-              `String (sprintf "$%i" idx);
-              `Null;
-              `Assoc props;
-            ]
-    and json_model_to_model (name, jsony) =
-      match jsony with
-      | `Element element -> name, to_model' element
-      | #json as jsony -> name, (jsony :> json)
+          let props =
+            List.map props ~f:(function
+              | name, `Element element -> name, to_model' element
+              | name, (#json as json) -> name, (json :> json))
+          in
+          make_element (sprintf "$%i" idx) props
     in
     push ctx idx (to_model' el);
     if ctx.waiting = 0 then ctx.push None
@@ -249,18 +238,12 @@ module Render_to_html = struct
       | El_html (tag_name, props, None) ->
           Lwt.return
             ( emit_html tag_name props None,
-              `List [ `String "$"; `String tag_name; `Null; `Assoc props ]
-            )
+              Render_to_model.make_element tag_name props )
       | El_html (tag_name, props, Some children) ->
           to_html_many this mode children >|= fun (html, model) ->
           ( emit_html tag_name props (Some html),
-            `List
-              [
-                `String "$";
-                `String tag_name;
-                `Null;
-                `Assoc (("children", model) :: props);
-              ] )
+            Render_to_model.make_element tag_name
+              (("children", model) :: props) )
       | El_suspense { children; fallback = _ } -> (
           match mode with
           | Mode_client -> (
@@ -268,13 +251,8 @@ module Render_to_html = struct
               | 0 ->
                   Lwt.return
                     ( {|<!--$?--><!--/$-->|},
-                      `List
-                        [
-                          `String "$";
-                          `String "$Sreact.suspense";
-                          `Null;
-                          `Assoc [];
-                        ] )
+                      Render_to_model.make_element "$Sreact.suspense" []
+                    )
               | _ ->
                   let restart () = to_html_many this mode children in
                   let rec wait (Any_promise promise) =
@@ -310,17 +288,10 @@ module Render_to_html = struct
                           ( sprintf
                               {|<!--$?--><template id="B:%i"></template><!--/$-->|}
                               idx,
-                            `List
-                              [
-                                `String "$";
-                                `String "$Sreact.suspense";
-                                `Null;
-                                `Assoc
-                                  [
-                                    ( "children",
-                                      `String (sprintf "$L%i" idx) );
-                                  ];
-                              ] )
+                            Render_to_model.make_element
+                              "$Sreact.suspense"
+                              [ "children", `String (sprintf "$L%i" idx) ]
+                          )
                     | exn -> Lwt.fail exn))
           | Mode_server -> (
               let promise = to_html_many this mode children in
@@ -349,28 +320,15 @@ module Render_to_html = struct
                     ( sprintf
                         {|<!--$?--><template id="B:%i"></template><!--/$-->|}
                         idx,
-                      `List
-                        [
-                          `String "$";
-                          `String "$Sreact.suspense";
-                          `Null;
-                          `Assoc
-                            [ "children", `String (sprintf "$L%i" idx) ];
-                        ] )
+                      Render_to_model.make_element "$Sreact.suspense"
+                        [ "children", `String (sprintf "$L%i" idx) ] )
               | Return (html, json) ->
                   Lwt.return
                     ( html,
-                      `List
-                        [
-                          `String "$";
-                          `String "$Sreact.suspense";
-                          `Null;
-                          `Assoc [ "children", json ];
-                        ] )
+                      Render_to_model.make_element "$Sreact.suspense"
+                        [ "children", json ] )
               | Fail exn -> Lwt.fail exn))
-      | El_thunk f ->
-          let tree = f () in
-          to_html this mode tree
+      | El_thunk f -> to_html this mode (f ())
       | El_async_thunk f -> (
           match mode with
           | Mode_client -> failwith "async component in client mode"
@@ -378,27 +336,13 @@ module Render_to_html = struct
       | El_client_thunk { import_module; import_name; props; thunk } ->
           to_html this Mode_client thunk >>= fun (html, _model) ->
           let idx = use_idx ctx in
-          let ref =
-            `Assoc
-              [
-                "id", `String import_module;
-                "name", `String import_name;
-                "chunks", `List [];
-                "async", `Bool false;
-              ]
-          in
+          let ref = Render_to_model.make_ref import_module import_name in
           ctx.push
             (Some ("", (idx, sprintf "I%s" (Yojson.Safe.to_string ref))));
           Lwt_list.map_p (json_model_to_model this mode) props
           >|= fun props ->
           let model =
-            `List
-              [
-                `String "$";
-                `String (sprintf "$%i" idx);
-                `Null;
-                `Assoc props;
-              ]
+            Render_to_model.make_element (sprintf "$%i" idx) props
           in
           html, model
     and to_html_many this mode els =
@@ -447,7 +391,7 @@ let render_to_html ?(scripts = []) ?(links = []) f : Dream.handler =
       Dream.stream (fun stream ->
           Render_to_model.render (f req) @@ fun data ->
           Dream.write stream (Buffer.contents data) >>= fun () ->
-          Dream.flush stream)
+          Dream.close stream)
   | _ ->
       Dream.stream (fun stream ->
           Dream.write stream
@@ -476,7 +420,8 @@ let render_to_html ?(scripts = []) ?(links = []) f : Dream.handler =
               (* Dream.write stream (sprintf "%i:%s\n" idx data) >>= fun () -> *)
               Dream.flush stream)
           >>= fun () ->
-          Dream.write stream "<script>window.SSRClose();</script>")
+          Dream.write stream "<script>window.SSRClose();</script>"
+          >>= fun () -> Dream.close stream)
 
 let render ?(scripts = []) ?(links = []) f : Dream.handler =
  fun req ->
@@ -485,7 +430,7 @@ let render ?(scripts = []) ?(links = []) f : Dream.handler =
       Dream.stream (fun stream ->
           Render_to_model.render (f req) @@ fun data ->
           Dream.write stream (Buffer.contents data) >>= fun () ->
-          Dream.flush stream)
+          Dream.close stream)
   | _ ->
       let links =
         List.map links
