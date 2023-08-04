@@ -23,6 +23,9 @@ module UI = struct
                 h1 [| textf "React_server" |];
                 Example_native.Example.App.make
                   { title = "Title"; children = text "CHILDREN" };
+                card ~title:"Some initial data (server will block)"
+                  ~delay:0.
+                  [| text "Initial data loaded!" |];
                 suspense
                   [|
                     card ~title:"Sample Card 1" ~delay:1.
@@ -30,12 +33,12 @@ module UI = struct
                   |];
                 suspense
                   [|
-                    card ~title:"Sample Card 1" ~delay:2.
+                    card ~title:"Sample Card 2" ~delay:2.
                       [| text "HELLO" |];
                   |];
                 suspense
                   [|
-                    card ~title:"Sample Card 1" ~delay:3.
+                    card ~title:"Sample Card 3" ~delay:3.
                       [| text "HELLO" |];
                   |];
               |];

@@ -83,7 +83,11 @@ module React_browser : sig
 
     val use_effect : (unit -> unit -> unit) -> 'a array -> unit
     val use_effect' : (unit -> unit) -> 'a array -> unit
-    val use : 'a Lwt.t -> 'a
+
+    type 'a promise
+
+    val sleep : float -> unit promise
+    val use : 'a promise -> 'a
   end
 end
 

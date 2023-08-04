@@ -7,6 +7,21 @@ external unsafe_create_element : ('props -> element) -> 'props -> element
   = "createElement"
 [@@bs.module "react"]
 
+external unsafe_create_element' : 'any -> 'props -> element
+  = "createElement"
+[@@bs.module "react"]
+
+type suspense
+
+external suspense_t : suspense = "Suspense" [@@bs.module "react"]
+
+external suspense_create_element :
+  suspense -> 'props -> element array -> element = "createElement"
+[@@bs.module "react"] [@@bs.variadic]
+
+let suspense children =
+  suspense_create_element suspense_t Js.null children
+
 external text : string -> element = "%identity"
 
 type html_props
@@ -49,6 +64,18 @@ external use_effect' : (unit -> unit) -> 'a array -> unit = "useEffect"
 external use_effect : (unit -> unit -> unit) -> 'a array -> unit
   = "useEffect"
 [@@bs.module "react"]
+
+type 'a promise = 'a Js_promise.t
+
+let sleep sec =
+  Js_promise.make @@ fun ~resolve ~reject:_ ->
+  let unit = () in
+  ignore
+    (Js_global.setIntervalFloat
+       (fun () -> (resolve unit [@bs]))
+       (sec *. 1000.))
+
+external use : 'a promise -> 'a = "use" [@@bs.module "react"]
 
 module Exported_components = struct
   type exported_component =

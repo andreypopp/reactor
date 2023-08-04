@@ -102,7 +102,16 @@ module React_browser = struct
 
     let use_effect _thunk _deps = ()
     let use_effect' _thunk _deps = ()
-    let use promise = raise (Suspend (Any_promise promise))
+
+    let use promise =
+      match Lwt.state promise with
+      | Return v -> v
+      | Sleep -> raise (Suspend (Any_promise promise))
+      | Fail exn -> raise exn
+
+    type 'a promise = 'a Lwt.t
+
+    let sleep secs = Lwt_unix.sleep secs
   end
 end
 
@@ -232,25 +241,25 @@ module Render_to_html = struct
     | Some children ->
         sprintf {|<%s %s>%s</%s>|} tag_name attrs children tag_name
 
-  type mode = S | C
+  type mode = Mode_server | Mode_client
 
   let instruction_RC =
     {|
     $RC=function(b,c,e){c=document.getElementById(c);c.parentNode.removeChild(c);var a=document.getElementById(b);if(a){b=a.previousSibling;if(e)b.data="$!",a.setAttribute("data-dgst",e);else{e=b.parentNode;a=b.nextSibling;var f=0;do{if(a&&8===a.nodeType){var d=a.data;if("/$"===d)if(0===f)break;else f--;else"$"!==d&&"$?"!==d&&"$!"!==d||f++}d=a.nextSibling;e.removeChild(a);a=d}while(a);for(;c.firstChild;)e.insertBefore(c.firstChild,a);b.data="$"}b._reactRetry&&b._reactRetry()}};
     |}
 
-  let rec to_html ctx el =
-    let rec to_html mode = function
+  let to_html ctx mode el =
+    let rec to_html this mode = function
       | React.El_null -> Lwt.return ("", `Null)
       | El_text s -> Lwt.return (s, `String s)
-      | El_many els -> to_html_many mode els
+      | El_many els -> to_html_many this mode els
       | El_html (tag_name, props, None) ->
           Lwt.return
             ( emit_html tag_name props None,
               `List [ `String "$"; `String tag_name; `Null; `Assoc props ]
             )
       | El_html (tag_name, props, Some children) ->
-          to_html_many mode children >|= fun (html, model) ->
+          to_html_many this mode children >|= fun (html, model) ->
           ( emit_html tag_name props (Some html),
             `List
               [
@@ -261,51 +270,120 @@ module Render_to_html = struct
               ] )
       | El_suspense { children; fallback = _ } -> (
           match mode with
-          | C ->
-              let restart () = to_html_many mode children in
-              let rec wait (Any_promise promise) =
-                promise >>= fun _ ->
-                Lwt.catch restart (function
-                  | Suspend any_promise -> wait any_promise
-                  | exn -> Lwt.fail exn)
-              in
-              Lwt.catch restart (function
-                | Suspend any_promise ->
-                    let idx = use_idx ctx in
-                    ctx.waiting <- ctx.waiting + 1;
-                    Lwt.async (fun () ->
-                        wait any_promise >|= fun (html, json) ->
-                        let html =
-                          sprintf {|<div hidden id="S:%i">%s</div>|} idx
-                            html
-                        in
-                        let hydrate =
-                          sprintf
-                            {|<script>%s$RC("B:%i", "S:%i")</script>|}
-                            instruction_RC idx idx
-                        in
-                        ctx.push
-                          (Some
-                             ( html ^ hydrate,
-                               (idx, Yojson.Safe.to_string json) ));
-                        ctx.waiting <- ctx.waiting - 1;
-                        if ctx.waiting = 0 then ctx.push None);
-                    Lwt.return
-                      ( sprintf
-                          {|<!--$?--><template id="B:%i"></template><!--/$-->|}
-                          idx,
-                        `String (sprintf "$L%i" idx) )
-                | exn -> Lwt.fail exn)
-          | S -> to_html_many mode children)
+          | Mode_client -> (
+              match Array.length children with
+              | 0 ->
+                  Lwt.return
+                    ( {|<!--$?--><!--/$-->|},
+                      `List
+                        [
+                          `String "$";
+                          `String "$Sreact.suspense";
+                          `Null;
+                          `Assoc [];
+                        ] )
+              | _ ->
+                  let restart () = to_html_many this mode children in
+                  let rec wait (Any_promise promise) =
+                    promise >>= fun _ ->
+                    Lwt.catch restart (function
+                      | Suspend any_promise -> wait any_promise
+                      | exn -> Lwt.fail exn)
+                    >>= fun v ->
+                    this >|= fun () -> v
+                  in
+                  Lwt.catch restart (function
+                    | Suspend any_promise ->
+                        let idx = use_idx ctx in
+                        ctx.waiting <- ctx.waiting + 1;
+                        Lwt.async (fun () ->
+                            wait any_promise >|= fun (html, json) ->
+                            let html =
+                              sprintf {|<div hidden id="S:%i">%s</div>|}
+                                idx html
+                            in
+                            let hydrate =
+                              sprintf
+                                {|<script>%s$RC("B:%i", "S:%i")</script>|}
+                                instruction_RC idx idx
+                            in
+                            ctx.push
+                              (Some
+                                 ( html ^ hydrate,
+                                   (idx, Yojson.Safe.to_string json) ));
+                            ctx.waiting <- ctx.waiting - 1;
+                            if ctx.waiting = 0 then ctx.push None);
+                        Lwt.return
+                          ( sprintf
+                              {|<!--$?--><template id="B:%i"></template><!--/$-->|}
+                              idx,
+                            `List
+                              [
+                                `String "$";
+                                `String "$Sreact.suspense";
+                                `Null;
+                                `Assoc
+                                  [
+                                    ( "children",
+                                      `String (sprintf "$L%i" idx) );
+                                  ];
+                              ] )
+                    | exn -> Lwt.fail exn))
+          | Mode_server -> (
+              let promise = to_html_many this mode children in
+              match Lwt.state promise with
+              | Sleep ->
+                  let idx = use_idx ctx in
+                  ctx.waiting <- ctx.waiting + 1;
+                  Lwt.async (fun () ->
+                      promise >>= fun (html, json) ->
+                      this >|= fun () ->
+                      let html =
+                        sprintf {|<div hidden id="S:%i">%s</div>|} idx
+                          html
+                      in
+                      let hydrate =
+                        sprintf {|<script>%s$RC("B:%i", "S:%i")</script>|}
+                          instruction_RC idx idx
+                      in
+                      ctx.push
+                        (Some
+                           ( html ^ hydrate,
+                             (idx, Yojson.Safe.to_string json) ));
+                      ctx.waiting <- ctx.waiting - 1;
+                      if ctx.waiting = 0 then ctx.push None);
+                  Lwt.return
+                    ( sprintf
+                        {|<!--$?--><template id="B:%i"></template><!--/$-->|}
+                        idx,
+                      `List
+                        [
+                          `String "$";
+                          `String "$Sreact.suspense";
+                          `Null;
+                          `Assoc
+                            [ "children", `String (sprintf "$L%i" idx) ];
+                        ] )
+              | Return (html, json) ->
+                  Lwt.return
+                    ( html,
+                      `List
+                        [
+                          `String "$";
+                          `String "$Sreact.suspense";
+                          `Null;
+                          `Assoc [ "children", json ];
+                        ] )
+              | Fail exn -> Lwt.fail exn))
       | El_thunk f ->
           let tree = f () in
-          to_html mode tree
+          to_html this mode tree
       | El_async_thunk f -> (
           match mode with
-          | C -> failwith "async component in client mode"
-          | S -> f () >>= to_html mode)
+          | Mode_client -> failwith "async component in client mode"
+          | Mode_server -> f () >>= to_html this mode)
       | El_client_thunk { import_module; import_name; props; thunk } ->
-          to_html C thunk >>= fun (html, _model) ->
+          to_html this Mode_client thunk >>= fun (html, _model) ->
           let idx = use_idx ctx in
           let ref =
             `Assoc
@@ -318,7 +396,7 @@ module Render_to_html = struct
           in
           ctx.push
             (Some ("", (idx, sprintf "I%s" (Yojson.Safe.to_string ref))));
-          Lwt_list.map_p (json_model_to_model ctx mode) props
+          Lwt_list.map_p (json_model_to_model this mode) props
           >|= fun props ->
           let model =
             `List
@@ -330,26 +408,30 @@ module Render_to_html = struct
               ]
           in
           html, model
-    and to_html_many mode els =
-      Array.to_list els |> Lwt_list.map_p (to_html mode) >|= List.split
+    and to_html_many this mode els =
+      Array.to_list els
+      |> Lwt_list.map_p (to_html this mode)
+      >|= List.split
       >|= fun (html, model) ->
       String.concat ~sep:"<!-- -->" html, `List model
+    and json_model_to_model this mode (name, jsony) =
+      match jsony with
+      | `Element element ->
+          to_html this mode element >|= fun (_html, model) -> name, model
+      | #json as jsony -> Lwt.return (name, (jsony :> json))
     in
-    to_html el
-
-  and json_model_to_model ctx mode (name, jsony) =
-    match jsony with
-    | `Element element ->
-        to_html ctx mode element >|= fun (_html, model) -> name, model
-    | #json as jsony -> Lwt.return (name, (jsony :> json))
+    let this, ready = Lwt.wait () in
+    let idx = ctx.idx in
+    to_html this mode el >|= fun (html, json) ->
+    ctx.push (Some (html, (idx, Yojson.Safe.to_string json)));
+    Lwt.wakeup ready ();
+    ctx.waiting <- ctx.waiting - 1;
+    if ctx.waiting = 0 then ctx.push None
 
   let render el on_chunk =
     let rendering, push = Lwt_stream.create () in
-    let ctx = { push; waiting = 0; idx = 0 } in
-    let idx = ctx.idx in
-    to_html ctx S el >>= fun (html, json) ->
-    ctx.push (Some (html, (idx, Yojson.Safe.to_string json)));
-    if ctx.waiting = 0 then ctx.push None;
+    let ctx = { push; waiting = 1; idx = 0 } in
+    to_html ctx Mode_server el >>= fun () ->
     Lwt_stream.iter_s on_chunk rendering
 end
 
