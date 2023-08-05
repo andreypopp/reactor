@@ -151,8 +151,7 @@ let rc =
 
 let render_js fmt =
   ksprintf
-    (fun js ->
-      Html.(node "script" [] (Some [ rawf "{%s}" js ]) |> to_string))
+    (fun js -> Html.(node "script" [] (Some [ rawf "{%s}" js ])))
     fmt
 
 let render_ssr_runtime =
@@ -163,6 +162,9 @@ let SSR = (window.SSR = {});
 SSR.push = (data) => SSR._c.enqueue(enc.encode(data));
 SSR.close = () => SSR._c.close();
 SSR.stream = new ReadableStream({ start(c) { SSR._c = c; } });|}
+  |> Html.to_string
+
+let render_ssr_finish = render_js "window.SSR.close()" |> Html.to_string
 
 let render_html_chunk idx html =
   Html.splice ~sep:"\n"
@@ -192,10 +194,15 @@ let render el on_chunk =
     | I_wait ps -> ps >>= render
     | I_model chunk ->
         let chunk = Render_to_model.chunk_to_string chunk in
-        on_chunk (render_js "window.SSR.push(%S)" chunk)
+        on_chunk
+          Html.(
+            render_js "window.SSR.push(%S)"
+              ((* not the most effective... consider patching yojson instead? *)
+               json_escape chunk)
+            |> to_string)
     | I_html html -> on_chunk (Html.to_string html)
     | I_htmli (idx, html) ->
         render_rc () >>= fun () -> on_chunk (render_html_chunk idx html)
   in
   Lwt_stream.iter_s render rendering >>= fun () ->
-  on_chunk (render_js "window.SSR.close()")
+  on_chunk render_ssr_finish

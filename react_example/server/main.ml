@@ -1,3 +1,5 @@
+[@@@warning "-32"]
+
 open Printf
 open Lwt.Infix
 
@@ -24,7 +26,7 @@ module UI = struct
                 Example_native.Example.App.make
                   { title = "Title"; children = text "CHILDREN" };
                 card ~title:"Some initial data (server will block)"
-                  ~delay:2.
+                  ~delay:1.
                   [| text "Initial data loaded!" |];
                 suspense
                   [|
@@ -41,6 +43,8 @@ module UI = struct
                     card ~title:"Sample Card 3" ~delay:3.
                       [| text "HELLO" |];
                   |];
+                text "\u{2028}<script>console.log(1)</script>";
+                text "</script><script>console.log(1)</script>";
               |];
           |];
       |]

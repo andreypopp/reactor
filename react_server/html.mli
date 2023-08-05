@@ -9,3 +9,4 @@ val splice : ?sep:string -> t list -> t
 val s : string -> [ `String of string | `Bool of bool ]
 val b : bool -> [ `String of string | `Bool of bool ]
 val to_string : t -> string
+val json_escape : string -> string

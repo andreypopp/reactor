@@ -10,6 +10,8 @@ let html_prelude ~scripts ~links =
   let make_script src = node "script" [ "src", s src ] (Some []) in
   splice ~sep:"\n"
     [
+      Html.raw "<!doctype html>";
+      Html.(node "meta" [ "charset", s "utf-8" ] None);
       List.map links ~f:make_link |> Html.splice ~sep:"\n";
       List.map scripts ~f:make_script |> Html.splice ~sep:"\n";
     ]
@@ -31,5 +33,6 @@ let render ?(enable_ssr = true) ?(scripts = []) ?(links = []) =
                Dream.write stream html_prelude >>= fun () ->
                render_to_html (f req) (fun data ->
                    Dream.write stream data >>= fun () ->
+                   Dream.write stream "\n" >>= fun () ->
                    Dream.flush stream))
          else Dream.html html_prelude
