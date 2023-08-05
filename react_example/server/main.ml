@@ -59,7 +59,8 @@ let () =
                  dirname)
               "bundle.js");
          Dream.get "/"
-           (React_server.render ~scripts:[ "/runtime.js" ] UI.app);
+           (React_dream.render ~enable_ssr:false
+              ~scripts:[ "/runtime.js" ] UI.app);
          Dream.get "/ssr"
-           (React_server.render_to_html ~scripts:[ "/runtime.js" ] UI.app);
+           (React_dream.render ~scripts:[ "/runtime.js" ] UI.app);
        ]

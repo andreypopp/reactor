@@ -2,7 +2,7 @@
 
 (using melange 0.1)
 
-(name react_server)
+(name react)
 
 (generate_opam_files true)
 
@@ -19,10 +19,9 @@
 
 (package
  (allow_empty)
- (name react_server)
- (synopsis "React Server Components for OCaml")
- (description "Allow to define React Server Components in OCaml")
- (depends ocaml dune lwt containers dream)
+ (name react)
+ (synopsis "React for OCaml")
+ (depends ocaml dune lwt yojson containers dream)
  (tags
   (dream reactjs)))
 

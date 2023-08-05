@@ -1,0 +1,3 @@
+(library
+ (name react_dream)
+ (libraries react_server lwt dream))

@@ -48,16 +48,8 @@ module React_browser : sig
        and type 'a promise = 'a Promise.promise
 end
 
-val render_to_html :
-  ?scripts:string list ->
-  ?links:string list ->
-  (Dream.request -> React.element) ->
-  Dream.handler
-(** Serve React Server Component. *)
+val render_to_model : React.element -> (string -> unit Lwt.t) -> unit Lwt.t
+val render_to_html : React.element -> (string -> unit Lwt.t) -> unit Lwt.t
 
-val render :
-  ?scripts:string list ->
-  ?links:string list ->
-  (Dream.request -> React.element) ->
-  Dream.handler
-(** Serve React Server Component. *)
+module Html : module type of Html
+
