@@ -17,6 +17,6 @@ module React = struct
   let use promise =
     match Lwt.state promise with
     | Return v -> v
-    | Sleep -> raise (Suspend (Any_promise promise))
+    | Sleep -> raise_notrace (Suspend (Any_promise promise))
     | Fail exn -> raise exn
 end

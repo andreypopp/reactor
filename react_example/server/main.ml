@@ -26,7 +26,7 @@ module UI = struct
                 Example_native.Example.App.make
                   { title = "Title"; children = text "CHILDREN" };
                 card ~title:"Some initial data (server will block)"
-                  ~delay:1.
+                  ~delay:0.
                   [| text "Initial data loaded!" |];
                 suspense
                   [|
@@ -40,11 +40,16 @@ module UI = struct
                   |];
                 suspense
                   [|
-                    card ~title:"Sample Card 3" ~delay:3.
-                      [| text "HELLO" |];
+                    card ~title:"Sample Card 3" ~delay:1.
+                      [| text "OUTER" |];
+                    suspense
+                      [|
+                        card ~title:"Inner Sample Card 1" ~delay:0.
+                          [| text "INNER" |];
+                      |];
                   |];
-                text "\u{2028}<script>console.log(1)</script>";
-                text "</script><script>console.log(1)</script>";
+                (* text "\u{2028}<script>console.log(1)</script>"; *)
+                (* text "</script><script>console.log(1)</script>"; *)
               |];
           |];
       |]
