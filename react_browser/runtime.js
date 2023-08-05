@@ -25,7 +25,7 @@ function Page({loading}) {
 async function main() {
   if (window.SSR) {
     let loading = ReactServerDOM.createFromReadableStream(
-      window.SSRStream,
+      window.SSR.stream,
       { callServer, }
     );
     let element = React.createElement(Page, {loading})

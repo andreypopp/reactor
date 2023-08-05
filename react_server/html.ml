@@ -4,6 +4,7 @@
    SPDX-License-Identifier: ISC
 *)
 
+open Printf
 open ContainersLabels
 open Monomorphic
 
@@ -18,7 +19,10 @@ type t =
 let node name props children = H_node (name, props, children)
 let text text = H_text text
 let raw data = H_raw data
+let rawf fmt = ksprintf raw fmt
 let splice ?(sep = "") xs = H_splice (xs, sep)
+let s v = `String v
+let b v = `Bool v
 
 let add_escaped b s =
   let adds = Buffer.add_string in

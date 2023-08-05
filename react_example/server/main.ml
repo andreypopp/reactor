@@ -24,7 +24,7 @@ module UI = struct
                 Example_native.Example.App.make
                   { title = "Title"; children = text "CHILDREN" };
                 card ~title:"Some initial data (server will block)"
-                  ~delay:0.
+                  ~delay:2.
                   [| text "Initial data loaded!" |];
                 suspense
                   [|
