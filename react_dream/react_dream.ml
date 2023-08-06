@@ -41,4 +41,7 @@ let render ?(enable_ssr = true) ?(scripts = []) ?(links = []) =
                    Dream.write stream data >>= fun () ->
                    Dream.write stream "\n" >>= fun () ->
                    Dream.flush stream))
-         else Dream.html html_prelude
+         else
+           Dream.stream (fun stream ->
+               Dream.write stream html_prelude >>= fun () ->
+               Dream.write stream scripts)
