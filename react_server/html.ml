@@ -90,7 +90,6 @@ let add_json_escaped b s =
           else
             match getc (i + 1), getc (i + 2) with
             | '\128', '\168' ->
-                print_endline "HEE";
                 flush b start i;
                 adds b "\\u2028";
                 loop (i + 3) (i + 3)

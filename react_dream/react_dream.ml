@@ -36,7 +36,10 @@ let render ?(enable_ssr = true) ?(scripts = []) ?(links = []) =
          if enable_ssr then
            Dream.stream (fun stream ->
                Dream.write stream html_prelude >>= fun () ->
-               let on_shell_ready () = Dream.write stream scripts in
+               let on_shell_ready () =
+                 Dream.write stream scripts >>= fun () ->
+                 Dream.flush stream
+               in
                render_to_html ~on_shell_ready (f req) (fun data ->
                    Dream.write stream data >>= fun () ->
                    Dream.write stream "\n" >>= fun () ->
