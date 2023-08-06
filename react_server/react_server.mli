@@ -48,8 +48,13 @@ module React_browser : sig
        and type 'a promise = 'a Promise.promise
 end
 
-val render_to_model : React.element -> (string -> unit Lwt.t) -> unit Lwt.t
-val render_to_html : React.element -> (string -> unit Lwt.t) -> unit Lwt.t
+val render_to_model :
+  React.element -> (string -> unit Lwt.t) -> unit Lwt.t
+
+val render_to_html :
+  ?on_shell_ready:(unit -> unit Lwt.t) ->
+  React.element ->
+  (string -> unit Lwt.t) ->
+  unit Lwt.t
 
 module Html : module type of Html
-

@@ -178,7 +178,7 @@ let render_html_chunk idx html =
     ]
   |> Html.to_string
 
-let render el on_chunk =
+let render ?on_shell_ready el on_chunk =
   let rendering, push = Lwt_stream.create () in
   let ctx = { push; waiting = 1; idx = 0 } in
   to_html ctx el >>= fun () ->
@@ -201,7 +201,9 @@ let render el on_chunk =
               ((* not the most effective... consider patching yojson instead? *)
                json_escape chunk)
             |> to_string)
-    | I_html html -> on_chunk (Html.to_string html)
+    | I_html html -> (
+        on_chunk (Html.to_string html) >>= fun () ->
+        match on_shell_ready with None -> Lwt.return () | Some f -> f ())
     | I_htmli (idx, html) ->
         render_rc () >>= fun () -> on_chunk (render_html_chunk idx html)
   in

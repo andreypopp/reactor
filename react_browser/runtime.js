@@ -45,4 +45,4 @@ async function main() {
   }
 }
 
-window.onload = () => main().catch(exn => console.error(exn));
+main();
