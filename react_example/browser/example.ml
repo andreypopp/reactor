@@ -8,10 +8,8 @@ let%component sidebar ~title children =
 
 let%component wait_and_print ~promise ?promise2 msg =
   let () = use promise in
-  let () =
-    match promise2 with None -> () | Some promise -> use promise
-  in
-  text msg
+  let () = Option.map use promise2 |> Option.value ~default:() in
+  li [| text msg |]
 
 module%export_component App = struct
   type props = { title : string; children : element }
@@ -22,17 +20,24 @@ module%export_component App = struct
     let promise_inner = Promise.sleep 0.5 in
     div
       [|
-        h1 [| text props.title; text "!!!" |];
+        h2 [| text props.title; text "!" |];
         sidebar ~title:"sidebar" [||];
         div ~className:"footer" [| props.children; props.children |];
-        suspense
+        ul
           [|
             suspense
-              [| wait_and_print ~promise:promise_inner "INNER SLEPT" |];
-            suspense
-              [| wait_and_print ~promise:promise_inner "INNER SLEPT" |];
-            wait_and_print ~promise ~promise2 "SLEPT";
-            wait_and_print ~promise ~promise2 "SLEPT";
+              [|
+                suspense
+                  [|
+                    wait_and_print ~promise:promise_inner "INNER SLEPT";
+                  |];
+                suspense
+                  [|
+                    wait_and_print ~promise:promise_inner "INNER SLEPT";
+                  |];
+                wait_and_print ~promise ~promise2 "SLEPT";
+                wait_and_print ~promise ~promise2 "SLEPT";
+              |];
           |];
       |]
 end

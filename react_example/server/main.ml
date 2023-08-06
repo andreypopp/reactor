@@ -9,47 +9,68 @@ module UI = struct
 
   let%async_component card ~delay ~title children =
     Lwt_unix.sleep delay >|= fun () ->
-    div [| h1 [| text title |]; div children |]
+    div ~className:"ba pa2"
+      [|
+        h3 ~className:"ma0 pa0 pb2" [| text title |];
+        div ~className:"pb2" children;
+        div ~className:"f7 bt pa1"
+          [|
+            textf "I've been sleeping for %0.1fsec before appearing."
+              delay;
+          |];
+      |]
 
-  let app _req =
+  let%component page ~title:title' children =
     html
       [|
-        head
+        head [| title [| text title' |] |];
+        body ~className:"pa4 sans-serif h-100"
+          [| h1 [| text title' |]; div children |];
+      |]
+
+  let app _req =
+    page ~title:"React with native React Server Components"
+      [|
+        div ~className:"flex flex-column g2"
           [|
-            title [| text "React with native React Server Components" |];
-          |];
-        body
-          [|
-            div ~className:"sans-serif h-100"
+            Example_native.Example.App.make
+              {
+                title = "Hello from Client Component";
+                children =
+                  text "As you can see, this one is SSR'ed as well.";
+              };
+            card ~title:"Initial Data" ~delay:0.
               [|
-                h1 [| textf "React_server" |];
-                Example_native.Example.App.make
-                  { title = "Title"; children = text "CHILDREN" };
-                card ~title:"Some initial data (server will block)"
-                  ~delay:0.
-                  [| text "Initial data loaded!" |];
+                text
+                  "This components loads some async data but will block \
+                   the shell until this data is ready.";
+              |];
+            suspense
+              [|
+                card ~title:"Async Data" ~delay:1. [| text "HELLO" |];
+                card ~title:"Async Data" ~delay:2. [| text "HELLO" |];
+              |];
+            suspense
+              [|
+                card ~title:"Async Data" ~delay:2. [| text "OUTER" |];
                 suspense
                   [|
-                    card ~title:"Sample Card 1" ~delay:1.
-                      [| text "HELLO" |];
+                    card ~title:"Inner Async Data" ~delay:1.
+                      [| text "INNER" |];
                   |];
-                suspense
+              |];
+            div
+              [|
+                h2 [| text "Testing XSS" |];
+                ul
                   [|
-                    card ~title:"Sample Card 2" ~delay:2.
-                      [| text "HELLO" |];
-                  |];
-                suspense
-                  [|
-                    card ~title:"Sample Card 3" ~delay:1.
-                      [| text "OUTER" |];
-                    suspense
+                    li
                       [|
-                        card ~title:"Inner Sample Card 1" ~delay:0.
-                          [| text "INNER" |];
+                        text "</script><script>console.log(1)</script>";
                       |];
+                    li
+                      [| text "\u{2028}<script>console.log(1)</script>" |];
                   |];
-                (* text "\u{2028}<script>console.log(1)</script>"; *)
-                (* text "</script><script>console.log(1)</script>"; *)
               |];
           |];
       |]
@@ -58,18 +79,20 @@ end
 let () =
   let project_root = Sys.getenv "OPAMSWITCH" in
   let dirname = Filename.dirname __FILE__ in
+  let broser_dir =
+    sprintf "%s/_build/default/%s/../browser" project_root dirname
+  in
+  let links = [ "/static/tachyons.css" ] in
+  let scripts = [ "/runtime.js" ] in
   Dream.run
   @@ Dream.logger
   @@ Dream.router
        [
          Dream.get "/runtime.js"
-           (Dream.from_filesystem
-              (sprintf "%s/_build/default/%s/../browser" project_root
-                 dirname)
-              "bundle.js");
+           (Dream.from_filesystem broser_dir "bundle.js");
+         Dream.get "/static/**"
+           (Dream.static (sprintf "%s/static" broser_dir));
          Dream.get "/"
-           (React_dream.render ~enable_ssr:false
-              ~scripts:[ "/runtime.js" ] UI.app);
-         Dream.get "/ssr"
-           (React_dream.render ~scripts:[ "/runtime.js" ] UI.app);
+           (React_dream.render ~enable_ssr:false ~links ~scripts UI.app);
+         Dream.get "/ssr" (React_dream.render ~links ~scripts UI.app);
        ]
