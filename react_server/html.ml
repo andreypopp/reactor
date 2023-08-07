@@ -8,7 +8,8 @@ open Printf
 open ContainersLabels
 open Monomorphic
 
-type attrs = (string * [ `String of string | `Bool of bool ]) list
+type attrs = (string * attr_value) list
+and attr_value = [ `String of string | `Bool of bool ]
 
 type t =
   | H_node of string * attrs * t list option
@@ -18,8 +19,9 @@ type t =
 
 let node name props children = H_node (name, props, children)
 let text text = H_text text
-let raw data = H_raw data
-let rawf fmt = ksprintf raw fmt
+let empty = H_raw ""
+let unsafe_raw data = H_raw data
+let unsafe_rawf fmt = ksprintf unsafe_raw fmt
 let splice ?(sep = "") xs = H_splice (xs, sep)
 let s v = `String v
 let b v = `Bool v

@@ -19,10 +19,14 @@ let use_idx ctx =
   ctx.idx <- ctx.idx + 1;
   ctx.idx
 
-let html_placeholder idx =
-  Html.rawf {|<!--$?--><template id="B:%i"></template><!--/$-->|} idx
+let html_suspense inner =
+  Html.(
+    splice [ unsafe_rawf "<!--$?-->"; inner; unsafe_rawf "<!--/$-->" ])
 
-let html_empty_placeholder = Html.raw "<!--$?--><!--/$-->"
+let html_suspense_placeholder idx =
+  html_suspense
+  @@ Html.unsafe_rawf {|<template id="B:%i"></template>|} idx
+
 let html_sep = "<!-- -->"
 
 let client_to_html ctx parent el =
@@ -45,7 +49,7 @@ let client_to_html ctx parent el =
     | El_async_thunk _ -> failwith "async component in client mode"
     | El_suspense { children; fallback = _ } -> (
         match Array.length children with
-        | 0 -> Lwt.return html_empty_placeholder
+        | 0 -> Lwt.return (html_suspense Html.empty)
         | _ ->
             let parent', ready = Lwt.wait () in
             let idx = use_idx ctx in
@@ -57,7 +61,7 @@ let client_to_html ctx parent el =
                 Lwt.wakeup_later ready ();
                 ctx.waiting <- ctx.waiting - 1;
                 if ctx.waiting = 0 then ctx.push None);
-            Lwt.return (html_placeholder idx))
+            Lwt.return (html_suspense_placeholder idx))
     | El_client_thunk
         { import_module = _; import_name = _; props = _; thunk } ->
         client_to_html' parent thunk
@@ -102,11 +106,11 @@ let to_html ctx el =
                 ctx.waiting <- ctx.waiting - 1;
                 if ctx.waiting = 0 then ctx.push None);
             Lwt.return
-              ( html_placeholder idx,
+              ( html_suspense_placeholder idx,
                 Render_to_model.suspense_placeholder idx )
         | Return (html, model) ->
             Lwt.wakeup_later ready ();
-            Lwt.return (html, Render_to_model.suspense model)
+            Lwt.return (html_suspense html, Render_to_model.suspense model)
         | Fail exn -> Lwt.fail exn)
     | El_client_thunk { import_module; import_name; props; thunk } ->
         let props =
@@ -147,13 +151,13 @@ let to_html ctx el =
 (* RENDERING *)
 
 let rc =
-  Html.rawf "<script>%s</script>"
+  Html.unsafe_rawf "<script>%s</script>"
     {|$RC=function(b,c,e){c=document.getElementById(c);c.parentNode.removeChild(c);var a=document.getElementById(b);if(a){b=a.previousSibling;if(e)b.data="$!",a.setAttribute("data-dgst",e);else{e=b.parentNode;a=b.nextSibling;var f=0;do{if(a&&8===a.nodeType){var d=a.data;if("/$"===d)if(0===f)break;else f--;else"$"!==d&&"$?"!==d&&"$!"!==d||f++}d=a.nextSibling;e.removeChild(a);a=d}while(a);for(;c.firstChild;)e.insertBefore(c.firstChild,a);b.data="$"}b._reactRetry&&b._reactRetry()}};|}
   |> Html.to_string
 
 let render_js fmt =
   ksprintf
-    (fun js -> Html.(node "script" [] (Some [ rawf "{%s}" js ])))
+    (fun js -> Html.(node "script" [] (Some [ unsafe_rawf "{%s}" js ])))
     fmt
 
 let render_ssr_runtime =
@@ -174,7 +178,7 @@ let render_html_chunk idx html =
       Html.node "div"
         [ "hidden", `Bool true; "id", `String (sprintf "S:%i" idx) ]
         (Some [ html ]);
-      Html.rawf {|<script>$RC("B:%i", "S:%i")</script>|} idx idx;
+      Html.unsafe_rawf {|<script>$RC("B:%i", "S:%i")</script>|} idx idx;
     ]
   |> Html.to_string
 

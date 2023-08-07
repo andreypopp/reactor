@@ -12,7 +12,7 @@ let html_prelude ~links =
   Html.(
     splice ~sep:"\n"
       [
-        raw "<!doctype html>";
+        unsafe_raw "<!doctype html>";
         node "meta" [ "charset", s "utf-8" ] None;
         List.map links ~f:make_link |> splice ~sep:"\n";
       ])
