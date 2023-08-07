@@ -15,6 +15,11 @@ depends: [
   "yojson"
   "containers"
   "dream"
+  "melange"
+  "ppxlib"
+  "ppx_yojson_conv"
+  "ocaml-lsp-server" {dev}
+  "ocamlformat" {dev}
   "odoc" {with-doc}
 ]
 build: [

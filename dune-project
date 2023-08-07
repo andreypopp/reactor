@@ -21,7 +21,8 @@
  (allow_empty)
  (name react)
  (synopsis "React for OCaml")
- (depends ocaml dune lwt yojson containers dream)
+ (depends ocaml dune lwt yojson containers dream melange ppxlib ppx_yojson_conv
+          (ocaml-lsp-server :dev) (ocamlformat :dev))
  (tags
   (dream reactjs)))
 

@@ -7,12 +7,12 @@
 
 (rule
  (target ./__boot.js)
- (deps ./output/react/react_example/browser/example.js)
+ (deps ./output/react_example/browser/example.js)
  (action
   (with-stdout-to
    %{target}
    (progn
-    (run echo "import './output/react/react_example/browser/example.js';")
+    (run echo "import './output/react_example/browser/example.js';")
     (run echo "import '%{lib-private:react_browser:runtime.js}';")))))
 
 (rule
