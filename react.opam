@@ -5,9 +5,9 @@ maintainer: ["Andrey Popp"]
 authors: ["Andrey Popp"]
 license: "LICENSE"
 tags: ["dream" "reactjs"]
-homepage: "https://github.com/username/reponame"
+homepage: "https://github.com/andreypopp/react_of_ocaml"
 doc: "https://url/to/documentation"
-bug-reports: "https://github.com/username/reponame/issues"
+bug-reports: "https://github.com/andreypopp/react_of_ocaml/issues"
 depends: [
   "ocaml"
   "dune" {>= "3.9"}
@@ -36,4 +36,4 @@ build: [
     "@doc" {with-doc}
   ]
 ]
-dev-repo: "git+https://github.com/username/reponame.git"
+dev-repo: "git+https://github.com/andreypopp/react_of_ocaml.git"

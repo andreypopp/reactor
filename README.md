@@ -14,7 +14,7 @@ This projects contains the following:
 Run the following commands
 
 ```
-make init
+make init build
 make start
 ```
 

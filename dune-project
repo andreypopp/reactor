@@ -7,7 +7,7 @@
 (generate_opam_files true)
 
 (source
- (github username/reponame))
+ (github andreypopp/react_of_ocaml))
 
 (authors "Andrey Popp")
 
@@ -25,5 +25,3 @@
           (ocaml-lsp-server :dev) (ocamlformat :dev))
  (tags
   (dream reactjs)))
-
-; See the complete stanza docs at https://dune.readthedocs.io/en/stable/dune-files.html#dune-project
