@@ -1,6 +1,7 @@
 [@@@warning "-32"]
 
-open Printf
+open! ContainersLabels
+open! Monomorphic
 open Lwt.Infix
 
 module UI = struct
@@ -77,21 +78,18 @@ module UI = struct
 end
 
 let () =
-  let project_root = Sys.getenv "OPAMSWITCH" in
-  let dirname = Filename.dirname __FILE__ in
-  let broser_dir =
-    sprintf "%s/_build/default/%s/../browser" project_root dirname
+  let static =
+    Static.Sites.static
+    |> List.head_opt
+    |> Option.get_exn_or "no /static dir found"
   in
-  let links = [ "/static/tachyons.css" ] in
-  let scripts = [ "/runtime.js" ] in
+  let links = [ "/static/bundle.css" ] in
+  let scripts = [ "/static/bundle.js" ] in
   Dream.run
   @@ Dream.logger
   @@ Dream.router
        [
-         Dream.get "/runtime.js"
-           (Dream.from_filesystem broser_dir "bundle.js");
-         Dream.get "/static/**"
-           (Dream.static (sprintf "%s/static" broser_dir));
+         Dream.get "/static/**" (Dream.static static);
          Dream.get "/"
            (React_dream.render ~enable_ssr:false ~links ~scripts UI.app);
          Dream.get "/ssr" (React_dream.render ~links ~scripts UI.app);

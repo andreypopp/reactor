@@ -2,6 +2,8 @@
 
 (using melange 0.1)
 
+(using dune_site 0.1)
+
 (name react)
 
 (generate_opam_files true)
@@ -21,7 +23,34 @@
  (allow_empty)
  (name react)
  (synopsis "React for OCaml")
- (depends ocaml dune lwt yojson containers dream melange ppxlib ppx_yojson_conv
-          (ocaml-lsp-server :dev) (ocamlformat :dev))
+ (depends
+  ocaml
+  dune
+  lwt
+  yojson
+  containers
+  dream
+  melange
+  ppxlib
+  ppx_yojson_conv
+  (ocaml-lsp-server :dev)
+  (ocamlformat :dev))
  (tags
   (dream reactjs)))
+
+(package
+ (name react_example)
+ (sites
+  (share static))
+ (depends
+  ocaml
+  dune
+  lwt
+  yojson
+  containers
+  dream
+  melange
+  ppxlib
+  ppx_yojson_conv
+  (ocaml-lsp-server :dev)
+  (ocamlformat :dev)))

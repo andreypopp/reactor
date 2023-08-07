@@ -29,3 +29,12 @@
    --loader:.js=jsx
    --outfile=%{target}
    ./__boot.js)))
+
+(install
+ (package react_example)
+ (section
+  (site
+   (react_example static)))
+ (files
+  bundle.js
+  (static/tachyons.css as bundle.css)))

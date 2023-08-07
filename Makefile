@@ -6,5 +6,6 @@ build:
 	dune build
 
 start:
-	@watchexec --restart --no-ignore --watch $$OPAMSWITCH/_build/default/react_example/server --filter 'main.exe' -- \
-		$$OPAMSWITCH/_build/default/react_example/server/main.exe
+	@DUNE_CONFIG__GLOBAL_LOCK=disabled watchexec --restart --no-ignore \
+		--watch $$OPAMSWITCH/_build/install/default/bin --filter 'react-example' -- \
+		dune exec --no-build -- react-example
