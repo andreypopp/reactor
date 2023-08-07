@@ -48,7 +48,7 @@ module UI = struct
             suspense
               [|
                 card ~title:"Async Data" ~delay:1. [| text "HELLO" |];
-                card ~title:"Async Data" ~delay:2. [| text "HELLO" |];
+                card ~title:"Async Data" ~delay:1. [| text "HELLO" |];
               |];
             suspense
               [|

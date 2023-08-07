@@ -9,7 +9,7 @@ open ContainersLabels
 open Monomorphic
 
 type attrs = (string * attr_value) list
-and attr_value = [ `String of string | `Bool of bool ]
+and attr_value = [ `String of string | `Bool of bool | `Int of int ]
 
 type t =
   | H_node of string * attrs * t list option
@@ -25,6 +25,7 @@ let unsafe_rawf fmt = ksprintf unsafe_raw fmt
 let splice ?(sep = "") xs = H_splice (xs, sep)
 let s v = `String v
 let b v = `Bool v
+let i v = `Int v
 
 let add_escaped b s =
   let adds = Buffer.add_string in
@@ -143,6 +144,9 @@ let rec write buf =
                 match value with
                 | `Bool false -> ()
                 | `Bool true -> adds name
+                | `Int v ->
+                    adds name;
+                    adds (sprintf "=\"%i\"" v)
                 | `String value ->
                     adds name;
                     adds "=\"";

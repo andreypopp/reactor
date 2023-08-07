@@ -6,9 +6,9 @@ type instruction =
   | I_model of (int * Render_to_model.chunk)  (** output RSC model *)
 
 type ctx = {
-  mutable idx : int;
-  mutable waiting : int;
-  push : instruction option -> unit;
+  mutable idx : int;  (** used for generating html/model chunk indices *)
+  mutable pending : int;  (** number of async work chunks pending *)
+  push : instruction option -> unit;  (** produce an instruction or stop *)
 }
 
 let push_html ctx html = ctx.push (Some (I_html html))
@@ -53,14 +53,14 @@ let client_to_html ctx parent el =
         | _ ->
             let parent', ready = Lwt.wait () in
             let idx = use_idx ctx in
-            ctx.waiting <- ctx.waiting + 1;
+            ctx.pending <- ctx.pending + 1;
             Lwt.async (fun () ->
                 client_to_html_many' parent' children >>= fun html ->
                 parent >|= fun () ->
                 push_htmli ctx idx html;
                 Lwt.wakeup_later ready ();
-                ctx.waiting <- ctx.waiting - 1;
-                if ctx.waiting = 0 then ctx.push None);
+                ctx.pending <- ctx.pending - 1;
+                if ctx.pending = 0 then ctx.push None);
             Lwt.return (html_suspense_placeholder idx))
     | El_client_thunk
         { import_module = _; import_name = _; props = _; thunk } ->
@@ -96,15 +96,15 @@ let to_html ctx el =
         match Lwt.state promise with
         | Sleep ->
             let idx = use_idx ctx in
-            ctx.waiting <- ctx.waiting + 1;
+            ctx.pending <- ctx.pending + 1;
             Lwt.async (fun () ->
                 promise >>= fun (html, model) ->
                 parent >|= fun () ->
                 push_htmli ctx idx html;
                 push_model ctx (idx, Render_to_model.C_tree model);
                 Lwt.wakeup_later ready ();
-                ctx.waiting <- ctx.waiting - 1;
-                if ctx.waiting = 0 then ctx.push None);
+                ctx.pending <- ctx.pending - 1;
+                if ctx.pending = 0 then ctx.push None);
             Lwt.return
               ( html_suspense_placeholder idx,
                 Render_to_model.suspense_placeholder idx )
@@ -145,8 +145,8 @@ let to_html ctx el =
   push_html ctx html;
   push_model ctx (idx, Render_to_model.C_tree json);
   Lwt.wakeup_later ready ();
-  ctx.waiting <- ctx.waiting - 1;
-  if ctx.waiting = 0 then ctx.push None
+  ctx.pending <- ctx.pending - 1;
+  if ctx.pending = 0 then ctx.push None
 
 (* RENDERING *)
 
@@ -184,7 +184,7 @@ let render_html_chunk idx html =
 
 let render ?on_shell_ready el on_chunk =
   let rendering, push = Lwt_stream.create () in
-  let ctx = { push; waiting = 1; idx = 0 } in
+  let ctx = { push; pending = 1; idx = 0 } in
   to_html ctx el >>= fun () ->
   let render_rc =
     let sent = ref false in

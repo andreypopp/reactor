@@ -48,7 +48,7 @@ let chunk_to_string = function
 
 type ctx = {
   mutable idx : int;
-  mutable waiting : int;
+  mutable pending : int;
   push : string option -> unit;
 }
 
@@ -80,7 +80,7 @@ let rec to_model ctx idx el =
         | Lwt.Fail exn -> raise exn
         | Lwt.Sleep ->
             let idx = use_idx ctx in
-            ctx.waiting <- ctx.waiting + 1;
+            ctx.pending <- ctx.pending + 1;
             Lwt.async (fun () -> Lwt.map (to_model ctx idx) tree);
             `String (sprintf "$L%i" idx))
     | El_client_thunk { import_module; import_name; props; thunk = _ } ->
@@ -95,10 +95,10 @@ let rec to_model ctx idx el =
         node ~name:(sprintf "$%i" idx) ~props None
   in
   push ctx (idx, C_tree (to_model' el));
-  if ctx.waiting = 0 then ctx.push None
+  if ctx.pending = 0 then ctx.push None
 
 let render el on_chunk =
   let rendering, push = Lwt_stream.create () in
-  let ctx = { push; waiting = 0; idx = 0 } in
+  let ctx = { push; pending = 0; idx = 0 } in
   to_model ctx ctx.idx el;
   Lwt_stream.iter_s on_chunk rendering

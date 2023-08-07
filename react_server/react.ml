@@ -21,7 +21,10 @@ type element =
       -> element
 
 and children = element array
-and html_props = (string * [ `String of string | `Bool of bool ]) list
+
+and html_props =
+  (string * [ `String of string | `Bool of bool | `Int of int ]) list
+
 and client_props = (string * [ json | `Element of element ]) list
 
 let null = El_null
