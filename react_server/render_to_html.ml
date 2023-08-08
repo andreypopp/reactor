@@ -164,18 +164,19 @@ let render_ssr_runtime =
   render_js "%s"
     {|
 let enc = new TextEncoder();
-let SSR = (window.SSR = {});
-SSR.push = () => {
+let React_of_caml_ssr = (window.React_of_caml_ssr = {});
+React_of_caml_ssr.push = () => {
   let el = document.currentScript;
-  SSR._c.enqueue(enc.encode(el.dataset.payload))
+  React_of_caml_ssr._c.enqueue(enc.encode(el.dataset.payload))
 };
-SSR.close = () => {
-  SSR._c.close();
+React_of_caml_ssr.close = () => {
+  React_of_caml_ssr._c.close();
 };
-SSR.stream = new ReadableStream({ start(c) { SSR._c = c; } });|}
+React_of_caml_ssr.stream = new ReadableStream({ start(c) { React_of_caml_ssr._c = c; } });|}
   |> Html.to_string
 
-let render_ssr_finish = render_js "window.SSR.close()" |> Html.to_string
+let render_ssr_finish =
+  render_js "window.React_of_caml_ssr.close()" |> Html.to_string
 
 let render_html_chunk idx html =
   Html.splice ~sep:"\n"
@@ -231,7 +232,9 @@ let render ?on_shell_ready el on_chunk =
     | I_model chunk ->
         let chunk = Render_to_model.chunk_to_string chunk in
         on_chunk
-          (sprintf "<script data-payload='%s'>window.SSR.push()</script>"
+          (sprintf
+             "<script \
+              data-payload='%s'>window.React_of_caml_ssr.push()</script>"
              (* TODO(andreypopp): not sure this is enough encoding to prevent XSS *)
              (model_escape chunk))
     | I_html html -> (

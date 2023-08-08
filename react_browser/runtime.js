@@ -23,9 +23,9 @@ function Page({loading}) {
 }
 
 async function main() {
-  if (window.SSR) {
+  if (window.React_of_caml_ssr) {
     let loading = ReactServerDOM.createFromReadableStream(
-      window.SSR.stream,
+      window.React_of_caml_ssr.stream,
       { callServer, }
     );
     let element = React.createElement(Page, {loading})
