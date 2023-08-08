@@ -20,10 +20,9 @@ let html_prelude ~links =
 let rsc_content_type = "application/react.component"
 
 let render ?(enable_ssr = true) ?(scripts = []) ?(links = []) =
-  let html_prelude = html_prelude ~links |> Html.to_string in
-  let scripts =
-    Html.(
-      List.map scripts ~f:make_script |> splice ~sep:"\n" |> to_string)
+  let html_prelude = html_prelude ~links in
+  let html_scripts =
+    Html.(List.map scripts ~f:make_script |> splice ~sep:"\n")
   in
   fun f : Dream.handler ->
     fun req ->
@@ -34,17 +33,22 @@ let render ?(enable_ssr = true) ?(scripts = []) ?(links = []) =
                  Dream.write stream data >>= fun () -> Dream.flush stream))
      | _ ->
          if enable_ssr then
-           Dream.stream (fun stream ->
-               Dream.write stream html_prelude >>= fun () ->
-               let on_shell_ready () =
-                 Dream.write stream scripts >>= fun () ->
-                 Dream.flush stream
-               in
-               render_to_html ~on_shell_ready (f req) (fun data ->
-                   Dream.write stream data >>= fun () ->
-                   Dream.write stream "\n" >>= fun () ->
-                   Dream.flush stream))
+           render_to_html (f req) >>= function
+           | Html_rendering_done { html } ->
+               Dream.html
+                 Html.(
+                   splice [ html_prelude; html; html_scripts ]
+                   |> to_string)
+           | Html_rendering_async { html_shell; html_iter } ->
+               Dream.stream (fun stream ->
+                   let write_and_flush html =
+                     Dream.write stream (Html.to_string html)
+                     >>= fun () -> Dream.flush stream
+                   in
+                   write_and_flush
+                     Html.(
+                       splice [ html_prelude; html_shell; html_scripts ])
+                   >>= fun () -> html_iter write_and_flush)
          else
-           Dream.stream (fun stream ->
-               Dream.write stream html_prelude >>= fun () ->
-               Dream.write stream scripts)
+           Dream.html
+             Html.(splice [ html_prelude; html_scripts ] |> to_string)

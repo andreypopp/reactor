@@ -51,10 +51,13 @@ end
 val render_to_model :
   React.element -> (string -> unit Lwt.t) -> unit Lwt.t
 
-val render_to_html :
-  ?on_shell_ready:(unit -> unit Lwt.t) ->
-  React.element ->
-  (string -> unit Lwt.t) ->
-  unit Lwt.t
+type html_rendering =
+  | Html_rendering_done of { html : Html.t }
+  | Html_rendering_async of {
+      html_shell : Html.t;
+      html_iter : (Html.t -> unit Lwt.t) -> unit Lwt.t;
+    }
+
+val render_to_html : React.element -> html_rendering Lwt.t
 
 module Html : module type of Html

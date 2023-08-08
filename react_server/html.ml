@@ -119,3 +119,29 @@ let to_string html =
   let buf = Buffer.create 1024 in
   write buf html;
   Buffer.contents buf
+
+let add_single_quote_escaped b s =
+  let getc = String.unsafe_get s in
+  let adds = Buffer.add_string in
+  let len = String.length s in
+  let max_idx = len - 1 in
+  let flush b start i =
+    if start < len then Buffer.add_substring b s start (i - start)
+  in
+  let rec loop start i =
+    if i > max_idx then flush b start i
+    else
+      let next = i + 1 in
+      match getc i with
+      | '\'' ->
+          flush b start i;
+          adds b "&#x27;";
+          loop next next
+      | _ -> loop start next
+  in
+  loop 0 0
+
+let single_quote_escape data =
+  let buf = Buffer.create (String.length data) in
+  add_single_quote_escaped buf data;
+  Buffer.contents buf

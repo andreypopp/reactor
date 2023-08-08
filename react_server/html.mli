@@ -33,3 +33,9 @@ val unsafe_rawf : ('a, unit, string, t) format4 -> 'a
 
 val to_string : t -> string
 (** Render HTML into string. *)
+
+(** Various utilities *)
+
+val single_quote_escape : string -> string
+(** Escape ['] single quote as HTML entity. This can be used to embed values
+    within the ['] single quoted HTML attribute. *)

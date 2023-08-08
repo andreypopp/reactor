@@ -1,5 +1,5 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+import * as React from 'react';
+import * as ReactDOM from 'react-dom/client';
 import * as ReactServerDOM from "react-server-dom-webpack/client";
 
 function callServer(id, args) {
@@ -13,10 +13,6 @@ window.__webpack_require__ = (id) => {
   return {__esModule: true, default: component};
 };
 
-
-function createReactServerComponentWrapper(path) {
-  // TODO: need a way to refetch
-}
 
 function Page({loading}) {
   return React.use(loading);

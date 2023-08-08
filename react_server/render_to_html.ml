@@ -1,247 +1,262 @@
 open! Import
 
-type instruction =
-  | I_html of Html.t  (** output HTML *)
-  | I_htmli of int * Html.t  (** output incremental HTML *)
-  | I_model of (int * Render_to_model.chunk)  (** output RSC model *)
+module Computation : sig
+  type t
 
-type ctx = {
-  mutable idx : int;  (** used for generating html/model chunk indices *)
-  mutable pending : int;  (** number of async work chunks pending *)
-  push : instruction option -> unit;  (** produce an instruction or stop *)
-}
+  val root :
+    (t * Html.t list ref * int -> Html.t Lwt.t) ->
+    (Html.t * Html.t Lwt_stream.t option) Lwt.t
 
-let push_html ctx html = ctx.push (Some (I_html html))
-let push_model ctx model = ctx.push (Some (I_model model))
-let push_htmli ctx idx html = ctx.push (Some (I_htmli (idx, html)))
+  val fork :
+    t ->
+    (t -> [ `Fail of exn | `Fork of Html.t Lwt.t * 'a | `Sync of 'a ]) ->
+    'a Lwt.t
 
-let use_idx ctx =
-  ctx.idx <- ctx.idx + 1;
-  ctx.idx
+  val use_idx : t -> int
+  val emit_import : t -> Html.t -> unit
+end = struct
+  type ctx = {
+    mutable idx : int;
+    mutable pending : int;
+    push : Html.t option -> unit;
+  }
 
-let html_suspense inner =
-  Html.(
-    splice [ unsafe_rawf "<!--$?-->"; inner; unsafe_rawf "<!--/$-->" ])
+  type t = {
+    ctx : ctx;
+    emit_import : Html.t -> unit;
+    finished : unit Lwt.t;
+  }
 
-let html_suspense_placeholder idx =
-  html_suspense
-  @@ Html.unsafe_rawf {|<template id="B:%i"></template>|} idx
+  let use_idx t =
+    t.ctx.idx <- t.ctx.idx + 1;
+    t.ctx.idx
 
-let html_sep = "<!-- -->"
+  let emit_import t html = t.emit_import html
 
-let client_to_html ctx parent el =
-  let rec client_to_html' parent = function
-    | React.El_null -> Lwt.return (Html.text "")
-    | El_text s -> Lwt.return (Html.text s)
-    | El_html (name, props, None) ->
-        Lwt.return (Html.node name props None)
-    | El_html (name, props, Some children) ->
-        client_to_html_many' parent children >|= fun children ->
-        Html.node name props (Some [ children ])
-    | El_thunk f ->
-        let rec wait () =
-          match f () with
-          | exception React.Suspend (Any_promise promise) ->
-              promise >>= fun _ -> wait ()
-          | v -> client_to_html' parent v
-        in
-        wait ()
-    | El_async_thunk _ -> failwith "async component in client mode"
-    | El_suspense { children; fallback = _ } -> (
-        match Array.length children with
-        | 0 -> Lwt.return (html_suspense Html.empty)
-        | _ ->
-            let parent', ready = Lwt.wait () in
-            let idx = use_idx ctx in
-            ctx.pending <- ctx.pending + 1;
-            Lwt.async (fun () ->
-                client_to_html_many' parent' children >>= fun html ->
-                parent >|= fun () ->
-                push_htmli ctx idx html;
-                Lwt.wakeup_later ready ();
-                ctx.pending <- ctx.pending - 1;
-                if ctx.pending = 0 then ctx.push None);
-            Lwt.return (html_suspense_placeholder idx))
-    | El_client_thunk
-        { import_module = _; import_name = _; props = _; thunk } ->
-        client_to_html' parent thunk
-  and client_to_html_many' parent els : Html.t Lwt.t =
-    Array.to_list els
-    |> Lwt_list.map_p (client_to_html' parent)
-    >|= Html.splice ~sep:html_sep
-  in
-  client_to_html' parent el
+  let root f =
+    let rendering, push = Lwt_stream.create () in
+    let idx = 0 in
+    let ctx = { push; pending = 1; idx } in
+    let imports = ref [] in
+    let finished, parent_done = Lwt.wait () in
+    let emit_import import = imports := import :: !imports in
+    f ({ ctx; emit_import; finished }, imports, idx) >|= fun html ->
+    Lwt.wakeup_later parent_done ();
+    ctx.pending <- ctx.pending - 1;
+    match ctx.pending = 0 with
+    | true ->
+        ctx.push None;
+        html, None
+    | false -> html, Some rendering
 
-let to_html ctx el =
-  let rec server_to_html' parent = function
-    | React.El_null -> Lwt.return (Html.text "", Render_to_model.null)
-    | El_text s -> Lwt.return (Html.text s, Render_to_model.text s)
-    | El_html (name, props, Some children) ->
-        server_to_html_many' parent children >|= fun (html, children) ->
-        ( Html.node name props (Some [ html ]),
+  let fork parent_t f =
+    let ctx = parent_t.ctx in
+    let finished, parent_done = Lwt.wait () in
+    let emit_import html = ctx.push (Some html) in
+    let t = { ctx; emit_import; finished } in
+    match f t with
+    | `Fork (async, sync) ->
+        ctx.pending <- ctx.pending + 1;
+        Lwt.async (fun () ->
+            parent_t.finished >>= fun () ->
+            async >|= fun html ->
+            ctx.push (Some html);
+            Lwt.wakeup_later parent_done ();
+            ctx.pending <- ctx.pending - 1;
+            if ctx.pending = 0 then ctx.push None);
+        Lwt.return sync
+    | `Sync sync ->
+        Lwt.wakeup_later parent_done ();
+        Lwt.return sync
+    | `Fail exn -> Lwt.fail exn
+end
+
+module Emit_html = struct
+  let html_rc =
+    Html.unsafe_rawf "<script>%s</script>"
+      {|$RC=function(b,c,e){c=document.getElementById(c);c.parentNode.removeChild(c);var a=document.getElementById(b);if(a){b=a.previousSibling;if(e)b.data="$!",a.setAttribute("data-dgst",e);else{e=b.parentNode;a=b.nextSibling;var f=0;do{if(a&&8===a.nodeType){var d=a.data;if("/$"===d)if(0===f)break;else f--;else"$"!==d&&"$?"!==d&&"$!"!==d||f++}d=a.nextSibling;e.removeChild(a);a=d}while(a);for(;c.firstChild;)e.insertBefore(c.firstChild,a);b.data="$"}b._reactRetry&&b._reactRetry()}};|}
+
+  let html_chunk idx html =
+    Html.(
+      splice ~sep:"\n"
+        [
+          node "div"
+            [ "hidden", b true; "id", s (sprintf "S:%i" idx) ]
+            (Some [ html ]);
+          unsafe_rawf "<script>$RC('B:%i', 'S:%i')</script>" idx idx;
+        ])
+
+  let html_suspense inner =
+    Html.(
+      splice [ unsafe_rawf "<!--$?-->"; inner; unsafe_rawf "<!--/$-->" ])
+
+  let html_suspense_placeholder idx =
+    html_suspense
+    @@ Html.unsafe_rawf {|<template id="B:%i"></template>|} idx
+
+  let splice = Html.splice ~sep:"<!-- -->"
+end
+
+module Emit_model = struct
+  let html_start =
+    Html.unsafe_rawf
+      {|<script>
+          let enc = new TextEncoder();
+          let React_of_caml_ssr = (window.React_of_caml_ssr = {});
+          React_of_caml_ssr.push = () => {
+            let el = document.currentScript;
+            React_of_caml_ssr._c.enqueue(enc.encode(el.dataset.payload))
+          };
+          React_of_caml_ssr.close = () => {
+            React_of_caml_ssr._c.close();
+          };
+          React_of_caml_ssr.stream = new ReadableStream({ start(c) { React_of_caml_ssr._c = c; } });
+        </script> |}
+
+  let html_model model =
+    let chunk = Render_to_model.chunk_to_string model in
+    Html.unsafe_rawf
+      "<script data-payload='%s'>window.React_of_caml_ssr.push()</script>"
+      (Html.single_quote_escape chunk)
+
+  let html_end =
+    Html.unsafe_rawf "<script>window.React_of_caml_ssr.close()</script>"
+end
+
+let rec client_to_html t = function
+  | React.El_null -> Lwt.return (Html.text "")
+  | El_text s -> Lwt.return (Html.text s)
+  | El_html (name, props, None) -> Lwt.return (Html.node name props None)
+  | El_html (name, props, Some children) ->
+      client_to_html_many t children >|= fun children ->
+      Html.node name props (Some [ children ])
+  | El_thunk f ->
+      let rec wait () =
+        match f () with
+        | exception React.Suspend (Any_promise promise) ->
+            promise >>= fun _ -> wait ()
+        | v -> client_to_html t v
+      in
+      wait ()
+  | El_async_thunk _ -> failwith "async component in client mode"
+  | El_suspense { children; fallback = _ } -> (
+      match Array.length children with
+      | 0 -> Lwt.return (Emit_html.html_suspense Html.empty)
+      | _ ->
+          Computation.fork t @@ fun t ->
+          let idx = Computation.use_idx t in
+          let async =
+            client_to_html_many t children >|= Emit_html.html_chunk idx
+          in
+          `Fork (async, Emit_html.html_suspense_placeholder idx))
+  | El_client_thunk
+      { import_module = _; import_name = _; props = _; thunk } ->
+      client_to_html t thunk
+
+and client_to_html_many t els : Html.t Lwt.t =
+  Array.to_list els
+  |> Lwt_list.map_p (client_to_html t)
+  >|= Emit_html.splice
+
+let rec server_to_html t = function
+  | React.El_null -> Lwt.return (Html.empty, Render_to_model.null)
+  | El_text s -> Lwt.return (Html.text s, Render_to_model.text s)
+  | El_html (name, props, Some children) ->
+      server_to_html_many t children >|= fun (html, children) ->
+      ( Html.node name props (Some [ html ]),
+        Render_to_model.node ~name
+          ~props:(props :> (string * json) list)
+          (Some children) )
+  | El_html (name, props, None) ->
+      Lwt.return
+        ( Html.node name props None,
           Render_to_model.node ~name
             ~props:(props :> (string * json) list)
-            (Some children) )
-    | El_html (name, props, None) ->
-        Lwt.return
-          ( Html.node name props None,
-            Render_to_model.node ~name
-              ~props:(props :> (string * json) list)
-              None )
-    | El_thunk f -> server_to_html' parent (f ())
-    | El_async_thunk f -> f () >>= server_to_html' parent
-    | El_suspense { children; fallback = _ } -> (
-        let parent', ready = Lwt.wait () in
-        let promise = server_to_html_many' parent' children in
-        match Lwt.state promise with
-        | Sleep ->
-            let idx = use_idx ctx in
-            ctx.pending <- ctx.pending + 1;
-            Lwt.async (fun () ->
-                promise >>= fun (html, model) ->
-                parent >|= fun () ->
-                push_htmli ctx idx html;
-                push_model ctx (idx, Render_to_model.C_tree model);
-                Lwt.wakeup_later ready ();
-                ctx.pending <- ctx.pending - 1;
-                if ctx.pending = 0 then ctx.push None);
-            Lwt.return
-              ( html_suspense_placeholder idx,
-                Render_to_model.suspense_placeholder idx )
-        | Return (html, model) ->
-            Lwt.wakeup_later ready ();
-            Lwt.return (html_suspense html, Render_to_model.suspense model)
-        | Fail exn -> Lwt.fail exn)
-    | El_client_thunk { import_module; import_name; props; thunk } ->
-        let props =
-          Lwt_list.map_p
-            (fun (name, jsony) ->
-              match jsony with
-              | `Element element ->
-                  server_to_html' parent element >|= fun (_html, model) ->
-                  name, model
-              | #json as jsony -> Lwt.return (name, (jsony :> json)))
-            props
-        in
-        let html = client_to_html ctx parent thunk in
-        Lwt.both html props >|= fun (html, props) ->
-        let model =
-          let idx = use_idx ctx in
-          let ref = Render_to_model.ref ~import_module ~import_name in
-          push_model ctx (idx, C_ref ref);
-          Render_to_model.node ~name:(sprintf "$%i" idx) ~props None
-        in
-        html, model
-  and server_to_html_many' parent els =
-    Array.to_list els
-    |> Lwt_list.map_p (server_to_html' parent)
-    >|= List.split
-    >|= fun (htmls, model) ->
-    Html.splice htmls ~sep:html_sep, Render_to_model.list model
+            None )
+  | El_thunk f -> server_to_html t (f ())
+  | El_async_thunk f -> f () >>= server_to_html t
+  | El_suspense { children; fallback = _ } -> (
+      Computation.fork t @@ fun t ->
+      let promise = server_to_html_many t children in
+      match Lwt.state promise with
+      | Sleep ->
+          let idx = Computation.use_idx t in
+          let html_async =
+            promise >|= fun (html, model) ->
+            Html.splice
+              [
+                Emit_model.html_model (idx, Render_to_model.C_tree model);
+                Emit_html.html_chunk idx html;
+              ]
+          in
+          let html_sync =
+            ( Emit_html.html_suspense_placeholder idx,
+              Render_to_model.suspense_placeholder idx )
+          in
+          `Fork (html_async, html_sync)
+      | Return (html, model) ->
+          `Sync
+            (Emit_html.html_suspense html, Render_to_model.suspense model)
+      | Fail exn -> `Fail exn)
+  | El_client_thunk { import_module; import_name; props; thunk } ->
+      let props =
+        Lwt_list.map_p
+          (fun (name, jsony) ->
+            match jsony with
+            | `Element element ->
+                server_to_html t element >|= fun (_html, model) ->
+                name, model
+            | #json as jsony -> Lwt.return (name, (jsony :> json)))
+          props
+      in
+      let html = client_to_html t thunk in
+      Lwt.both html props >|= fun (html, props) ->
+      let model =
+        let idx = Computation.use_idx t in
+        let ref = Render_to_model.ref ~import_module ~import_name in
+        Computation.emit_import t (Emit_model.html_model (idx, C_ref ref));
+        Render_to_model.node ~name:(sprintf "$%i" idx) ~props None
+      in
+      html, model
+
+and server_to_html_many finished els =
+  Array.to_list els
+  |> Lwt_list.map_p (server_to_html finished)
+  >|= List.split
+  >|= fun (htmls, model) ->
+  Emit_html.splice htmls, Render_to_model.list model
+
+type html_rendering =
+  | Html_rendering_done of { html : Html.t }
+  | Html_rendering_async of {
+      html_shell : Html.t;
+      html_iter : (Html.t -> unit Lwt.t) -> unit Lwt.t;
+    }
+
+let render el =
+  let html =
+    Computation.root @@ fun (t, imports, idx) ->
+    server_to_html t el >|= fun (html, model) ->
+    Html.splice
+      (!imports
+      @ [
+          Emit_model.html_model (idx, Render_to_model.C_tree model); html;
+        ])
   in
-  let idx = ctx.idx in
-  let parent, ready = Lwt.wait () in
-  server_to_html' parent el >|= fun (html, json) ->
-  push_html ctx html;
-  push_model ctx (idx, Render_to_model.C_tree json);
-  Lwt.wakeup_later ready ();
-  ctx.pending <- ctx.pending - 1;
-  if ctx.pending = 0 then ctx.push None
-
-(* RENDERING *)
-
-let rc =
-  Html.unsafe_rawf "<script>%s</script>"
-    {|$RC=function(b,c,e){c=document.getElementById(c);c.parentNode.removeChild(c);var a=document.getElementById(b);if(a){b=a.previousSibling;if(e)b.data="$!",a.setAttribute("data-dgst",e);else{e=b.parentNode;a=b.nextSibling;var f=0;do{if(a&&8===a.nodeType){var d=a.data;if("/$"===d)if(0===f)break;else f--;else"$"!==d&&"$?"!==d&&"$!"!==d||f++}d=a.nextSibling;e.removeChild(a);a=d}while(a);for(;c.firstChild;)e.insertBefore(c.firstChild,a);b.data="$"}b._reactRetry&&b._reactRetry()}};|}
-  |> Html.to_string
-
-let render_js fmt =
-  ksprintf
-    (fun js -> Html.(node "script" [] (Some [ unsafe_rawf "{%s}" js ])))
-    fmt
-
-let render_ssr_runtime =
-  render_js "%s"
-    {|
-let enc = new TextEncoder();
-let React_of_caml_ssr = (window.React_of_caml_ssr = {});
-React_of_caml_ssr.push = () => {
-  let el = document.currentScript;
-  React_of_caml_ssr._c.enqueue(enc.encode(el.dataset.payload))
-};
-React_of_caml_ssr.close = () => {
-  React_of_caml_ssr._c.close();
-};
-React_of_caml_ssr.stream = new ReadableStream({ start(c) { React_of_caml_ssr._c = c; } });|}
-  |> Html.to_string
-
-let render_ssr_finish =
-  render_js "window.React_of_caml_ssr.close()" |> Html.to_string
-
-let render_html_chunk idx html =
-  Html.splice ~sep:"\n"
-    [
-      Html.node "div"
-        [ "hidden", `Bool true; "id", `String (sprintf "S:%i" idx) ]
-        (Some [ html ]);
-      Html.unsafe_rawf {|<script>$RC("B:%i", "S:%i")</script>|} idx idx;
-    ]
-  |> Html.to_string
-
-let add_model_escaped b s =
-  let getc = String.unsafe_get s in
-  let adds = Buffer.add_string in
-  let len = String.length s in
-  let max_idx = len - 1 in
-  let flush b start i =
-    if start < len then Buffer.add_substring b s start (i - start)
-  in
-  let rec loop start i =
-    if i > max_idx then flush b start i
-    else
-      let next = i + 1 in
-      match getc i with
-      | '\'' ->
-          flush b start i;
-          adds b "&#x27;";
-          loop next next
-      | _ -> loop start next
-  in
-  loop 0 0
-
-let model_escape json =
-  let buf = Buffer.create (String.length json) in
-  add_model_escaped buf json;
-  Buffer.contents buf
-
-let render ?on_shell_ready el on_chunk =
-  let rendering, push = Lwt_stream.create () in
-  let ctx = { push; pending = 1; idx = 0 } in
-  to_html ctx el >>= fun () ->
-  let render_rc =
-    let sent = ref false in
-    fun () ->
-      match !sent with
-      | true -> Lwt.return ()
-      | false ->
-          sent := true;
-          on_chunk rc
-  in
-  on_chunk render_ssr_runtime >>= fun () ->
-  let render = function
-    | I_model chunk ->
-        let chunk = Render_to_model.chunk_to_string chunk in
-        on_chunk
-          (sprintf
-             "<script \
-              data-payload='%s'>window.React_of_caml_ssr.push()</script>"
-             (* TODO(andreypopp): not sure this is enough encoding to prevent XSS *)
-             (model_escape chunk))
-    | I_html html -> (
-        on_chunk (Html.to_string html) >>= fun () ->
-        match on_shell_ready with None -> Lwt.return () | Some f -> f ())
-    | I_htmli (idx, html) ->
-        render_rc () >>= fun () -> on_chunk (render_html_chunk idx html)
-  in
-  Lwt_stream.iter_s render rendering >>= fun () ->
-  on_chunk render_ssr_finish
+  html >|= fun (html_shell, async) ->
+  match async with
+  | None ->
+      let html =
+        Html.splice
+          [ html_shell; Emit_model.html_start; Emit_model.html_end ]
+      in
+      Html_rendering_done { html }
+  | Some async ->
+      let html_iter f =
+        Lwt_stream.iter_s f async >>= fun () -> f Emit_model.html_end
+      in
+      let html_shell =
+        Html.(
+          splice [ Emit_model.html_start; Emit_html.html_rc; html_shell ])
+      in
+      Html_rendering_async { html_shell; html_iter }
