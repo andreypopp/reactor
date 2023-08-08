@@ -165,8 +165,13 @@ let render_ssr_runtime =
     {|
 let enc = new TextEncoder();
 let SSR = (window.SSR = {});
-SSR.push = (data) => SSR._c.enqueue(enc.encode(data));
-SSR.close = () => SSR._c.close();
+SSR.push = () => {
+  let el = document.currentScript;
+  SSR._c.enqueue(enc.encode(el.dataset.payload))
+};
+SSR.close = () => {
+  SSR._c.close();
+};
 SSR.stream = new ReadableStream({ start(c) { SSR._c = c; } });|}
   |> Html.to_string
 
@@ -181,6 +186,32 @@ let render_html_chunk idx html =
       Html.unsafe_rawf {|<script>$RC("B:%i", "S:%i")</script>|} idx idx;
     ]
   |> Html.to_string
+
+let add_model_escaped b s =
+  let getc = String.unsafe_get s in
+  let adds = Buffer.add_string in
+  let len = String.length s in
+  let max_idx = len - 1 in
+  let flush b start i =
+    if start < len then Buffer.add_substring b s start (i - start)
+  in
+  let rec loop start i =
+    if i > max_idx then flush b start i
+    else
+      let next = i + 1 in
+      match getc i with
+      | '\'' ->
+          flush b start i;
+          adds b "&#x27;";
+          loop next next
+      | _ -> loop start next
+  in
+  loop 0 0
+
+let model_escape json =
+  let buf = Buffer.create (String.length json) in
+  add_model_escaped buf json;
+  Buffer.contents buf
 
 let render ?on_shell_ready el on_chunk =
   let rendering, push = Lwt_stream.create () in
@@ -200,11 +231,9 @@ let render ?on_shell_ready el on_chunk =
     | I_model chunk ->
         let chunk = Render_to_model.chunk_to_string chunk in
         on_chunk
-          Html.(
-            render_js "window.SSR.push(%S)"
-              ((* not the most effective... consider patching yojson instead? *)
-               json_escape chunk)
-            |> to_string)
+          (sprintf "<script data-payload='%s'>window.SSR.push()</script>"
+             (* TODO(andreypopp): not sure this is enough encoding to prevent XSS *)
+             (model_escape chunk))
     | I_html html -> (
         on_chunk (Html.to_string html) >>= fun () ->
         match on_shell_ready with None -> Lwt.return () | Some f -> f ())

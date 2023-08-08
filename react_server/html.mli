@@ -33,6 +33,3 @@ val unsafe_rawf : ('a, unit, string, t) format4 -> 'a
 
 val to_string : t -> string
 (** Render HTML into string. *)
-
-val json_escape : string -> string
-(** Escape JSON string to be able to embed it safely into HTML <script> tag. *)

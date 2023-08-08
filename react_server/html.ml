@@ -63,53 +63,6 @@ let add_escaped b s =
   in
   loop 0 0
 
-let add_json_escaped b s =
-  let getc = String.unsafe_get s in
-  let adds = Buffer.add_string in
-  let len = String.length s in
-  let max_idx = len - 1 in
-  let flush b start i =
-    if start < len then Buffer.add_substring b s start (i - start)
-  in
-  let rec loop start i =
-    if i > max_idx then flush b start i
-    else
-      let next = i + 1 in
-      match getc i with
-      | '&' ->
-          flush b start i;
-          adds b "\\u0026";
-          loop next next
-      | '<' ->
-          flush b start i;
-          adds b "\\u003c";
-          loop next next
-      | '>' ->
-          flush b start i;
-          adds b "\\u003e";
-          loop next next
-      | '\226' -> (
-          if i + 2 > max_idx then loop start next
-          else
-            match getc (i + 1), getc (i + 2) with
-            | '\128', '\168' ->
-                flush b start i;
-                adds b "\\u2028";
-                loop (i + 3) (i + 3)
-            | '\128', '\169' ->
-                flush b start i;
-                adds b "\\u2029";
-                loop (i + 3) (i + 3)
-            | _ -> loop start next)
-      | _ -> loop start next
-  in
-  loop 0 0
-
-let json_escape json =
-  let buf = Buffer.create (String.length json) in
-  add_json_escaped buf json;
-  Buffer.contents buf
-
 let rec write buf =
   let adds s = Buffer.add_string buf s in
   function
