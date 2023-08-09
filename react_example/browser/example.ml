@@ -2,20 +2,16 @@
 
 open React
 
-let%component sidebar ~title children =
-  let v, setv = use_state (fun () -> 0) in
-  let () = use_effect' (fun () -> [%browser_only Js.log "effect"]) [||] in
-  let onClick () =
-    [%browser_only
-      Js.log "OK";
-      setv (fun v -> v + 1)]
-  in
-  jsx.div ~className:"some"
+let%component counter ~title =
+  let v, setv = use_state (Fun.const 0) in
+  let succ () = setv Int.succ in
+  let reset () = setv (Fun.const 0) in
+  jsx.div ~className:"pa4"
     [|
-      text title;
-      jsx.button ~onClick [| text "HELLO" |];
-      textf "Counter: %i" v;
-      jsx.div children;
+      jsx.h2 [| text title |];
+      jsx.p [| textf "clicked %i times" v |];
+      jsx.button ~onClick:succ [| text "Increment" |];
+      jsx.button ~onClick:reset [| text "Reset" |];
     |]
 
 let%component wait_and_print ~promise ?promise2 msg =
@@ -33,7 +29,7 @@ module%export_component App = struct
     jsx.div
       [|
         jsx.h2 [| textf "Hello, %s!" props.title |];
-        sidebar ~title:"sidebar" [||];
+        counter ~title:"Counter";
         jsx.div ~className:"footer" [| props.children; props.children |];
         jsx.ul
           [|
