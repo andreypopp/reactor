@@ -14,9 +14,12 @@ module type REACT = sig
   val text : string -> element
   (** [text s] renders string [s]. *)
 
+  val textf : ('a, unit, string, element) format4 -> 'a
+
   val suspense : ?fallback:children -> children -> element
   (** Renders a React Suspense boundary. *)
 
+  val use_state : (unit -> 'a) -> 'a * (('a -> 'a) -> unit)
   val use_effect : (unit -> unit -> unit) -> 'a array -> unit
   val use_effect' : (unit -> unit) -> 'a array -> unit
 

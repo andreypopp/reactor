@@ -56,9 +56,13 @@ let client_thunk ?(import_name = "") import_module props thunk =
 let unsafe_create_html_element tag_name props children =
   El_html (tag_name, props, children)
 
-let use_effect _thunk _deps = assert false
-let use_effect' _thunk _deps = assert false
+exception Browser_only
+
+let use_state init = init (), (fun _update -> raise Browser_only)
+
+let use_effect _thunk _deps = raise Browser_only
+let use_effect' _thunk _deps = raise Browser_only
 
 type 'a promise = 'a Lwt.t
 
-let use _promise = assert false
+let use _promise = raise Browser_only

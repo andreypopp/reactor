@@ -52,6 +52,8 @@ module React : sig
     browser_only
       "React.use is only available for client side components, use async \
        components on server instead"]
+
+  exception Browser_only
 end
 
 module React_browser : sig

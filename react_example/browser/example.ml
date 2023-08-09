@@ -3,8 +3,20 @@
 open React
 
 let%component sidebar ~title children =
-  let () = use_effect' (fun () -> print_endline "effect") [||] in
-  jsx.div ~className:"some" [| text title; text "WORLD!!"; jsx.div children |]
+  let v, setv = use_state (fun () -> 0) in
+  let () = use_effect' (fun () -> [%browser_only Js.log "effect"]) [||] in
+  let onClick () =
+    [%browser_only
+      Js.log "OK";
+      setv (fun v -> v + 1)]
+  in
+  jsx.div ~className:"some"
+    [|
+      text title;
+      jsx.button ~onClick [| text "HELLO" |];
+      textf "Counter: %i" v;
+      jsx.div children;
+    |]
 
 let%component wait_and_print ~promise ?promise2 msg =
   let () = use promise in
@@ -20,8 +32,7 @@ module%export_component App = struct
     let promise_inner = Promise.sleep 0.5 in
     jsx.div
       [|
-        jsx.h2
-          [| text props.title; text "!"; jsx.div [| text "hello" |] |];
+        jsx.h2 [| textf "Hello, %s!" props.title |];
         sidebar ~title:"sidebar" [||];
         jsx.div ~className:"footer" [| props.children; props.children |];
         jsx.ul
@@ -43,6 +54,6 @@ module%export_component App = struct
       |]
 end
 
-(* let () = *)
+(* let%browser_only () = *)
 (*   let app = sidebar ~title:"title" [| text "body"; text "another" |] in *)
 (*   print_endline (render_to_string app) *)
