@@ -4,12 +4,12 @@ open React
 
 let%component sidebar ~title children =
   let () = use_effect' (fun () -> print_endline "effect") [||] in
-  div ~className:"some" [| text title; text "WORLD!!"; div children |]
+  jsx.div ~className:"some" [| text title; text "WORLD!!"; jsx.div children |]
 
 let%component wait_and_print ~promise ?promise2 msg =
   let () = use promise in
   let () = Option.map use promise2 |> Option.value ~default:() in
-  li [| text msg |]
+  jsx.li [| text msg |]
 
 module%export_component App = struct
   type props = { title : string; children : element }
@@ -18,12 +18,13 @@ module%export_component App = struct
     let promise = Promise.sleep 1.0 in
     let promise2 = Promise.sleep 2.0 in
     let promise_inner = Promise.sleep 0.5 in
-    div
+    jsx.div
       [|
-        h2 [| text props.title; text "!" |];
+        jsx.h2
+          [| text props.title; text "!"; jsx.div [| text "hello" |] |];
         sidebar ~title:"sidebar" [||];
-        div ~className:"footer" [| props.children; props.children |];
-        ul
+        jsx.div ~className:"footer" [| props.children; props.children |];
+        jsx.ul
           [|
             suspense
               [|

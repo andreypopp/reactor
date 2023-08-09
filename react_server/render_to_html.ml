@@ -82,7 +82,7 @@ module Emit_html = struct
         [
           node "div"
             [ "hidden", b true; "id", s (sprintf "S:%i" idx) ]
-            (Some [ html ]);
+            [ html ];
           unsafe_rawf "<script>$RC('B:%i', 'S:%i')</script>" idx idx;
         ])
 
@@ -126,10 +126,12 @@ end
 let rec client_to_html t = function
   | React.El_null -> Lwt.return (Html.text "")
   | El_text s -> Lwt.return (Html.text s)
-  | El_html (name, props, None) -> Lwt.return (Html.node name props None)
-  | El_html (name, props, Some children) ->
+  | El_html (name, props, None) -> Lwt.return (Html.node name props [])
+  | El_html (name, props, Some (Html_children children)) ->
       client_to_html_many t children >|= fun children ->
-      Html.node name props (Some [ children ])
+      Html.node name props [ children ]
+  | El_html (name, props, Some (Html_children_raw { __html })) ->
+      Lwt.return (Html.node name props [ Html.unsafe_raw __html ])
   | El_thunk f ->
       let rec wait () =
         match f () with
@@ -161,15 +163,24 @@ and client_to_html_many t els : Html.t Lwt.t =
 let rec server_to_html t = function
   | React.El_null -> Lwt.return (Html.empty, Render_to_model.null)
   | El_text s -> Lwt.return (Html.text s, Render_to_model.text s)
-  | El_html (name, props, Some children) ->
+  | El_html (name, props, Some (Html_children children)) ->
       server_to_html_many t children >|= fun (html, children) ->
-      ( Html.node name props (Some [ html ]),
+      ( Html.node name props [ html ],
         Render_to_model.node ~name
           ~props:(props :> (string * json) list)
           (Some children) )
+  | El_html (name, props, Some (Html_children_raw { __html })) ->
+      Lwt.return
+        ( Html.node name props [ Html.unsafe_raw __html ],
+          let props = (props :> (string * json) list) in
+          let props =
+            ("dangerouslySetInnerHTML", `Assoc [ "__html", `String __html ])
+            :: props
+          in
+          Render_to_model.node ~name ~props None )
   | El_html (name, props, None) ->
       Lwt.return
-        ( Html.node name props None,
+        ( Html.node name props [],
           Render_to_model.node ~name
             ~props:(props :> (string * json) list)
             None )

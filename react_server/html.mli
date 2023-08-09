@@ -16,7 +16,7 @@ val i : int -> attr_value
 type t
 (** A chunk of HTML. *)
 
-val node : string -> attrs -> t list option -> t
+val node : string -> attrs -> t list -> t
 val text : string -> t
 val splice : ?sep:string -> t list -> t
 val empty : t

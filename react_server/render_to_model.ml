@@ -63,13 +63,22 @@ let rec to_model ctx idx el =
     | React.El_null -> `Null
     | El_text s -> `String s
     | El_html (name, props, children) ->
-        let children =
-          Option.map
-            (fun children ->
-              Array.to_list children |> List.map ~f:to_model' |> list)
-            children
+        let props = (props :> (string * json) list) in
+        let children, props =
+          match children with
+          | None -> None, props
+          | Some (Html_children children) ->
+              ( Some
+                  (Array.to_list children |> List.map ~f:to_model' |> list),
+                props )
+          | Some (Html_children_raw { __html }) ->
+              ( None,
+                ( "dangerouslySetInnerHTML",
+                  `Assoc [ "__html", `String __html ] )
+                :: props )
         in
-        node ~name ~props:(props :> (string * json) list) children
+
+        node ~name ~props children
     | El_suspense { children; fallback = _ } ->
         suspense (Array.to_list children |> List.map ~f:to_model' |> list)
     | El_thunk f -> to_model' (f ())

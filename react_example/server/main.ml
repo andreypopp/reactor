@@ -8,32 +8,57 @@ module UI = struct
   open React_server
   open React
 
+  let markdown children =
+    let doc = Omd.of_string (String.trim children) in
+    jsx.div ~dangerouslySetInnerHTML:{ __html = Omd.to_html doc }
+
   let%async_component card ~delay ~title children =
     Lwt_unix.sleep delay >|= fun () ->
-    div ~className:"ba pa2"
+    jsx.div ~className:"ba pa2"
       [|
-        h3 ~className:"ma0 pa0 pb2" [| text title |];
-        div ~className:"pb2" children;
-        div ~className:"f7 bt pa1"
+        jsx.h3 ~className:"ma0 pa0 pb2" [| text title |];
+        jsx.div ~className:"pb2" children;
+        jsx.div ~className:"f7 bt pa1"
           [|
             textf "I've been sleeping for %0.1fsec before appearing."
               delay;
           |];
       |]
 
-  let%component page ~title:title' children =
-    html
+  let%component page ~title children =
+    jsx.html ~className:"h-100"
       [|
-        head [| title [| text title' |] |];
-        body ~className:"pa4 sans-serif h-100"
-          [| h1 [| text title' |]; div children |];
+        jsx.head [| jsx.title [| text title |] |];
+        jsx.body
+          ~className:"pa4 sans-serif dark-gray bg-washed-yellow h-100"
+          [| jsx.h1 [| jsx.span [| text title |] |]; jsx.div children |];
       |]
 
+  let intro =
+    markdown
+      {|
+# HELLO
+
+THis is react for ocaml or ocaml for react... The idea is that we produce a app
+server in OCmal which can render react apps natively, with speed... yeah...
+
+<b>aaa</b><a href="/">aaa</a>
+  |}
+
+  let xapp _req = page ~title:"React componn" [||]
+
   let app _req =
-    page ~title:"React with native React Server Components"
+    page ~title:"React of OCaml"
       [|
-        div ~className:"flex flex-column g2"
+        jsx.div ~className:"flex flex-column g2 measure-wide"
           [|
+            intro;
+            markdown
+              {|
+            # HELLO
+
+            This is markdown baby...
+            |};
             Example_native.Example.App.make
               {
                 title = "Hello from Client Component";
@@ -60,16 +85,16 @@ module UI = struct
                       [| text "INNER" |];
                   |];
               |];
-            div
+            jsx.div
               [|
-                h2 [| text "Testing XSS" |];
-                ul
+                jsx.h2 [| text "Testing XSS" |];
+                jsx.ul
                   [|
-                    li
+                    jsx.li
                       [|
                         text "</script><script>console.log(1)</script>";
                       |];
-                    li
+                    jsx.li
                       [| text "\u{2028}<script>console.log(1)</script>" |];
                   |];
               |];
@@ -90,7 +115,7 @@ let () =
   @@ Dream.router
        [
          Dream.get "/static/**" (Dream.static static);
-         Dream.get "/"
+         Dream.get "/" (React_dream.render ~links ~scripts UI.app);
+         Dream.get "/no-ssr"
            (React_dream.render ~enable_ssr:false ~links ~scripts UI.app);
-         Dream.get "/ssr" (React_dream.render ~links ~scripts UI.app);
        ]

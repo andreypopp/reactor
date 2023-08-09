@@ -5,11 +5,24 @@ type any_promise = Any_promise : 'a Lwt.t -> any_promise
 exception Suspend of any_promise
 (** React.use raises this when the promise is not resolved yet *)
 
+type unsafe_html = { __html : string }
+
+module Html_prop = struct
+  type prop = string * value
+  and value = [ `String of string | `Bool of bool | `Int of int ]
+
+  let s v : value = `String v
+  let b v : value = `Bool v
+  let className v = "className", s v
+end
+
 type element =
   | El_null : element
   | El_suspense : { children : children; fallback : children } -> element
   | El_text : string -> element
-  | El_html : string * html_props * children option -> element
+  | El_html :
+      string * Html_prop.prop list * html_children option
+      -> element
   | El_thunk : (unit -> element) -> element
   | El_async_thunk : (unit -> element Lwt.t) -> element
   | El_client_thunk : {
@@ -22,8 +35,9 @@ type element =
 
 and children = element array
 
-and html_props =
-  (string * [ `String of string | `Bool of bool | `Int of int ]) list
+and html_children =
+  | Html_children of children
+  | Html_children_raw of unsafe_html
 
 and client_props = (string * [ json | `Element of element ]) list
 
@@ -39,32 +53,9 @@ let suspense ?(fallback = [| null |]) children =
 let client_thunk ?(import_name = "") import_module props thunk =
   El_client_thunk { import_module; import_name; props; thunk }
 
-type html_element = ?className:string -> children -> element
+let unsafe_create_html_element tag_name props children =
+  El_html (tag_name, props, children)
 
-let html' tag_name : html_element =
- fun ?className children ->
-  let props =
-    [ "className", Option.map Html.s className ]
-    |> List.filter_map ~f:(function
-         | _, None -> None
-         | n, Some v -> Some (n, v))
-  in
-  El_html (tag_name, props, Some children)
-
-let h = html'
-let html = html' "html"
-let body = html' "body"
-let head = html' "head"
-let title = html' "title"
-let div = html' "div"
-let a = html' "a"
-let span = html' "span"
-let li = html' "li"
-let ul = html' "ul"
-let ol = html' "ol"
-let h1 = html' "h1"
-let h2 = html' "h2"
-let h3 = html' "h3"
 let use_effect _thunk _deps = assert false
 let use_effect' _thunk _deps = assert false
 

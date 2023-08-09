@@ -22,6 +22,21 @@ module React : sig
   (** This instructs to render a client components in browser which is
       implemented in JavaScript. *)
 
+  module Html_prop : sig
+    type prop
+
+    val className : string -> prop
+  end
+
+  type unsafe_html = { __html : string }
+
+  type html_children =
+    | Html_children of children
+    | Html_children_raw of unsafe_html
+
+  val unsafe_create_html_element :
+    string -> Html_prop.prop list -> html_children option -> element
+
   val use_effect : (unit -> unit -> unit) -> 'a array -> unit
   [@@alert
     browser_only

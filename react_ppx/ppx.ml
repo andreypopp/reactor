@@ -285,6 +285,159 @@ let preprocess_impl xs =
   | Target_js -> [%stri open React_browser] :: xs
   | Target_native -> [%stri open React_server.React_browser] :: xs
 
+module Jsx = struct
+  open Ast_builder.Default
+
+  let collect_props visit args =
+    let rec collect_props (dangerouslySetInnerHTML, props) = function
+      | [] -> None, dangerouslySetInnerHTML, props
+      | [ (Nolabel, arg) ] ->
+          Some (visit arg), dangerouslySetInnerHTML, props
+      | (Nolabel, arg) :: _ ->
+          raise_errorf ~loc:arg.pexp_loc
+            "an argument without a label could on be the last one"
+      | ( (( Optional "dangerouslySetInnerHTML"
+           | Labelled "dangerouslySetInnerHTML" ) as label),
+          prop )
+        :: xs ->
+          collect_props (Some (label, prop), props) xs
+      | (proplab, prop) :: xs ->
+          collect_props
+            (dangerouslySetInnerHTML, (proplab, visit prop) :: props)
+            xs
+    in
+    collect_props (None, []) args
+
+  let jsx_rewrite_js =
+    object
+      inherit Ast_traverse.map as super
+
+      method! expression : expression -> expression =
+        fun expr ->
+          match expr.pexp_desc with
+          | Pexp_apply
+              ({ pexp_desc = Pexp_field ([%expr jsx], id); _ }, args) -> (
+              let id =
+                match id.txt with
+                | Lident lab ->
+                    pexp_constant ~loc:id.loc
+                      (Pconst_string (lab, id.loc, None))
+                | _ ->
+                    pexp_errorf ~loc:id.loc "should be a DOM element name"
+              in
+              let children, dangerouslySetInnerHTML, props =
+                collect_props super#expression args
+              in
+              let props =
+                match dangerouslySetInnerHTML with
+                | None -> props
+                | Some dangerouslySetInnerHTML ->
+                    dangerouslySetInnerHTML :: props
+              in
+              let loc = expr.pexp_loc in
+              let make_props =
+                match props with
+                | [] -> [%expr React_browser.React.html_props_null]
+                | props ->
+                    pexp_apply ~loc [%expr React_browser.React.html_props]
+                      ((Nolabel, [%expr ()]) :: props)
+              in
+              match children, dangerouslySetInnerHTML with
+              | Some _, Some _ ->
+                  pexp_errorf ~loc
+                    "both children and dangerouslySetInnerHTML cannot be \
+                     used at once"
+              | Some children, None ->
+                  [%expr
+                    React_browser.React.unsafe_create_html_element [%e id]
+                      [%e make_props] [%e children]]
+              | None, _ ->
+                  [%expr
+                    React_browser.React.unsafe_create_html_element [%e id]
+                      [%e make_props] [||]])
+          | _ -> super#expression expr
+    end
+
+  let jsx_rewrite_native =
+    object
+      inherit Ast_traverse.map as super
+
+      method! expression : expression -> expression =
+        fun expr ->
+          match expr.pexp_desc with
+          | Pexp_apply
+              ({ pexp_desc = Pexp_field ([%expr jsx], id); _ }, args) -> (
+              let id =
+                match id.txt with
+                | Lident lab ->
+                    pexp_constant ~loc:id.loc
+                      (Pconst_string (lab, id.loc, None))
+                | _ ->
+                    pexp_errorf ~loc:id.loc "should be a DOM element name"
+              in
+              let children, dangerouslySetInnerHTML, props =
+                collect_props super#expression args
+              in
+              let dangerouslySetInnerHTML =
+                Option.map snd dangerouslySetInnerHTML
+              in
+              let loc = expr.pexp_loc in
+              let make_props =
+                match props with
+                | [] -> [%expr []]
+                | props ->
+                    List.fold_left
+                      (fun xs (label, x) ->
+                        let make =
+                          match label with
+                          | Nolabel -> assert false
+                          | Optional _ -> assert false
+                          | Labelled name ->
+                              pexp_ident ~loc:x.pexp_loc
+                                {
+                                  txt =
+                                    Longident.parse
+                                      (sprintf
+                                         "React_server.React.Html_prop.%s"
+                                         name);
+                                  loc = x.pexp_loc;
+                                }
+                        in
+                        [%expr [%e make] [%e x] :: [%e xs]])
+                      [%expr []] props
+              in
+
+              match children, dangerouslySetInnerHTML with
+              | Some _, Some _ ->
+                  pexp_errorf ~loc
+                    "both children and dangerouslySetInnerHTML cannot be \
+                     used at once"
+              | None, Some dangerouslySetInnerHTML ->
+                  [%expr
+                    React_server.React.unsafe_create_html_element [%e id]
+                      [%e make_props]
+                      (Some
+                         (React_server.React.Html_children_raw
+                            [%e dangerouslySetInnerHTML]))]
+              | Some children, None ->
+                  [%expr
+                    React_server.React.unsafe_create_html_element [%e id]
+                      [%e make_props]
+                      (Some
+                         (React_server.React.Html_children [%e children]))]
+              | None, None ->
+                  [%expr
+                    React_server.React.unsafe_create_html_element [%e id]
+                      [%e make_props] None])
+          | _ -> super#expression expr
+    end
+
+  let run xs =
+    match !mode with
+    | Target_js -> jsx_rewrite_js#structure xs
+    | Target_native -> jsx_rewrite_native#structure xs
+end
+
 let () =
   Driver.add_arg "-native"
     (Unit (fun () -> mode := Target_native))
@@ -296,4 +449,4 @@ let () =
         Ext_async_component.ext;
         Ext_export_component.ext;
       ]
-    ~preprocess_impl "react_jsx"
+    ~impl:Jsx.run ~preprocess_impl "react_jsx"

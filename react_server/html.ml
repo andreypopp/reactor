@@ -12,7 +12,7 @@ type attrs = (string * attr_value) list
 and attr_value = [ `String of string | `Bool of bool | `Int of int ]
 
 type t =
-  | H_node of string * attrs * t list option
+  | H_node of string * attrs * t list
   | H_text of string
   | H_raw of string
   | H_splice of t list * string
@@ -63,6 +63,12 @@ let add_escaped b s =
   in
   loop 0 0
 
+let is_void_element = function
+  | "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input"
+  | "link" | "meta" | "param" | "source" | "track" | "wbr" ->
+      true
+  | _ -> false
+
 let rec write buf =
   let adds s = Buffer.add_string buf s in
   function
@@ -107,8 +113,13 @@ let rec write buf =
                     adds "\"")
       in
       match children with
-      | None -> adds " />"
-      | Some children ->
+      | [] ->
+          if is_void_element name then adds ">"
+          else (
+            adds "></";
+            adds name;
+            adds ">")
+      | children ->
           adds ">";
           List.iter children ~f:(write buf);
           adds "</";

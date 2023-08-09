@@ -3,17 +3,17 @@ open Lwt.Infix
 open React_server
 
 let make_script src =
-  Html.(node "script" [ "src", s src; "async", b true ] (Some []))
+  Html.(node "script" [ "src", s src; "async", b true ] [])
 
 let make_link href =
-  Html.(node "link" [ "href", s href; "rel", s "stylesheet" ] None)
+  Html.(node "link" [ "href", s href; "rel", s "stylesheet" ] [])
 
 let html_prelude ~links =
   Html.(
     splice ~sep:"\n"
       [
         unsafe_raw "<!doctype html>";
-        node "meta" [ "charset", s "utf-8" ] None;
+        node "meta" [ "charset", s "utf-8" ] [];
         List.map links ~f:make_link |> splice ~sep:"\n";
       ])
 
