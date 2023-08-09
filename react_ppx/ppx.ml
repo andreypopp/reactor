@@ -279,6 +279,25 @@ module Ext_export_component = struct
          Extension.Context.structure_item pattern expand)
 end
 
+module Browser_only = struct
+  let expand ~ctxt expr =
+    let loc = Expansion_context.Extension.extension_point_loc ctxt in
+    try
+      match !mode with
+      | Target_js -> expr
+      | Target_native -> [%expr raise React_server.React.Browser_only]
+    with Error err -> err
+
+  let ext =
+    let pattern =
+      let open Ast_pattern in
+      single_expr_payload __
+    in
+    Context_free.Rule.extension
+      (Extension.V3.declare "browser_only" Extension.Context.expression
+         pattern expand)
+end
+
 let preprocess_impl xs =
   let loc = Location.none in
   match !mode with
@@ -358,6 +377,8 @@ module Jsx = struct
           | _ -> super#expression expr
     end
 
+  let js_only_prop = function "onClick" -> true | _ -> false
+
   let jsx_rewrite_native =
     object
       inherit Ast_traverse.map as super
@@ -388,22 +409,26 @@ module Jsx = struct
                 | props ->
                     List.fold_left
                       (fun xs (label, x) ->
-                        let make =
+                        let name =
                           match label with
                           | Nolabel -> assert false
                           | Optional _ -> assert false
-                          | Labelled name ->
-                              pexp_ident ~loc:x.pexp_loc
-                                {
-                                  txt =
-                                    Longident.parse
-                                      (sprintf
-                                         "React_server.React.Html_prop.%s"
-                                         name);
-                                  loc = x.pexp_loc;
-                                }
+                          | Labelled name -> name
                         in
-                        [%expr [%e make] [%e x] :: [%e xs]])
+                        if js_only_prop name then xs
+                        else
+                          let make =
+                            pexp_ident ~loc:x.pexp_loc
+                              {
+                                txt =
+                                  Longident.parse
+                                    (sprintf
+                                       "React_server.React.Html_prop.%s"
+                                       name);
+                                loc = x.pexp_loc;
+                              }
+                          in
+                          [%expr [%e make] [%e x] :: [%e xs]])
                       [%expr []] props
               in
 
@@ -448,5 +473,6 @@ let () =
         Ext_component.ext;
         Ext_async_component.ext;
         Ext_export_component.ext;
+        Browser_only.ext;
       ]
     ~impl:Jsx.run ~preprocess_impl "react_jsx"
