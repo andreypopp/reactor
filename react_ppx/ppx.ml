@@ -279,23 +279,82 @@ module Ext_export_component = struct
          Extension.Context.structure_item pattern expand)
 end
 
-module Browser_only = struct
-  let expand ~ctxt expr =
+module Browser_only_expression = struct
+  open Ast_builder.Default
+
+  let expand_binding_native ~ctxt (pat, expr) =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
+    match pat with
+    | [%pat? ()] -> pat, [%expr ()]
+    | _ -> (
+        match expr.pexp_desc with
+        | Pexp_fun _ ->
+            pat, [%expr fun _ -> raise React_server.React.Browser_only]
+        | _ ->
+            raise_errorf ~loc:pat.ppat_loc
+              "This form is not allowed, only the following forms allowed:\n\
+              \  let%%browser_only () = ...\n\
+              \  let%%browser_only func arg1 ... = ...")
+
+  let build_bindings ~ctxt bindings =
+    List.map (expand_binding_native ~ctxt) bindings
+    |> List.map (fun (pat, expr) ->
+           value_binding ~loc:pat.ppat_loc ~pat ~expr)
+
+  let expand ~ctxt orig_expr recflag bindings body =
     try
       match !mode with
-      | Target_js -> expr
-      | Target_native -> [%expr raise React_server.React.Browser_only]
+      | Target_js -> orig_expr
+      | Target_native ->
+          let bindings = build_bindings ~ctxt bindings in
+          pexp_let ~loc:orig_expr.pexp_loc recflag bindings body
     with Error err -> err
 
   let ext =
     let pattern =
       let open Ast_pattern in
-      single_expr_payload __
+      single_expr_payload
+        (as__
+           (pexp_let __
+              (many
+                 (value_binding ~pat:__ ~expr:__
+                 |> map2 ~f:(fun a b -> a, b)))
+              __))
     in
     Context_free.Rule.extension
       (Extension.V3.declare "browser_only" Extension.Context.expression
          pattern expand)
+end
+
+module Browser_only_structure_item = struct
+  open Ast_builder.Default
+
+  let expand ~ctxt orig_stri recflag bindings =
+    let loc = Expansion_context.Extension.extension_point_loc ctxt in
+    try
+      match !mode with
+      | Target_js -> orig_stri
+      | Target_native ->
+          let bindings =
+            Browser_only_expression.build_bindings ~ctxt bindings
+          in
+          pstr_value ~loc:orig_stri.pstr_loc recflag bindings
+    with Error err -> [%stri let [%e ()] = [%e err]]
+
+  let ext =
+    let pattern =
+      let open Ast_pattern in
+      pstr
+      @@ as__
+           (pstr_value __
+              (many
+                 (value_binding ~pat:__ ~expr:__
+                 |> map2 ~f:(fun a b -> a, b))))
+      ^:: nil
+    in
+    Context_free.Rule.extension
+      (Extension.V3.declare "browser_only"
+         Extension.Context.structure_item pattern expand)
 end
 
 let preprocess_impl xs =
@@ -473,6 +532,7 @@ let () =
         Ext_component.ext;
         Ext_async_component.ext;
         Ext_export_component.ext;
-        Browser_only.ext;
+        Browser_only_expression.ext;
+        Browser_only_structure_item.ext;
       ]
     ~impl:Jsx.run ~preprocess_impl "react_jsx"
