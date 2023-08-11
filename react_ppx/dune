@@ -10,3 +10,6 @@
  (name ppx_test)
  (modules ppx_test)
  (libraries react_ppx ppxlib))
+
+(cram
+ (deps ./ppx_test_runner ./ppx_test.exe ../.ocamlformat))

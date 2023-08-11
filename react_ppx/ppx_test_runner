@@ -1,0 +1,11 @@
+#!/bin/bash
+
+STDIN=$(cat)
+
+echo "(* BROWSER *)"
+echo "$STDIN" | ./ppx_test.exe -impl - | ocamlformat - --impl
+
+echo
+
+echo "(* NATIVE *)"
+echo "$STDIN" | ./ppx_test.exe -impl - -native | ocamlformat - --impl

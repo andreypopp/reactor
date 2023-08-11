@@ -34,7 +34,7 @@ let ident label =
 module Let_component = struct
   type t = {
     name : label loc;
-    props : (arg_label * pattern * label loc) list;
+    props : (arg_label * expression option * pattern * label loc) list;
     body : expression;
   }
 
@@ -47,20 +47,30 @@ module Let_component = struct
             "let%%component should only be applied to functions"
     in
     let props, body =
-      let rec collect_props acc expr =
+      let rec collect_props n acc expr =
         match expr.pexp_desc with
         | Pexp_fun
-            (label, _, ({ ppat_desc = Ppat_var arg; _ } as pat), expr) ->
-            collect_props ((label, pat, arg) :: acc) expr
-        | Pexp_fun (_, _, { ppat_loc; _ }, _) ->
-            raise_errorf ~loc:ppat_loc
-              "component arguments can only be simple patterns"
+            ( label,
+              default,
+              ({ ppat_desc = Ppat_var arg; _ } as pat),
+              expr ) ->
+            collect_props (n + 1) ((label, default, pat, arg) :: acc) expr
+        | Pexp_fun
+            (((Labelled arg | Optional arg) as label), default, pat, expr)
+          ->
+            collect_props (n + 1)
+              ((label, default, pat, { txt = arg; loc = pat.ppat_loc })
+              :: acc)
+              expr
+        | Pexp_fun ((Nolabel as label), default, pat, expr) ->
+            let arg = { txt = sprintf "prop_%i" n; loc = pat.ppat_loc } in
+            collect_props (n + 1) ((label, default, pat, arg) :: acc) expr
         | Pexp_function _ ->
             raise_errorf ~loc:expr.pexp_loc
               "component arguments can only be simple patterns"
         | _ -> acc, expr
       in
-      collect_props [] expr
+      collect_props 0 [] expr
     in
     { name; props; body }
 end
@@ -72,7 +82,7 @@ module Ext_component = struct
     let unpack_expr =
       let args =
         List.rev_map
-          (fun (label, _pat, name) ->
+          (fun (label, _default, _pat, name) ->
             label, [%expr props ## [%e ident name]])
           component.Let_component.props
       in
@@ -81,7 +91,7 @@ module Ext_component = struct
     let pack_expr =
       let fields =
         List.rev_map
-          (fun (_, _, name) -> longident name, ident name)
+          (fun (_, _, _, name) -> longident name, ident name)
           component.props
       in
       let props = pexp_record ~loc fields None in
@@ -90,8 +100,8 @@ module Ext_component = struct
           [%expr
             React.unsafe_create_element [%e ident component.name]
               [%bs.obj [%e props]]]
-        ~f:(fun body (label, pat, _name) ->
-          pexp_fun ~loc label None pat body)
+        ~f:(fun body (label, _default, pat, name) ->
+          pexp_fun ~loc label None (ppat_var ~loc:pat.ppat_loc name) body)
     in
     [%stri
       let [%p pat] =
@@ -99,15 +109,13 @@ module Ext_component = struct
         let [%p pat] = fun props -> [%e unpack_expr] in
         [%e pack_expr]]
 
-  let expand_native ~ctxt:_ ~loc component pat _expr =
+  let expand_native ctor ~ctxt:_ ~loc component pat _expr =
     let pack_expr =
       ListLabels.fold_left component.props
         ~init:
-          [%expr
-            React_server.React.thunk (fun () ->
-                [%e component.Let_component.body])]
-        ~f:(fun body (label, pat, _name) ->
-          pexp_fun ~loc label None pat body)
+          [%expr [%e ctor] (fun () -> [%e component.Let_component.body])]
+        ~f:(fun body (label, default, pat, _name) ->
+          pexp_fun ~loc label default pat body)
     in
     [%stri let [%p pat] = [%e pack_expr]]
 
@@ -117,7 +125,9 @@ module Ext_component = struct
       let component = Let_component.parse ~loc pat expr in
       match !mode with
       | Target_js -> expand_js ~ctxt ~loc component pat expr
-      | Target_native -> expand_native ~ctxt ~loc component pat expr
+      | Target_native ->
+          expand_native [%expr React_server.React.thunk] ~ctxt ~loc
+            component pat expr
     with Error err -> [%stri let [%p pat] = [%e err]]
 
   let ext =
@@ -134,21 +144,6 @@ module Ext_component = struct
 end
 
 module Ext_async_component = struct
-  open Ast_builder.Default
-
-  let expand_native ~ctxt component pat _expr =
-    let loc = Expansion_context.Extension.extension_point_loc ctxt in
-    let pack_expr =
-      ListLabels.fold_left component.props
-        ~init:
-          [%expr
-            React_server.React.async_thunk (fun () ->
-                [%e component.Let_component.body])]
-        ~f:(fun body (label, pat, _name) ->
-          pexp_fun ~loc label None pat body)
-    in
-    [%stri let [%p pat] = [%e pack_expr]]
-
   let expand ~ctxt pat expr =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
     try
@@ -161,7 +156,9 @@ module Ext_async_component = struct
           [%stri let [%p pat] = [%e err]]
       | Target_native ->
           let component = Let_component.parse ~loc pat expr in
-          expand_native ~ctxt component pat expr
+          Ext_component.expand_native
+            [%expr React_server.React.async_thunk] ~ctxt ~loc component
+            pat expr
     with Error err -> [%stri let [%p pat] = [%e err]]
 
   let ext =
@@ -288,11 +285,12 @@ module Browser_only_expression = struct
     | [%pat? ()] -> pat, [%expr ()]
     | _ -> (
         match expr.pexp_desc with
-        | Pexp_fun _ ->
+        | Pexp_fun _ | Pexp_function _ ->
             pat, [%expr fun _ -> raise React_server.React.Browser_only]
         | _ ->
             raise_errorf ~loc:pat.ppat_loc
-              "This form is not allowed, only the following forms allowed:\n\
+              "Invalid %%browser_only usage, only the following is \
+               allowed:\n\
               \  let%%browser_only () = ...\n\
               \  let%%browser_only func arg1 ... = ...")
 
