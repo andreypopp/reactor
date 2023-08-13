@@ -1,3 +1,4 @@
 (library
  (name react_api)
+ (public_name react.api)
  (modes native melange))

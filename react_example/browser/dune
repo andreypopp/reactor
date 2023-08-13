@@ -1,8 +1,25 @@
+(library
+ (name example)
+ (libraries react_browser)
+ (modes melange)
+ (preprocess
+  (pps melange.ppx react_ppx)))
+
+(subdir native
+ (library
+  (name example_native)
+  (modes native)
+  (libraries react_server ppx_yojson_conv_lib)
+  (preprocess
+   (pps react_ppx -native ppx_yojson_conv)))
+
+ (copy_files#
+  (files ../**[!.pp].ml)))
+
 (melange.emit
  (target output)
- (libraries react_browser)
- (preprocess
-  (pps melange.ppx react_ppx))
+ (modules)
+ (libraries example)
  (module_systems commonjs))
 
 (rule

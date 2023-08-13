@@ -1,5 +1,8 @@
+(** React interfaces *)
+
 module type PROMISE = sig
   type 'a promise
+  (** A value which is will be eventually computed. *)
 
   val sleep : float -> unit promise
 end

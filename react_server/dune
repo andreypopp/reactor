@@ -1,3 +1,4 @@
 (library
  (name react_server)
+ (public_name react.server)
  (libraries react_api containers yojson lwt lwt.unix))

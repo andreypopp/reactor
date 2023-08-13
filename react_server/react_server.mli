@@ -1,8 +1,24 @@
-type json = Yojson.Safe.t
+(** Implementation of React Server Side Rendering (SSR) and React Server
+    Components (RSC).
+  *)
 
-(** DSL for constructing UI elements, this module is intended to be openned. *)
+(** {1 Common definitions} *)
+
+type json = Yojson.Safe.t
+(** JSON data type used to communicate between Server Components and Client
+    Components. *)
+
+(** {1 React API} *)
+
+(** {2 Server Components} *)
+
+(** A server side implementation of {!module-type: React_api.REACT} module type.
+
+    Use this API to develop React Server Components.
+  *)
 module React : sig
   include React_api.REACT with type 'a promise = 'a Lwt.t
+  (** @inline *)
 
   val textf : ('a, unit, string, element) format4 -> 'a
   (** Like [text] but allows to use printf formatting. *)
@@ -56,6 +72,14 @@ module React : sig
   exception Browser_only
 end
 
+(** {2 Client Components on server} *)
+
+(** Module which implements {!module-type: React_api.REACT} and
+    {!module-type: React_api.PROMISE} interfaces.
+
+    This module is automatically opened by [react.ppx] when compiling for native
+    environment.
+  *)
 module React_browser : sig
   module Promise : React_api.PROMISE with type 'a promise = 'a Lwt.t
 
@@ -65,9 +89,16 @@ module React_browser : sig
        and type 'a promise = 'a Promise.promise
 end
 
+(** {1 Rendering to RSC model} *)
+
 val render_to_model :
   React.element -> (string -> unit Lwt.t) -> unit Lwt.t
 
+(** {1 Rendering to HTML} *)
+
+(** Represents a completed or in progress HTML rendering.
+
+    Use {!module-Html.to_string} to serialize {!module-Html.t} values to string. *)
 type html_rendering =
   | Html_rendering_done of { html : Html.t }
   | Html_rendering_async of {
@@ -76,5 +107,6 @@ type html_rendering =
     }
 
 val render_to_html : React.element -> html_rendering Lwt.t
+(** [render_to_html elem] renders React element [elem] to HTML. *)
 
 module Html : module type of Html

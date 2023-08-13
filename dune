@@ -1,1 +1,3 @@
 (dirs :standard \ node_modules)
+(documentation
+  (package react))

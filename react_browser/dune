@@ -1,5 +1,6 @@
 (library
  (name react_browser)
+ (public_name react.browser)
  (modes melange)
  (libraries react_api)
  (preprocess

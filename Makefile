@@ -5,6 +5,12 @@ init:
 build:
 	dune build
 
+watch:
+	dune build --watch
+
+test:
+	dune runtest
+
 start:
 	@DUNE_CONFIG__GLOBAL_LOCK=disabled watchexec --restart --no-ignore \
 		--watch $$OPAMSWITCH/_build/install/default/bin --filter 'react-example' -- \
