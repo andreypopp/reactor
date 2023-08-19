@@ -73,13 +73,14 @@ module Method_desc = struct
           let arg_name = { loc = arg_typ.ptyp_loc; txt } in
           let arg = { arg_label; arg_typ; arg_name } in
           collect_args n (arg :: args) typ
-      | Ptyp_constr ({ txt = Ldot (Lident "Lwt", "t"); loc = _ }, [ typ ])
-        -> (
+      | Ptyp_constr
+          ({ txt = Ldot (Lident "Promise", "t"); loc = _ }, [ typ ]) -> (
           match List.is_empty args with
           | false -> Ok (List.rev args, typ)
           | true -> Error (loc, "should be a function type"))
       | _ ->
-          Error (loc, "the output type of an RPC method should be Lwt.t")
+          Error
+            (loc, "the output type of an RPC method should be Promise.t")
     in
     match collect_args 0 [] desc.pval_type with
     | Error err -> Error err
@@ -88,7 +89,7 @@ end
 
 let build_input_mod ~ctxt ?yojson_of ?of_yojson (m : Method_desc.t) =
   let open Ast_builder.Default in
-  let loc = Expansion_context.Extension.extension_point_loc ctxt in
+  let loc = Expansion_context.Deriver.derived_item_loc ctxt in
   let input_type =
     let fields =
       List.map m.args ~f:(fun (arg : Method_desc.arg) ->
@@ -128,13 +129,12 @@ let build_input_mod ~ctxt ?yojson_of ?of_yojson (m : Method_desc.t) =
     ~expr:
       (pmod_structure ~loc
          [%str
-           open Ppx_yojson_conv_lib.Yojson_conv.Primitives
-
+           (* open Ppx_yojson_conv_lib.Yojson_conv.Primitives *)
            [%%i input_type]])
 
 let build_output_mod ~ctxt deriving_dir (m : Method_desc.t) =
   let open Ast_builder.Default in
-  let loc = Expansion_context.Extension.extension_point_loc ctxt in
+  let loc = Expansion_context.Deriver.derived_item_loc ctxt in
   let deriving_dir =
     match deriving_dir with
     | `yojson_of -> pexp_ident ~loc (longidentf ~loc "yojson_of")
@@ -145,8 +145,7 @@ let build_output_mod ~ctxt deriving_dir (m : Method_desc.t) =
     ~expr:
       (pmod_structure ~loc
          [%str
-           open Ppx_yojson_conv_lib.Yojson_conv.Primitives
-
+           (* open Ppx_yojson_conv_lib.Yojson_conv.Primitives *)
            type t = [%t m.typ] [@@deriving [%e deriving_dir]]])
 
 let input_conv ~loc deriving_dir m =
@@ -170,45 +169,40 @@ let output_conv ~loc deriving_dir m =
       (longidentf ~loc "Output_%s.%s" m.Method_desc.name.txt deriving_dir))
 
 let process_signature ~ctxt mod_type_decl f =
-  let loc = Expansion_context.Extension.extension_point_loc ctxt in
+  let loc = Expansion_context.Deriver.derived_item_loc ctxt in
   match mod_type_decl.pmtd_type with
   | Some ({ pmty_desc = Pmty_signature items; _ } as mod_type) ->
-      let items, methods =
-        List.fold_left items ~init:([], [])
-          ~f:(fun (items, methods) item ->
+      let methods =
+        List.fold_left items ~init:[] ~f:(fun methods item ->
             match item.psig_desc with
             | Psig_value value_desc -> (
                 match Method_desc.of_value_description value_desc with
-                | Ok m -> item :: items, m :: methods
+                | Ok m -> Ok m :: methods
                 | Error (loc, msg) ->
                     let msg = string_constf ~loc "%s" msg in
-                    [%sigi: [%%ocaml.error [%e msg]]] :: items, methods)
+                    Error [%stri [%%ocaml.error [%e msg]]] :: methods)
             | _ ->
                 let loc = item.psig_loc in
-                ( [%sigi:
+                Error
+                  [%stri
                     [%%ocaml.error
                     "only values are allowed in %rpcgen signatures"]]
-                  :: items,
-                  methods ))
+                :: methods)
       in
-      let mod_type_decl =
-        {
-          mod_type_decl with
-          pmtd_type =
-            Some { mod_type with pmty_desc = Pmty_signature items };
-        }
-      in
-      f mod_type_decl mod_type methods
+      f mod_type methods
   | _ ->
-      [%stri
-        [%ocaml.error
-          "In `module type%rpcgen = RHS`, the `RHS` should be a signature"]]
+      [
+        [%stri
+          [%ocaml.error
+            "In `module type%rpcgen = RHS`, the `RHS` should be a \
+             signature"]];
+      ]
 
 module Rpcgen_browser = struct
   open Ast_builder.Default
 
   let build_remote_call ~ctxt (m : Method_desc.t) =
-    let loc = Expansion_context.Extension.extension_point_loc ctxt in
+    let loc = Expansion_context.Deriver.derived_item_loc ctxt in
     let rev_args = List.rev m.args in
     let input =
       pexp_record ~loc
@@ -236,33 +230,22 @@ module Rpcgen_browser = struct
     [%stri let [%p ppat_var ~loc m.name] = [%e body]]
 
   let expand ~ctxt mod_type_decl =
-    let loc = Expansion_context.Extension.extension_point_loc ctxt in
-    process_signature ~ctxt mod_type_decl
-    @@ fun mod_type_decl _mod_type methods ->
-    let str =
-      List.flat_map methods ~f:(fun m ->
+    process_signature ~ctxt mod_type_decl @@ fun _mod_type methods ->
+    List.flat_map methods ~f:(function
+      | Ok m ->
           [
             build_input_mod ~ctxt ~yojson_of:true m;
             build_output_mod `of_yojson ~ctxt m;
             build_remote_call ~ctxt m;
-          ])
-    in
-    let str =
-      [%stri
-        module Lwt = struct
-          type 'a t = 'a Js.Promise.t
-        end]
-      :: pstr_modtype ~loc mod_type_decl
-      :: str
-    in
-    [%stri include [%m pmod_structure ~loc str]]
+          ]
+      | Error str -> [ str ])
 end
 
 module Rpcgen_native = struct
   open Ast_builder.Default
 
   let build_functor ~ctxt ~mod_name (m : Method_desc.t) =
-    let loc = Expansion_context.Extension.extension_point_loc ctxt in
+    let loc = Expansion_context.Deriver.derived_item_loc ctxt in
     let make_req =
       let call_into_impl =
         let f =
@@ -356,23 +339,30 @@ module Rpcgen_native = struct
        fun req -> [%e body_req]]
 
   let expand ~ctxt mod_type_decl =
-    process_signature ~ctxt mod_type_decl
-    @@ fun mod_type_decl mod_type methods ->
-    let loc = Expansion_context.Extension.extension_point_loc ctxt in
+    process_signature ~ctxt mod_type_decl @@ fun mod_type methods ->
+    let loc = Expansion_context.Deriver.derived_item_loc ctxt in
     let mod_name = mod_type_decl.pmtd_name in
     let make_str =
-      List.flat_map methods ~f:(build_functor ~ctxt ~mod_name)
+      List.flat_map methods ~f:(function
+        | Ok m -> build_functor ~ctxt ~mod_name m
+        | Error str -> [ str ])
     in
     let routes_expr =
-      List.fold_left (List.rev methods) ~init:[%expr []]
-        ~f:(fun rs (m : Method_desc.t) ->
-          let r =
-            let path = string_constf ~loc "%s" m.name.txt in
-            [%expr
-              Dream.post [%e path]
-                [%e pexp_ident ~loc (longidentf ~loc "%s_req" m.name.txt)]]
-          in
-          [%expr [%e r] :: [%e rs]])
+      List.fold_left (List.rev methods) ~init:[%expr []] ~f:(fun rs m ->
+          match m with
+          | Ok m ->
+              let r =
+                let path =
+                  string_constf ~loc "%s" m.Method_desc.name.txt
+                in
+                [%expr
+                  Dream.post [%e path]
+                    [%e
+                      pexp_ident ~loc
+                        (longidentf ~loc "%s_req" m.name.txt)]]
+              in
+              [%expr [%e r] :: [%e rs]]
+          | Error _ -> rs)
     in
     let make_str = make_str @ [%str let routes = [%e routes_expr]] in
     let impl_mod_make =
@@ -383,31 +373,22 @@ module Rpcgen_native = struct
              (Named ({ txt = Some mod_name.txt; loc }, mod_type))
              (pmod_structure ~loc make_str))
     in
-    [%stri
-      include struct
-        [%%i pstr_modtype ~loc mod_type_decl]
-        [%%i impl_mod_make]
-      end]
+    [ impl_mod_make ]
 end
 
-module Rpcgen = struct
-  let expand ~ctxt stri =
-    match !mode with
-    | Target_native -> Rpcgen_native.expand ~ctxt stri
-    | Target_js -> Rpcgen_browser.expand ~ctxt stri
+let derive_rpcgen ~ctxt modtype =
+  match !mode with
+  | Target_native -> Rpcgen_native.expand ~ctxt modtype
+  | Target_js -> Rpcgen_browser.expand ~ctxt modtype
 
-  let ext =
-    let pattern =
-      let open Ast_pattern in
-      pstr (pstr_modtype __ ^:: nil)
-    in
-    Context_free.Rule.extension
-      (Extension.V3.declare "rpcgen" Extension.Context.structure_item
-         pattern expand)
-end
+let rpcgen =
+  let args = Deriving.Args.empty in
+  let str_module_type_decl =
+    Deriving.Generator.V2.make args derive_rpcgen
+  in
+  Deriving.add ~str_module_type_decl "rpcgen"
 
 let () =
   Driver.add_arg "-js"
     (Unit (fun () -> mode := Target_js))
-    ~doc:"preprocess for JS build";
-  Driver.register_transformation ~rules:[ Rpcgen.ext ] "rpcgen"
+    ~doc:"preprocess for JS build"
