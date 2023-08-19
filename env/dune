@@ -1,0 +1,14 @@
+(library
+ (name env_browser)
+ (public_name react.env_browser)
+ (modules env_browser)
+ (preprocess
+  (pps melange.ppx))
+ (modes melange))
+
+(library
+ (name env_native)
+ (public_name react.env_native)
+ (modules env_native)
+ (libraries lwt lwt.unix)
+ (modes native))

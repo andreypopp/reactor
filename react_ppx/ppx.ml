@@ -99,7 +99,7 @@ module Ext_component = struct
         ~init:
           [%expr
             React.unsafe_create_element [%e ident component.name]
-              [%bs.obj [%e props]]]
+              [%mel.obj [%e props]]]
         ~f:(fun body (label, _default, pat, name) ->
           pexp_fun ~loc label None (ppat_var ~loc:pat.ppat_loc name) body)
     in
@@ -287,6 +287,8 @@ module Browser_only_expression = struct
         match expr.pexp_desc with
         | Pexp_fun _ | Pexp_function _ ->
             pat, [%expr fun _ -> raise React_server.React.Browser_only]
+        | Pexp_lazy _ ->
+            pat, [%expr lazy (raise React_server.React.Browser_only)]
         | _ ->
             raise_errorf ~loc:pat.ppat_loc
               "Invalid %%browser_only usage, only the following is \

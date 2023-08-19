@@ -1,5 +1,11 @@
 init:
-	@opam switch create . 4.14.1 -y --deps-only
+	@opam switch create . 5.1.0~rc1 --no-install
+	@opam pin add "yojson.dev" ./deps/yojson --no-action
+	@opam pin add "ppx_yojson_conv.dev" ./deps/ppx_yojson_conv --no-action
+	@opam pin add "ppx_yojson_conv_lib.dev" ./deps/ppx_yojson_conv_lib --no-action
+	@opam pin add "melange.dev" ./deps/melange --no-action
+	@opam pin add "ocaml-lsp-server.dev" ./deps/ocaml-lsp --no-action
+	@opam install . --deps-only
 	@pnpm install
 
 build:

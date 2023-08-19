@@ -1,0 +1,33 @@
+(library
+ (name rpcgen_ppx)
+ (modules ppx)
+ ; (flags :standard -w -9)
+ (libraries ppxlib containers)
+ (preprocess
+  (pps ppxlib.metaquot))
+ (kind ppx_rewriter))
+
+(library
+ (name rpcgen_browser)
+ (modes melange)
+ (modules rpcgen_browser)
+ (flags :standard -open Env_browser)
+ (libraries melange-fetch yojson env_browser)
+ (preprocess
+  (pps melange.ppx)))
+
+(library
+ (name rpcgen_native)
+ (public_name react.rpcgen_native)
+ (modes native)
+ (modules rpcgen_native)
+ (flags :standard -open Env_native)
+ (libraries containers hmap yojson env_native))
+
+(executable
+ (name ppx_test)
+ (modules ppx_test)
+ (libraries rpcgen_ppx ppxlib))
+
+; (cram
+;  (deps ./ppx_test_runner ./ppx_test.exe ../.ocamlformat))

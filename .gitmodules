@@ -1,0 +1,21 @@
+[submodule "deps/melange-fetch"]
+	path = deps/melange-fetch
+	url = https://github.com/melange-community/melange-fetch.git
+[submodule "deps/yojson"]
+	path = deps/yojson
+	url = https://github.com/ocaml-community/yojson.git
+[submodule "deps/ppx_yojson_conv"]
+	path = deps/ppx_yojson_conv
+	url = https://github.com/janestreet/ppx_yojson_conv.git
+[submodule "deps/ppx_yojson_conv_lib"]
+	path = deps/ppx_yojson_conv_lib
+	url = https://github.com/janestreet/ppx_yojson_conv_lib.git
+[submodule "deps/melange"]
+	path = deps/melange
+	url = https://github.com/melange-re/melange.git
+[submodule "deps/deps/ppx_yojson_conv"]
+	path = deps/deps/ppx_yojson_conv
+	url = https://github.com/janestreet/ppx_yojson_conv.git
+[submodule "deps/ocaml-lsp"]
+	path = deps/ocaml-lsp
+	url = https://github.com/ocaml/ocaml-lsp.git

@@ -50,7 +50,7 @@
   containers
   dream
   melange
-  ppxlib
+  dune-site
   ppx_yojson_conv
   (ocaml-lsp-server :dev)
   (ocamlformat :dev)))

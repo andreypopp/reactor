@@ -1,0 +1,22 @@
+(library
+ (name api_native)
+ (libraries lwt dream rpcgen_native)
+ (preprocess
+  (per_module
+   ((pps rpcgen_ppx ppx_yojson_conv)
+    api_intf)))
+ (modes native))
+
+(subdir
+ browser
+ (library
+  (name api_browser)
+  (modes melange)
+  (libraries rpcgen_browser)
+  (preprocess
+   (pps ppx_yojson_conv rpcgen_ppx -js)))
+ (rule
+  (target api_browser.ml)
+  (deps ../api_intf.ml)
+  (action
+   (copy# ../api_intf.ml ./api_browser.ml))))

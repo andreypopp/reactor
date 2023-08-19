@@ -1,11 +1,5 @@
 open! Import
 
-module Promise = struct
-  type 'a promise = 'a Lwt.t
-
-  let sleep secs = Lwt_unix.sleep secs
-end
-
 module React = struct
   include React
 

@@ -8,10 +8,6 @@ module UI = struct
   open React_server
   open React
 
-  let markdown children =
-    let doc = Omd.of_string (String.trim children) in
-    jsx.div ~dangerouslySetInnerHTML:{ __html = Omd.to_html doc }
-
   let%async_component card ~delay ~title children =
     Lwt_unix.sleep delay >|= fun () ->
     jsx.div ~className:"ba pa2"
@@ -34,17 +30,6 @@ module UI = struct
           [| jsx.h1 [| jsx.span [| text title |] |]; jsx.div children |];
       |]
 
-  let intro =
-    markdown
-      {|
-# HELLO
-
-THis is react for ocaml or ocaml for react... The idea is that we produce a app
-server in OCmal which can render react apps natively, with speed... yeah...
-
-<b>aaa</b><a href="/">aaa</a>
-  |}
-
   let xapp _req = page ~title:"React componn" [||]
 
   let app _req =
@@ -52,13 +37,6 @@ server in OCmal which can render react apps natively, with speed... yeah...
       [|
         jsx.div ~className:"flex flex-column g2 measure-wide"
           [|
-            intro;
-            markdown
-              {|
-            # HELLO
-
-            This is markdown baby...
-            |};
             Example_native.Example.App.make
               {
                 title = "Hello from Client Component";
@@ -113,9 +91,10 @@ let () =
   Dream.run
   @@ Dream.logger
   @@ Dream.router
-       [
-         Dream.get "/static/**" (Dream.static static);
-         Dream.get "/" (React_dream.render ~links ~scripts UI.app);
-         Dream.get "/no-ssr"
-           (React_dream.render ~enable_ssr:false ~links ~scripts UI.app);
-       ]
+       ([
+          Dream.get "/static/**" (Dream.static static);
+          Dream.get "/" (React_dream.render ~links ~scripts UI.app);
+          Dream.get "/no-ssr"
+            (React_dream.render ~enable_ssr:false ~links ~scripts UI.app);
+        ]
+       @ Api_native.routes)

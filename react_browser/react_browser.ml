@@ -1,4 +1,3 @@
-module Promise = Promise
 module React = React
 module Component_map = Component_map
 

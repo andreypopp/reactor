@@ -1,20 +1,49 @@
 (library
  (name example)
- (libraries react_browser)
+ (libraries react_browser example_env)
+ (flags :standard -open Example_env)
  (modes melange)
  (preprocess
   (pps melange.ppx react_ppx)))
 
-(subdir native
+(subdir
+ env
+ (library
+  (name example_env)
+  (modes melange)
+  (libraries env_browser api_browser rpcgen_browser))
+ (rule
+  (target example_env.ml)
+  (action
+   (with-stdout-to
+    %{target}
+    (echo
+     "include Env_browser module Api = Api_browser module Rpcgen = Rpcgen_browser")))))
+
+(subdir
+ native
  (library
   (name example_native)
   (modes native)
-  (libraries react_server ppx_yojson_conv_lib)
+  (flags :standard -open Example_native_env)
+  (libraries react_server ppx_yojson_conv_lib example_native_env)
   (preprocess
    (pps react_ppx -native ppx_yojson_conv)))
-
  (copy_files#
-  (files ../**[!.pp].ml)))
+  (files ../**[!.pp].ml))
+ (subdir
+  env
+  (library
+   (name example_native_env)
+   (modes native)
+   (libraries env_native api_native rpcgen_native))
+  (rule
+   (target example_native_env.ml)
+   (action
+    (with-stdout-to
+     %{target}
+     (echo
+      "include Env_native module Api = Api_native module Rpcgen = Rpcgen_native"))))))
 
 (melange.emit
  (target output)
@@ -35,9 +64,10 @@
 (rule
  (target ./bundle.js)
  (deps
-  ./__boot.js
-  %{lib-private:react_browser:runtime.js}
-  (source_tree .))
+  (universe)
+  (source_tree ./output/example/browser/example)
+  ./output/example/browser/example.js
+  ./__boot.js)
  (action
   (run
    esbuild

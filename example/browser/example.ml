@@ -6,6 +6,10 @@ let%component button ~onPress:onClick label =
   jsx.button ~className:"pv1 ph2 br1 bg-light-gray bw1 b--gray" ~onClick
     [| text label |]
 
+let%component hello () =
+  let msg = use (Rpcgen.run (Api.hello ~name:"world")) in
+  jsx.div [| textf "Hello, %s!" msg |]
+
 let%component counter ~init ~title =
   let v, setv = use_state (Fun.const init) in
   let succ () = setv Int.succ in
@@ -35,6 +39,8 @@ module%export_component App = struct
     in
     jsx.div
       [|
+        hello ();
+        hello ();
         jsx.h2 [| textf "Hello, %s!" props.title |];
         counter ~init:42 ~title:"Counter";
         jsx.div ~className:"footer" [| props.children; props.children |];

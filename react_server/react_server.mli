@@ -81,12 +81,10 @@ end
     environment.
   *)
 module React_browser : sig
-  module Promise : React_api.PROMISE with type 'a promise = 'a Lwt.t
-
   module React :
     React_api.REACT
       with type element = React.element
-       and type 'a promise = 'a Promise.promise
+       and type 'a promise = 'a Env_native.Promise.t
 end
 
 (** {1 Rendering to RSC model} *)

@@ -4,7 +4,7 @@ module Computation : sig
   type t
 
   val root :
-    (t * Html.t list ref * int -> Html.t Lwt.t) ->
+    (t * int -> Html.t Lwt.t) ->
     (Html.t * Html.t Lwt_stream.t option) Lwt.t
 
   val fork :
@@ -12,35 +12,47 @@ module Computation : sig
     (t -> [ `Fail of exn | `Fork of Html.t Lwt.t * 'a | `Sync of 'a ]) ->
     'a Lwt.t
 
+  val rpcctx : t -> Rpcgen_native.Runner_ctx.t
   val use_idx : t -> int
-  val emit_import : t -> Html.t -> unit
+  val emit_html : t -> Html.t -> unit
 end = struct
   type ctx = {
     mutable idx : int;
     mutable pending : int;
     push : Html.t option -> unit;
+    rpcctx : Rpcgen_native.Runner_ctx.t;
   }
 
   type t = {
     ctx : ctx;
-    emit_import : Html.t -> unit;
+    emit_html : Html.t -> unit;
     finished : unit Lwt.t;
   }
+
+  let rpcctx t = t.ctx.rpcctx
 
   let use_idx t =
     t.ctx.idx <- t.ctx.idx + 1;
     t.ctx.idx
 
-  let emit_import t html = t.emit_import html
+  let emit_html t html = t.emit_html html
 
   let root f =
     let rendering, push = Lwt_stream.create () in
     let idx = 0 in
-    let ctx = { push; pending = 1; idx } in
-    let imports = ref [] in
+    let ctx =
+      {
+        push;
+        pending = 1;
+        idx;
+        rpcctx = Rpcgen_native.Runner_ctx.create ();
+      }
+    in
+    let htmls = ref [] in
     let finished, parent_done = Lwt.wait () in
-    let emit_import import = imports := import :: !imports in
-    f ({ ctx; emit_import; finished }, imports, idx) >|= fun html ->
+    let emit_html import = htmls := import :: !htmls in
+    f ({ ctx; emit_html; finished }, idx) >|= fun html ->
+    let html = Html.splice [ Html.splice !htmls; html ] in
     Lwt.wakeup_later parent_done ();
     ctx.pending <- ctx.pending - 1;
     match ctx.pending = 0 with
@@ -52,8 +64,8 @@ end = struct
   let fork parent_t f =
     let ctx = parent_t.ctx in
     let finished, parent_done = Lwt.wait () in
-    let emit_import html = ctx.push (Some html) in
-    let t = { ctx; emit_import; finished } in
+    let emit_html html = ctx.push (Some html) in
+    let t = { ctx; emit_html; finished } in
     match f t with
     | `Fork (async, sync) ->
         ctx.pending <- ctx.pending + 1;
@@ -107,6 +119,15 @@ module Emit_model = struct
             let el = document.currentScript;
             React_of_caml_ssr._c.enqueue(enc.encode(el.dataset.payload))
           };
+          React_of_caml_ssr.push_rpc = () => {
+            let el = document.currentScript;
+            let path = el.dataset.path;
+            let input = el.dataset.input;
+            let output = el.dataset.output;
+            window.__rpcgen_cache = window.__rpcgen_cache || {};
+            window.__rpcgen_cache[path] = window.__rpcgen_cache[path] || {};
+            window.__rpcgen_cache[path][input] = Promise.resolve(output);
+          };
           React_of_caml_ssr.close = () => {
             React_of_caml_ssr._c.close();
           };
@@ -118,6 +139,14 @@ module Emit_model = struct
     Html.unsafe_rawf
       "<script data-payload='%s'>window.React_of_caml_ssr.push()</script>"
       (Html.single_quote_escape chunk)
+
+  let html_rpc_payload path input output =
+    Html.unsafe_rawf
+      "<script data-path='%s' data-input='%s' \
+       data-output='%s'>window.React_of_caml_ssr.push_rpc()</script>"
+      (Html.single_quote_escape path)
+      (Html.single_quote_escape (Yojson.Safe.to_string input))
+      (Html.single_quote_escape (Yojson.Safe.to_string output))
 
   let html_end =
     Html.unsafe_rawf "<script>window.React_of_caml_ssr.close()</script>"
@@ -134,10 +163,29 @@ let rec client_to_html t = function
       Lwt.return (Html.node name props [ Html.unsafe_raw __html ])
   | El_thunk f ->
       let rec wait () =
-        match f () with
+        match
+          Rpcgen_native.Runner_ctx.with_ctx (Computation.rpcctx t) f
+        with
         | exception React.Suspend (Any_promise promise) ->
             promise >>= fun _ -> wait ()
-        | v -> client_to_html t v
+        | v, [] -> client_to_html t v
+        | v, reqs ->
+            let payload =
+              Lwt_list.map_p
+                (fun (Rpcgen_native.Runner_ctx.Running_req
+                       { path; input; promise; yojson_of_output }) ->
+                  promise >|= fun output ->
+                  let html =
+                    Emit_model.html_rpc_payload path input
+                      (yojson_of_output output)
+                  in
+                  html)
+                reqs
+              >|= fun payload ->
+              Computation.emit_html t (Html.splice payload)
+            in
+            let children = client_to_html t v in
+            Lwt.both children payload >|= fun (children, ()) -> children
       in
       wait ()
   | El_async_thunk _ -> failwith "async component in client mode"
@@ -174,7 +222,8 @@ let rec server_to_html t = function
         ( Html.node name props [ Html.unsafe_raw __html ],
           let props = (props :> (string * json) list) in
           let props =
-            ("dangerouslySetInnerHTML", `Assoc [ "__html", `String __html ])
+            ( "dangerouslySetInnerHTML",
+              `Assoc [ "__html", `String __html ] )
             :: props
           in
           Render_to_model.node ~name ~props None )
@@ -225,7 +274,7 @@ let rec server_to_html t = function
       let model =
         let idx = Computation.use_idx t in
         let ref = Render_to_model.ref ~import_module ~import_name in
-        Computation.emit_import t (Emit_model.html_model (idx, C_ref ref));
+        Computation.emit_html t (Emit_model.html_model (idx, C_ref ref));
         Render_to_model.node ~name:(sprintf "$%i" idx) ~props None
       in
       html, model
@@ -246,13 +295,10 @@ type html_rendering =
 
 let render el =
   let html =
-    Computation.root @@ fun (t, imports, idx) ->
+    Computation.root @@ fun (t, idx) ->
     server_to_html t el >|= fun (html, model) ->
     Html.splice
-      (!imports
-      @ [
-          Emit_model.html_model (idx, Render_to_model.C_tree model); html;
-        ])
+      [ Emit_model.html_model (idx, Render_to_model.C_tree model); html ]
   in
   html >|= fun (html_shell, async) ->
   match async with

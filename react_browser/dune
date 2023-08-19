@@ -2,6 +2,6 @@
  (name react_browser)
  (public_name react.browser)
  (modes melange)
- (libraries react_api)
+ (libraries react_api env_browser)
  (preprocess
   (pps melange.ppx)))

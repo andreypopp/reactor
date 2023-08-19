@@ -3,15 +3,15 @@ type children = element array
 
 external unsafe_create_element : ('props -> element) -> 'props -> element
   = "createElement"
-[@@bs.module "react"]
+[@@mel.module "react"]
 
 type suspense
 
-external suspense_t : suspense = "Suspense" [@@bs.module "react"]
+external suspense_t : suspense = "Suspense" [@@mel.module "react"]
 
 external suspense_create_element :
   suspense -> 'props -> element array -> element = "createElement"
-[@@bs.module "react"] [@@bs.variadic]
+[@@mel.module "react"] [@@mel.variadic]
 
 let suspense ?fallback:_ children =
   suspense_create_element suspense_t Js.null children
@@ -36,26 +36,26 @@ external html_props :
   ?dangerouslySetInnerHTML:unsafeHTML ->
   unit ->
   html_props = ""
-[@@bs.obj]
+[@@mel.obj]
 
 external unsafe_create_html_element :
   string -> html_props -> element array -> element = "createElement"
-[@@bs.module "react"] [@@bs.variadic]
+[@@mel.module "react"] [@@mel.variadic]
 
 external use_state : (unit -> 'a) -> 'a * (('a -> 'a) -> unit)
   = "useState"
-[@@bs.module "react"]
+[@@mel.module "react"]
 
 external use_effect' : (unit -> unit) -> 'a array -> unit = "useEffect"
-[@@bs.module "react"]
+[@@mel.module "react"]
 
 external use_effect : (unit -> unit -> unit) -> 'a array -> unit
   = "useEffect"
-[@@bs.module "react"]
+[@@mel.module "react"]
 
-type 'a promise = 'a Promise.promise
+type 'a promise = 'a Env_browser.Promise.t
 
-external use : 'a promise -> 'a = "use" [@@bs.module "react"]
+external use : 'a promise -> 'a = "use" [@@mel.module "react"]
 
 external render_to_string : element -> string = "renderToString"
-[@@bs.module "react-dom/server"]
+[@@mel.module "react-dom/server"]
