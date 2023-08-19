@@ -1,16 +1,6 @@
 (library
- (name remote_ppx)
- (public_name react.remote_ppx)
- (modules ppx)
- ; (flags :standard -w -9)
- (libraries ppxlib containers)
- (preprocess
-  (pps ppxlib.metaquot))
- (kind ppx_rewriter))
-
-(library
  (name remote_browser)
- (public_name react.remote_browser)
+ (public_name remote.browser)
  (modes melange)
  (modules remote_browser)
  (flags :standard -open Env_browser)
@@ -20,11 +10,21 @@
 
 (library
  (name remote_native)
- (public_name react.remote_native)
+ (public_name remote.native)
  (modes native)
  (modules remote_native)
  (flags :standard -open Env_native)
  (libraries containers hmap yojson env_native))
+
+(library
+ (name remote_ppx)
+ (public_name remote.ppx)
+ (modules ppx)
+ ; (flags :standard -w -9)
+ (libraries ppxlib containers)
+ (preprocess
+  (pps ppxlib.metaquot))
+ (kind ppx_rewriter))
 
 (executable
  (name ppx_test)

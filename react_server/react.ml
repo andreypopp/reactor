@@ -58,10 +58,10 @@ let unsafe_create_html_element tag_name props children =
 
 exception Browser_only
 
-let use_state init = init (), (fun _update -> raise Browser_only)
-
+let use_state init = init (), fun _update -> raise Browser_only
 let use_effect _thunk _deps = raise Browser_only
 let use_effect' _thunk _deps = raise Browser_only
+let start_transition _thunk = raise Browser_only
 
 type 'a promise = 'a Lwt.t
 

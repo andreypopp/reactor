@@ -53,6 +53,9 @@ external use_effect : (unit -> unit -> unit) -> 'a array -> unit
   = "useEffect"
 [@@mel.module "react"]
 
+external start_transition : (unit -> unit) -> unit = "startTransition"
+[@@mel.module "react"]
+
 type 'a promise = 'a Env_browser.Promise.t
 
 external use : 'a promise -> 'a = "use" [@@mel.module "react"]

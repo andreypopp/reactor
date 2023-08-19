@@ -124,9 +124,9 @@ module Emit_model = struct
             let path = el.dataset.path;
             let input = el.dataset.input;
             let output = el.dataset.output;
-            window.__remote_cache = window.__remote_cache || {};
-            window.__remote_cache[path] = window.__remote_cache[path] || {};
-            window.__remote_cache[path][input] = Promise.resolve(output);
+            window.__Remote_cache = window.__Remote_cache || {};
+            window.__Remote_cache[path] = window.__Remote_cache[path] || {};
+            window.__Remote_cache[path][input] = Promise.resolve(output);
           };
           React_of_caml_ssr.close = () => {
             React_of_caml_ssr._c.close();

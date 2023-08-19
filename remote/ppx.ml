@@ -77,10 +77,12 @@ module Method_desc = struct
           ({ txt = Ldot (Lident "Promise", "t"); loc = _ }, [ typ ]) -> (
           match List.is_empty args with
           | false -> Ok (List.rev args, typ)
-          | true -> Error (loc, "should be a function type"))
+          | true -> Error (loc, "remote: should be a function type"))
       | _ ->
           Error
-            (loc, "the output type of an RPC method should be Promise.t")
+            ( loc,
+              "remote: the output type of an RPC method should be \
+               Promise.t" )
     in
     match collect_args 0 [] desc.pval_type with
     | Error err -> Error err
@@ -179,24 +181,17 @@ let process_signature ~ctxt mod_type_decl f =
                 match Method_desc.of_value_description value_desc with
                 | Ok m -> Ok m :: methods
                 | Error (loc, msg) ->
-                    let msg = string_constf ~loc "%s" msg in
+                    let msg = string_constf ~loc "remote: %s" msg in
                     Error [%stri [%%ocaml.error [%e msg]]] :: methods)
             | _ ->
                 let loc = item.psig_loc in
                 Error
                   [%stri
-                    [%%ocaml.error
-                    "only values are allowed in %remote signatures"]]
+                    [%%ocaml.error "remote: only values are allowed"]]
                 :: methods)
       in
       f mod_type methods
-  | _ ->
-      [
-        [%stri
-          [%ocaml.error
-            "In `module type%remote = RHS`, the `RHS` should be a \
-             signature"]];
-      ]
+  | _ -> [ [%stri [%ocaml.error "remote: is not a signature"]] ]
 
 module Remote_browser = struct
   open Ast_builder.Default

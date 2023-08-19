@@ -19,11 +19,11 @@ let make ~output_of_yojson path params =
 module Cache : sig
   val find : 'a req -> string Promise.t option
   val set : 'a req -> string Promise.t -> unit
-  (* val prune : 'a req -> unit *)
+  val invalidate : 'a req -> unit
 end = struct
   type t = string Promise.t Js.Dict.t Js.Dict.t
 
-  external t : t = "window.__remote_cache"
+  external t : t = "window.__Remote_cache"
 
   let find req : string Promise.t option =
     match Js.Dict.get t req.path with
@@ -41,12 +41,12 @@ end = struct
     in
     Js.Dict.set t' (Lazy.force req.params_str) json
 
-  (* let prune req = *)
-  (*   match Js.Dict.get t req.path with *)
-  (*   | None -> () *)
-  (*   | Some t -> *)
-  (*       Js.Dict.unsafeDeleteKey (Obj.magic t) *)
-  (*         (Lazy.force req.params_str) [@bs] *)
+  let invalidate req =
+    match Js.Dict.get t req.path with
+    | None -> ()
+    | Some t ->
+        Js.Dict.unsafeDeleteKey (Obj.magic t)
+          (Lazy.force req.params_str) [@bs]
 end
 
 let run req =
@@ -57,16 +57,17 @@ let run req =
       return (req.output_of_yojson json)
   | None ->
       let promise =
-        let* resp =
+        let* response =
           Fetch.fetchWithRequest
           @@ Request.makeWithInit req.path
-               (RequestInit.make ~method_:Post
-                  ~body:(BodyInit.make (Lazy.force req.params_str))
-                  ())
+          @@ RequestInit.make ~method_:Post
+               ~body:(BodyInit.make (Lazy.force req.params_str))
+               ()
         in
-        let* data = Response.text resp in
-        return data
+        Response.text response
       in
       Cache.set req promise;
       let* data = promise in
       return (req.output_of_yojson (Yojson.Safe.from_string data))
+
+let invalidate = Cache.invalidate

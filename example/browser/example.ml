@@ -6,20 +6,23 @@ let%component button ~onPress:onClick label =
   jsx.button ~className:"pv1 ph2 br1 bg-light-gray bw1 b--gray" ~onClick
     [| text label |]
 
-let%component hello () =
-  let msg = use (Remote.run (Api.hello ~name:"world")) in
+let%component hello ~name =
+  let msg = use (Remote.run (Api.hello ~name)) in
   jsx.div [| textf "Hello, %s!" msg |]
 
 let%component counter ~init ~title =
   let v, setv = use_state (Fun.const init) in
-  let succ () = setv Int.succ in
-  let reset () = setv (Fun.const 0) in
+  let succ () = start_transition @@ fun () -> setv Int.succ in
+  let pred () = start_transition @@ fun () -> setv Int.pred in
+  let reset () = start_transition @@ fun () -> setv (Fun.const 0) in
   jsx.div ~className:"pa4"
     [|
       jsx.h2 [| text title |];
       jsx.p [| textf "clicked %i times" v |];
       button ~onPress:succ "Increment";
+      button ~onPress:pred "Decrement";
       button ~onPress:reset "Reset";
+      hello ~name:(Printf.sprintf "hello #%i" v);
     |]
 
 let%component wait_and_print ~promise ?promise2 msg =
@@ -39,10 +42,9 @@ module%export_component App = struct
     in
     jsx.div
       [|
-        hello ();
-        hello ();
+        suspense [| hello ~name:"world"; hello ~name:"something else" |];
         jsx.h2 [| textf "Hello, %s!" props.title |];
-        counter ~init:42 ~title:"Counter";
+        suspense [| counter ~init:42 ~title:"Counter" |];
         jsx.div ~className:"footer" [| props.children; props.children |];
         jsx.ul
           [|

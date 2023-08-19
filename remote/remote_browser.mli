@@ -8,3 +8,6 @@ val make : output_of_yojson:(json -> 'a) -> string -> json -> 'a req
 
 val run : 'a req -> 'a Promise.t
 (** [run req] runs request. *)
+
+val invalidate : 'a req -> unit
+(** [invalidate req] invalidates request cache] *)

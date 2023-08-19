@@ -25,6 +25,7 @@ module type REACT = sig
   val use_state : (unit -> 'a) -> 'a * (('a -> 'a) -> unit)
   val use_effect : (unit -> unit -> unit) -> 'a array -> unit
   val use_effect' : (unit -> unit) -> 'a array -> unit
+  val start_transition : (unit -> unit) -> unit
 
   type 'a promise
 

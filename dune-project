@@ -20,6 +20,24 @@
 (documentation https://url/to/documentation)
 
 (package
+ (name remote)
+ (synopsis "Typed remote APIs for Melange and Dream")
+ (depends
+  ocaml
+  dune
+  lwt
+  yojson
+  containers
+  dream
+  melange
+  ppxlib
+  ppx_yojson_conv
+  (ocaml-lsp-server :dev)
+  (ocamlformat :dev))
+ (tags
+  (dream reactjs melange)))
+
+(package
  (allow_empty)
  (name react)
  (synopsis "React for OCaml")
