@@ -41,7 +41,7 @@ let mod_decl_of_expr ~loc ~name ~expr =
     (module_binding ~loc ~name:{ loc; txt = Some name.txt } ~expr)
 
 let as_attr =
-  Attribute.declare "rpcgen.as" Attribute.Context.core_type
+  Attribute.declare "remote.as" Attribute.Context.core_type
     Ast_pattern.(
       pstr
         (pstr_eval (pexp_constant (pconst_string __ drop drop)) nil
@@ -186,7 +186,7 @@ let process_signature ~ctxt mod_type_decl f =
                 Error
                   [%stri
                     [%%ocaml.error
-                    "only values are allowed in %rpcgen signatures"]]
+                    "only values are allowed in %remote signatures"]]
                 :: methods)
       in
       f mod_type methods
@@ -194,11 +194,11 @@ let process_signature ~ctxt mod_type_decl f =
       [
         [%stri
           [%ocaml.error
-            "In `module type%rpcgen = RHS`, the `RHS` should be a \
+            "In `module type%remote = RHS`, the `RHS` should be a \
              signature"]];
       ]
 
-module Rpcgen_browser = struct
+module Remote_browser = struct
   open Ast_builder.Default
 
   let build_remote_call ~ctxt (m : Method_desc.t) =
@@ -215,7 +215,7 @@ module Rpcgen_browser = struct
       [%expr
         let input = [%e input] in
         let input_json = [%e input_conv `yojson_of ~loc m] input in
-        Rpcgen_browser.make
+        Remote_browser.make
           ~output_of_yojson:[%e output_conv `of_yojson ~loc m]
           [%e string_constf ~loc "/%s" m.name.txt]
           input_json]
@@ -241,7 +241,7 @@ module Rpcgen_browser = struct
       | Error str -> [ str ])
 end
 
-module Rpcgen_native = struct
+module Remote_native = struct
   open Ast_builder.Default
 
   let build_functor ~ctxt ~mod_name (m : Method_desc.t) =
@@ -266,7 +266,7 @@ module Rpcgen_native = struct
       in
       let body =
         [%expr
-          Rpcgen_native.make
+          Remote_native.make
             ~yojson_of_output:[%e output_conv `yojson_of ~loc m]
             ~path:[%e string_constf ~loc "/%s" m.name.txt]
             ~input:([%e input_conv ~loc `yojson_of m] [%e input])
@@ -282,7 +282,7 @@ module Rpcgen_native = struct
       in
       [%stri
         let [%p ppat_var ~loc m.name] =
-          let key = Rpcgen_native.make_key () in
+          let key = Remote_native.make_key () in
           [%e body]]
     in
     let body_req =
@@ -376,17 +376,17 @@ module Rpcgen_native = struct
     [ impl_mod_make ]
 end
 
-let derive_rpcgen ~ctxt modtype =
+let derive_remote ~ctxt modtype =
   match !mode with
-  | Target_native -> Rpcgen_native.expand ~ctxt modtype
-  | Target_js -> Rpcgen_browser.expand ~ctxt modtype
+  | Target_native -> Remote_native.expand ~ctxt modtype
+  | Target_js -> Remote_browser.expand ~ctxt modtype
 
-let rpcgen =
+let _ =
   let args = Deriving.Args.empty in
   let str_module_type_decl =
-    Deriving.Generator.V2.make args derive_rpcgen
+    Deriving.Generator.V2.make args derive_remote
   in
-  Deriving.add ~str_module_type_decl "rpcgen"
+  Deriving.add ~str_module_type_decl "remote"
 
 let () =
   Driver.add_arg "-js"

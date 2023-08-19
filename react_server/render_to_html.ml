@@ -12,7 +12,7 @@ module Computation : sig
     (t -> [ `Fail of exn | `Fork of Html.t Lwt.t * 'a | `Sync of 'a ]) ->
     'a Lwt.t
 
-  val rpcctx : t -> Rpcgen_native.Runner_ctx.t
+  val rpcctx : t -> Remote_native.Runner_ctx.t
   val use_idx : t -> int
   val emit_html : t -> Html.t -> unit
 end = struct
@@ -20,7 +20,7 @@ end = struct
     mutable idx : int;
     mutable pending : int;
     push : Html.t option -> unit;
-    rpcctx : Rpcgen_native.Runner_ctx.t;
+    rpcctx : Remote_native.Runner_ctx.t;
   }
 
   type t = {
@@ -45,7 +45,7 @@ end = struct
         push;
         pending = 1;
         idx;
-        rpcctx = Rpcgen_native.Runner_ctx.create ();
+        rpcctx = Remote_native.Runner_ctx.create ();
       }
     in
     let htmls = ref [] in
@@ -124,9 +124,9 @@ module Emit_model = struct
             let path = el.dataset.path;
             let input = el.dataset.input;
             let output = el.dataset.output;
-            window.__rpcgen_cache = window.__rpcgen_cache || {};
-            window.__rpcgen_cache[path] = window.__rpcgen_cache[path] || {};
-            window.__rpcgen_cache[path][input] = Promise.resolve(output);
+            window.__remote_cache = window.__remote_cache || {};
+            window.__remote_cache[path] = window.__remote_cache[path] || {};
+            window.__remote_cache[path][input] = Promise.resolve(output);
           };
           React_of_caml_ssr.close = () => {
             React_of_caml_ssr._c.close();
@@ -164,7 +164,7 @@ let rec client_to_html t = function
   | El_thunk f ->
       let rec wait () =
         match
-          Rpcgen_native.Runner_ctx.with_ctx (Computation.rpcctx t) f
+          Remote_native.Runner_ctx.with_ctx (Computation.rpcctx t) f
         with
         | exception React.Suspend (Any_promise promise) ->
             promise >>= fun _ -> wait ()
@@ -172,7 +172,7 @@ let rec client_to_html t = function
         | v, reqs ->
             let payload =
               Lwt_list.map_p
-                (fun (Rpcgen_native.Runner_ctx.Running_req
+                (fun (Remote_native.Runner_ctx.Running_req
                        { path; input; promise; yojson_of_output }) ->
                   promise >|= fun output ->
                   let html =

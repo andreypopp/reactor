@@ -1,5 +1,6 @@
 (library
- (name rpcgen_ppx)
+ (name remote_ppx)
+ (public_name react.remote_ppx)
  (modules ppx)
  ; (flags :standard -w -9)
  (libraries ppxlib containers)
@@ -8,26 +9,27 @@
  (kind ppx_rewriter))
 
 (library
- (name rpcgen_browser)
+ (name remote_browser)
+ (public_name react.remote_browser)
  (modes melange)
- (modules rpcgen_browser)
+ (modules remote_browser)
  (flags :standard -open Env_browser)
  (libraries melange-fetch yojson env_browser)
  (preprocess
   (pps melange.ppx)))
 
 (library
- (name rpcgen_native)
- (public_name react.rpcgen_native)
+ (name remote_native)
+ (public_name react.remote_native)
  (modes native)
- (modules rpcgen_native)
+ (modules remote_native)
  (flags :standard -open Env_native)
  (libraries containers hmap yojson env_native))
 
 (executable
  (name ppx_test)
  (modules ppx_test)
- (libraries rpcgen_ppx ppxlib))
+ (libraries remote_ppx ppxlib))
 
 ; (cram
 ;  (deps ./ppx_test_runner ./ppx_test.exe ../.ocamlformat))

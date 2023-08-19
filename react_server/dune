@@ -1,4 +1,4 @@
 (library
  (name react_server)
  (public_name react.server)
- (libraries react_api containers yojson lwt lwt.unix rpcgen_native env_native))
+ (libraries react_api containers yojson lwt lwt.unix remote_native env_native))

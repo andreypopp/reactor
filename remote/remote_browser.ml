@@ -23,7 +23,7 @@ module Cache : sig
 end = struct
   type t = string Promise.t Js.Dict.t Js.Dict.t
 
-  external t : t = "window.__rpcgen_cache"
+  external t : t = "window.__remote_cache"
 
   let find req : string Promise.t option =
     match Js.Dict.get t req.path with

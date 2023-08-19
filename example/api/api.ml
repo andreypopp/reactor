@@ -5,4 +5,4 @@ module type Hello = sig
   val hello : name:string -> string Promise.t
   val world : lab:string -> ?opt:int -> string -> world Promise.t
 end
-[@@deriving rpcgen]
+[@@deriving remote]

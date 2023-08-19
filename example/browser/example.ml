@@ -7,7 +7,7 @@ let%component button ~onPress:onClick label =
     [| text label |]
 
 let%component hello () =
-  let msg = use (Rpcgen.run (Api.hello ~name:"world")) in
+  let msg = use (Remote.run (Api.hello ~name:"world")) in
   jsx.div [| textf "Hello, %s!" msg |]
 
 let%component counter ~init ~title =

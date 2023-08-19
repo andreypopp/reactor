@@ -11,14 +11,14 @@
  (library
   (name example_env)
   (modes melange)
-  (libraries env_browser api_browser rpcgen_browser))
+  (libraries env_browser api_browser remote_browser))
  (rule
   (target example_env.ml)
   (action
    (with-stdout-to
     %{target}
     (echo
-     "include Env_browser module Api = Api_browser module Rpcgen = Rpcgen_browser")))))
+     "include Env_browser module Api = Api_browser module Remote = Remote_browser")))))
 
 (subdir
  native
@@ -36,14 +36,14 @@
   (library
    (name example_native_env)
    (modes native)
-   (libraries env_native api_native rpcgen_native))
+   (libraries env_native api_native remote_native))
   (rule
    (target example_native_env.ml)
    (action
     (with-stdout-to
      %{target}
      (echo
-      "include Env_native module Api = Api_native module Rpcgen = Rpcgen_native"))))))
+      "include Env_native module Api = Api_native module Remote = Remote_native"))))))
 
 (melange.emit
  (target output)
