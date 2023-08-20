@@ -24,6 +24,7 @@
   (files ../**[!.pp].ml)))
 
 (melange.emit
+ (alias browser_js)
  (target output)
  (modules)
  (libraries example)
@@ -42,10 +43,7 @@
 (rule
  (target ./bundle.js)
  (deps
-  (universe)
-  (source_tree ./output/example/browser/example)
-  ./output/example/browser/example.js
-  ./__boot.js)
+  (alias browser_js))
  (action
   (run
    esbuild
