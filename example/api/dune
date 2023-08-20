@@ -2,7 +2,7 @@
  (name api_native)
  (wrapped
   (as api))
- (libraries lwt dream remote_native)
+ (libraries lwt dream remote_native env_native)
  (flags :standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives -open Env)
  (preprocess
   (per_module
@@ -23,7 +23,7 @@
    Ppx_yojson_conv_lib.Yojson_conv.Primitives
    -open
    Env)
-  (libraries remote_browser)
+  (libraries remote_browser env_browser)
   (preprocess
    (pps ppx_yojson_conv remote_ppx -js)))
  (rule
