@@ -210,7 +210,7 @@ module Remote_browser = struct
       [%expr
         let input = [%e input] in
         let input_json = [%e input_conv `yojson_of ~loc m] input in
-        Remote_browser.make
+        Remote.make
           ~output_of_yojson:[%e output_conv `of_yojson ~loc m]
           [%e string_constf ~loc "/%s" m.name.txt]
           input_json]
@@ -261,7 +261,7 @@ module Remote_native = struct
       in
       let body =
         [%expr
-          Remote_native.make
+          Remote.make
             ~yojson_of_output:[%e output_conv `yojson_of ~loc m]
             ~path:[%e string_constf ~loc "/%s" m.name.txt]
             ~input:([%e input_conv ~loc `yojson_of m] [%e input])
@@ -277,7 +277,7 @@ module Remote_native = struct
       in
       [%stri
         let [%p ppat_var ~loc m.name] =
-          let key = Remote_native.make_key () in
+          let key = Remote.make_key () in
           [%e body]]
     in
     let body_req =

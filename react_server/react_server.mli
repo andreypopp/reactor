@@ -84,7 +84,7 @@ module React_browser : sig
   module React :
     React_api.REACT
       with type element = React.element
-       and type 'a promise = 'a Env_native.Promise.t
+       and type 'a promise = 'a Env.Promise.t
 end
 
 (** {1 Rendering to RSC model} *)

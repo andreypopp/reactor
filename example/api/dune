@@ -1,34 +1,33 @@
 (library
  (name api_native)
+ (wrapped
+  (as api))
  (libraries lwt dream remote_native)
- (flags
-  :standard
-  -open
-  Ppx_yojson_conv_lib.Yojson_conv.Primitives
-  -open
-  Env_native)
+ (flags :standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives -open Env)
  (preprocess
   (per_module
    ((pps remote_ppx ppx_yojson_conv)
-    api)))
+    api_spec)))
  (modes native))
 
 (subdir
  browser
  (library
   (name api_browser)
+  (wrapped
+   (as api))
   (modes melange)
   (flags
    :standard
    -open
    Ppx_yojson_conv_lib.Yojson_conv.Primitives
    -open
-   Env_browser)
+   Env)
   (libraries remote_browser)
   (preprocess
    (pps ppx_yojson_conv remote_ppx -js)))
  (rule
-  (target api_browser.ml)
-  (deps ../api.ml)
+  (target api.ml)
+  (deps ../api_spec.ml)
   (action
-   (copy# ../api.ml %{target}))))
+   (copy# ../api_spec.ml %{target}))))

@@ -1,0 +1,7 @@
+(library
+ (name remote_native)
+ (wrapped (as remote))
+ (public_name remote.native)
+ (modes native)
+ (flags :standard -open Env)
+ (libraries containers hmap yojson env_native))

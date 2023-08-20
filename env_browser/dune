@@ -1,0 +1,7 @@
+(library
+ (name env_browser)
+ (wrapped (as env))
+ (public_name react.env_browser)
+ (preprocess
+  (pps melange.ppx))
+ (modes melange))

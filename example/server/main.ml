@@ -97,4 +97,4 @@ let () =
           Dream.get "/no-ssr"
             (React_dream.render ~enable_ssr:false ~links ~scripts UI.app);
         ]
-       @ Api_native.routes)
+       @ Api.routes)

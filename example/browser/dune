@@ -1,49 +1,27 @@
 (library
  (name example)
- (libraries react_browser example_env)
- (flags :standard -open Example_env)
+ (libraries react_browser api_browser remote_browser env_browser)
+ (flags :standard -open Env)
  (modes melange)
  (preprocess
   (pps melange.ppx react_ppx)))
-
-(subdir
- env
- (library
-  (name example_env)
-  (modes melange)
-  (libraries env_browser api_browser remote_browser))
- (rule
-  (target example_env.ml)
-  (action
-   (with-stdout-to
-    %{target}
-    (echo
-     "include Env_browser module Api = Api_browser module Remote = Remote_browser")))))
 
 (subdir
  native
  (library
   (name example_native)
   (modes native)
-  (flags :standard -open Example_native_env)
-  (libraries react_server ppx_yojson_conv_lib example_native_env)
+  (libraries
+   react_server
+   ppx_yojson_conv_lib
+   remote_native
+   env_native
+   api_native)
+  (flags :standard -open Env)
   (preprocess
    (pps react_ppx -native ppx_yojson_conv)))
  (copy_files#
-  (files ../**[!.pp].ml))
- (subdir
-  env
-  (library
-   (name example_native_env)
-   (modes native)
-   (libraries env_native api_native remote_native))
-  (rule
-   (target example_native_env.ml)
-   (action
-    (with-stdout-to
-     %{target}
-     (echo
-      "include Env_native module Api = Api_native module Remote = Remote_native"))))))
+  (files ../**[!.pp].ml)))
 
 (melange.emit
  (target output)

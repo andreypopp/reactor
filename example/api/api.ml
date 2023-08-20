@@ -1,8 +1,10 @@
-type world = { lab : string; opt : int option; name : string }
-[@@deriving yojson]
+open Printf
+open Lwt.Infix
 
-module type Hello = sig
-  val hello : name:string -> string Promise.t
-  val world : lab:string -> ?opt:int -> string -> world Promise.t
-end
-[@@deriving remote]
+include Api_spec.Hello_make (struct
+  let hello ~name =
+    Lwt.pause () >>= fun () ->
+    Lwt.return (sprintf "%s" (String.capitalize_ascii name))
+
+  let world ~lab ?opt name = Lwt.return { Api_spec.name; lab; opt }
+end)
