@@ -1,33 +1,36 @@
 type json = Yojson.Safe.t
-type 'a key
 
-val make_key : unit -> 'a key
+type ('a, 'b) query_def
+(** Query definition. *)
 
-type 'a req
-
-val make :
-  yojson_of_output:('a -> json) ->
-  key:'a key ->
+val define_query :
+  yojson_of_input:('a -> json) ->
+  yojson_of_output:('b -> json) ->
   path:string ->
-  input:json ->
-  (unit -> 'a Lwt.t) ->
-  'a req
+  ('a -> 'b Promise.t) ->
+  ('a, 'b) query_def
 
-val run : 'a req -> 'a Lwt.t
+type 'b query
+(** Query. *)
 
-module Runner_ctx : sig
-  type t
+val make_query : ('a, 'b) query_def -> 'a -> 'b query
 
-  val create : unit -> t
+val run : 'b query -> 'b Promise.t
+(** Run query and wait till result is available. *)
 
-  type running_req =
-    | Running_req : {
+module Runner : sig
+  type ctx
+
+  val create : unit -> ctx
+
+  type running =
+    | Running : {
         path : string;
         input : json;
         yojson_of_output : 'a -> json;
         promise : 'a Promise.t;
       }
-        -> running_req
+        -> running
 
-  val with_ctx : t -> (unit -> 'a) -> 'a * running_req list
+  val with_ctx : ctx -> (unit -> 'a) -> 'a * running list
 end

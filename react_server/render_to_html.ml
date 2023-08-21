@@ -12,7 +12,7 @@ module Computation : sig
     (t -> [ `Fail of exn | `Fork of Html.t Lwt.t * 'a | `Sync of 'a ]) ->
     'a Lwt.t
 
-  val rpcctx : t -> Remote.Runner_ctx.t
+  val remote_runner_ctx : t -> Remote.Runner.ctx
   val use_idx : t -> int
   val emit_html : t -> Html.t -> unit
 end = struct
@@ -20,7 +20,7 @@ end = struct
     mutable idx : int;
     mutable pending : int;
     push : Html.t option -> unit;
-    rpcctx : Remote.Runner_ctx.t;
+    remote_runner_ctx : Remote.Runner.ctx;
   }
 
   type t = {
@@ -29,7 +29,7 @@ end = struct
     finished : unit Lwt.t;
   }
 
-  let rpcctx t = t.ctx.rpcctx
+  let remote_runner_ctx t = t.ctx.remote_runner_ctx
 
   let use_idx t =
     t.ctx.idx <- t.ctx.idx + 1;
@@ -41,7 +41,12 @@ end = struct
     let rendering, push = Lwt_stream.create () in
     let idx = 0 in
     let ctx =
-      { push; pending = 1; idx; rpcctx = Remote.Runner_ctx.create () }
+      {
+        push;
+        pending = 1;
+        idx;
+        remote_runner_ctx = Remote.Runner.create ();
+      }
     in
     let htmls = ref [] in
     let finished, parent_done = Lwt.wait () in
@@ -158,14 +163,16 @@ let rec client_to_html t = function
       Lwt.return (Html.node name props [ Html.unsafe_raw __html ])
   | El_thunk f ->
       let rec wait () =
-        match Remote.Runner_ctx.with_ctx (Computation.rpcctx t) f with
+        match
+          Remote.Runner.with_ctx (Computation.remote_runner_ctx t) f
+        with
         | exception React.Suspend (Any_promise promise) ->
             promise >>= fun _ -> wait ()
         | v, [] -> client_to_html t v
         | v, reqs ->
             let payload =
               Lwt_list.map_p
-                (fun (Remote.Runner_ctx.Running_req
+                (fun (Remote.Runner.Running
                        { path; input; promise; yojson_of_output }) ->
                   promise >|= fun output ->
                   let html =

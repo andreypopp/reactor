@@ -3,23 +3,34 @@ open Promise
 
 type json = Yojson.Safe.t
 
-type 'a req = {
-  path : string;
-  params_str : string Lazy.t;
-  output_of_yojson : json -> 'a;
-}
+type 'b query =
+  | Query : {
+      query_key : query_key;
+      output_of_yojson : json -> 'b;
+    }
+      -> 'b query
 
-let make ~output_of_yojson path params =
-  {
-    path;
-    params_str = lazy (Yojson.Safe.to_string params);
-    output_of_yojson;
-  }
+and query_key = { path : string; input : string Lazy.t }
+
+type ('a, 'b) query_def = 'a -> 'b query
+
+let define_query ~yojson_of_input ~output_of_yojson ~path input =
+  Query
+    {
+      query_key =
+        {
+          path;
+          input = lazy (Yojson.Safe.to_string (yojson_of_input input));
+        };
+      output_of_yojson;
+    }
+
+let make_query def input = def input
 
 module Cache : sig
-  val find : 'a req -> string Promise.t option
-  val set : 'a req -> string Promise.t -> unit
-  val invalidate : 'a req -> unit
+  val find : query_key -> string Promise.t option
+  val set : query_key -> string Promise.t -> unit
+  val invalidate : query_key -> unit
 end = struct
   type t = string Promise.t Js.Dict.t Js.Dict.t
 
@@ -28,7 +39,7 @@ end = struct
   let find req : string Promise.t option =
     match Js.Dict.get t req.path with
     | None -> None
-    | Some t' -> Js.Dict.get t' (Lazy.force req.params_str)
+    | Some t' -> Js.Dict.get t' (Lazy.force req.input)
 
   let set req json =
     let t' =
@@ -39,18 +50,17 @@ end = struct
           t'
       | Some t' -> t'
     in
-    Js.Dict.set t' (Lazy.force req.params_str) json
+    Js.Dict.set t' (Lazy.force req.input) json
 
   let invalidate req =
     match Js.Dict.get t req.path with
     | None -> ()
     | Some t ->
-        Js.Dict.unsafeDeleteKey (Obj.magic t)
-          (Lazy.force req.params_str) [@bs]
+        Js.Dict.unsafeDeleteKey (Obj.magic t) (Lazy.force req.input) [@bs]
 end
 
-let run req =
-  match Cache.find req with
+let run (Query req) =
+  match Cache.find req.query_key with
   | Some promise ->
       let* data = promise in
       let json = Yojson.Safe.from_string data in
@@ -59,15 +69,15 @@ let run req =
       let promise =
         let* response =
           Fetch.fetchWithRequest
-          @@ Request.makeWithInit req.path
+          @@ Request.makeWithInit req.query_key.path
           @@ RequestInit.make ~method_:Post
-               ~body:(BodyInit.make (Lazy.force req.params_str))
+               ~body:(BodyInit.make (Lazy.force req.query_key.input))
                ()
         in
         Response.text response
       in
-      Cache.set req promise;
+      Cache.set req.query_key promise;
       let* data = promise in
       return (req.output_of_yojson (Yojson.Safe.from_string data))
 
-let invalidate = Cache.invalidate
+let invalidate (Query query) = Cache.invalidate query.query_key

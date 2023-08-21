@@ -207,22 +207,22 @@ module Remote_browser = struct
         None
     in
     let body =
-      [%expr
-        let input = [%e input] in
-        let input_json = [%e input_conv `yojson_of ~loc m] input in
-        Remote.make
-          ~output_of_yojson:[%e output_conv `of_yojson ~loc m]
-          [%e string_constf ~loc "/%s" m.name.txt]
-          input_json]
-    in
-    let body =
-      List.fold_left rev_args ~init:body
+      List.fold_left rev_args
+        ~init:[%expr Remote.make_query query_def [%e input]]
         ~f:(fun prev (arg : Method_desc.arg) ->
           pexp_fun ~loc arg.arg_label None
             (ppat_var ~loc arg.arg_name)
             prev)
     in
-    [%stri let [%p ppat_var ~loc m.name] = [%e body]]
+    [%stri
+      let [%p ppat_var ~loc m.name] =
+        let query_def =
+          Remote.define_query
+            ~output_of_yojson:[%e output_conv `of_yojson ~loc m]
+            ~yojson_of_input:[%e input_conv `yojson_of ~loc m]
+            ~path:[%e string_constf ~loc "/%s" m.name.txt]
+        in
+        [%e body]]
 
   let expand ~ctxt mod_type_decl =
     process_signature ~ctxt mod_type_decl @@ fun _mod_type methods ->
@@ -239,47 +239,55 @@ end
 module Remote_native = struct
   open Ast_builder.Default
 
+  let build_query ~loc ~mod_name (m : Method_desc.t) =
+    let make_query =
+      (* Remote.make_query query_def {Input.arg1=...; arg2=...; ...} *)
+      let body =
+        let input =
+          pexp_record ~loc
+            (List.map m.args ~f:(fun (a : Method_desc.arg) ->
+                 ( longidentf ~loc "Input_%s.%s" m.name.txt a.arg_name.txt,
+                   pexp_ident ~loc (longidentf ~loc "%s" a.arg_name.txt) )))
+            None
+        in
+        [%expr Remote.make_query query_def [%e input]]
+      in
+      (* fun arg1 arg2 -> ... *)
+      List.fold_left (List.rev m.args) ~init:body
+        ~f:(fun prev (arg : Method_desc.arg) ->
+          pexp_fun ~loc arg.arg_label None
+            (ppat_var ~loc arg.arg_name)
+            prev)
+    in
+    (* fun input -> f input.arg1 input.arg2 ... *)
+    let call_into_impl =
+      let app =
+        pexp_apply ~loc
+          (pexp_ident ~loc
+             (longidentf ~loc "%s.%s" mod_name.txt m.name.txt))
+          (List.map m.args
+             ~f:(fun { Method_desc.arg_label; arg_name; arg_typ = _ } ->
+               let arg =
+                 pexp_field ~loc [%expr input]
+                   (longidentf ~loc "Input_%s.%s" m.name.txt arg_name.txt)
+               in
+               arg_label, arg))
+      in
+      [%expr fun input -> [%e app]]
+    in
+    [%stri
+      let [%p ppat_var ~loc m.name] =
+        let query_def =
+          Remote.define_query
+            ~yojson_of_output:[%e output_conv `yojson_of ~loc m]
+            ~yojson_of_input:[%e input_conv `yojson_of ~loc m]
+            ~path:[%e string_constf ~loc "/%s" m.name.txt]
+            [%e call_into_impl]
+        in
+        [%e make_query]]
+
   let build_functor ~ctxt ~mod_name (m : Method_desc.t) =
     let loc = Expansion_context.Deriver.derived_item_loc ctxt in
-    let make_req =
-      let call_into_impl =
-        let f =
-          pexp_ident ~loc
-            (longidentf ~loc "%s.%s" mod_name.txt m.name.txt)
-        in
-        pexp_apply ~loc f
-          (List.map m.args ~f:(fun (arg : Method_desc.arg) ->
-               ( arg.arg_label,
-                 pexp_ident ~loc (longidentf ~loc "%s" arg.arg_name.txt) )))
-      in
-      let input =
-        pexp_record ~loc
-          (List.map m.args ~f:(fun (a : Method_desc.arg) ->
-               ( longidentf ~loc "Input_%s.%s" m.name.txt a.arg_name.txt,
-                 pexp_ident ~loc (longidentf ~loc "%s" a.arg_name.txt) )))
-          None
-      in
-      let body =
-        [%expr
-          Remote.make
-            ~yojson_of_output:[%e output_conv `yojson_of ~loc m]
-            ~path:[%e string_constf ~loc "/%s" m.name.txt]
-            ~input:([%e input_conv ~loc `yojson_of m] [%e input])
-            ~key
-            (fun () -> [%e call_into_impl])]
-      in
-      let body =
-        List.fold_left (List.rev m.args) ~init:body
-          ~f:(fun prev (arg : Method_desc.arg) ->
-            pexp_fun ~loc arg.arg_label None
-              (ppat_var ~loc arg.arg_name)
-              prev)
-      in
-      [%stri
-        let [%p ppat_var ~loc m.name] =
-          let key = Remote.make_key () in
-          [%e body]]
-    in
     let body_req =
       let call_into_impl =
         let f =
@@ -323,7 +331,7 @@ module Remote_native = struct
     [%str
       [%%i build_input_mod ~ctxt ~yojson_of:true ~of_yojson:true m]
       [%%i build_output_mod `yojson_of ~ctxt m]
-      [%%i make_req]
+      [%%i build_query ~loc ~mod_name m]
 
       let [%p
             ppat_var ~loc
