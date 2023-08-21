@@ -1,4 +1,5 @@
 open! Import
+open Lwt.Infix
 
 type model = json
 
@@ -90,7 +91,10 @@ let rec to_model ctx idx el =
         | Lwt.Sleep ->
             let idx = use_idx ctx in
             ctx.pending <- ctx.pending + 1;
-            Lwt.async (fun () -> Lwt.map (to_model ctx idx) tree);
+            Lwt.async (fun () ->
+                tree >|= fun tree ->
+                ctx.pending <- ctx.pending - 1;
+                to_model ctx idx tree);
             `String (sprintf "$L%i" idx))
     | El_client_thunk { import_module; import_name; props; thunk = _ } ->
         let idx = use_idx ctx in
