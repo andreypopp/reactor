@@ -44,14 +44,26 @@ module Cache : sig
 end = struct
   type t = string Promise.t Js.Dict.t Js.Dict.t
 
-  external t : t = "window.__Remote_cache"
+  external window : t Js.Dict.t = "window"
+  external t : t Js.Undefined.t = "window.__Remote_cache"
 
   let find req : string Promise.t option =
-    match Js.Dict.get t req.path with
+    match Js.Undefined.toOption t with
     | None -> None
-    | Some t' -> Js.Dict.get t' (Lazy.force req.input)
+    | Some t -> (
+        match Js.Dict.get t req.path with
+        | None -> None
+        | Some t' -> Js.Dict.get t' (Lazy.force req.input))
 
   let set req json =
+    let t =
+      match Js.Undefined.toOption t with
+      | None ->
+          let t = Js.Dict.empty () in
+          Js.Dict.set window "__Remote_cache" t;
+          t
+      | Some t -> t
+    in
     let t' =
       match Js.Dict.get t req.path with
       | None ->
@@ -63,10 +75,14 @@ end = struct
     Js.Dict.set t' (Lazy.force req.input) json
 
   let invalidate req =
-    match Js.Dict.get t req.path with
+    match Js.Undefined.toOption t with
     | None -> ()
-    | Some t ->
-        Js.Dict.unsafeDeleteKey (Obj.magic t) (Lazy.force req.input) [@bs]
+    | Some t -> (
+        match Js.Dict.get t req.path with
+        | None -> ()
+        | Some t ->
+            Js.Dict.unsafeDeleteKey (Obj.magic t) (Lazy.force req.input)
+            [@bs])
 end
 
 let run_query (Query req) =
