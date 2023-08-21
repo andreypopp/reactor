@@ -78,6 +78,16 @@ module UI = struct
               |];
           |];
       |]
+
+  let about _req =
+    page ~title:"About"
+      [|
+        jsx.div ~className:"flex flex-column g2 measure-wide"
+          [|
+            Example_native.Example.About.make { num = 1 };
+            jsx.p [| text "Just an about page" |];
+          |];
+      |]
 end
 
 let () =
@@ -88,12 +98,14 @@ let () =
   in
   let links = [ "/static/bundle.css" ] in
   let scripts = [ "/static/bundle.js" ] in
+  let render ui = React_dream.render ~links ~scripts ui in
   Dream.run
   @@ Dream.logger
   @@ Dream.router
        ([
           Dream.get "/static/**" (Dream.static static);
-          Dream.get "/" (React_dream.render ~links ~scripts UI.app);
+          Dream.get "/" (render UI.app);
+          Dream.get "/about" (render UI.about);
           Dream.get "/no-ssr"
             (React_dream.render ~enable_ssr:false ~links ~scripts UI.app);
         ]

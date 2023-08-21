@@ -2,6 +2,13 @@
 
 open React
 
+let%component link ~href label =
+  let%browser_only onClick ev =
+    prevent_default ev;
+    navigate href
+  in
+  jsx.a ~href ~onClick [| text label |]
+
 let%component button ~onPress:onClick label =
   jsx.button ~className:"pv1 ph2 br1 bg-light-gray bw1 b--gray" ~onClick
     [| text label |]
@@ -13,7 +20,7 @@ let%component hello ~name =
       start_transition @@ fun () -> setq (fun _ -> Api.hello ~name))
     [| name |];
   let msg = use (Remote.run_query q) in
-  let%browser_only onClick () =
+  let%browser_only onClick _ev =
     ignore
       (Promise.(
          let* () =
@@ -29,9 +36,9 @@ let%component hello ~name =
 
 let%component counter ~init ~title =
   let v, setv = use_state (Fun.const init) in
-  let succ () = start_transition @@ fun () -> setv Int.succ in
-  let pred () = start_transition @@ fun () -> setv Int.pred in
-  let reset () = start_transition @@ fun () -> setv (Fun.const 0) in
+  let succ _ev = start_transition @@ fun () -> setv Int.succ in
+  let pred _ev = start_transition @@ fun () -> setv Int.pred in
+  let reset _ev = start_transition @@ fun () -> setv (Fun.const 0) in
   jsx.div ~className:"pa4"
     [|
       jsx.h2 [| text title |];
@@ -47,6 +54,19 @@ let%component wait_and_print ~promise ?promise2 msg =
   let () = Option.map use promise2 |> Option.value ~default:() in
   jsx.li [| text msg |]
 
+let%component nav () =
+  jsx.ul
+    [|
+      jsx.li [| link ~href:"/" "Main page" |];
+      jsx.li [| link ~href:"/about" "About" |];
+    |]
+
+module%export_component About = struct
+  type props = { num : int }
+
+  let make _props = jsx.div [| nav () |]
+end
+
 module%export_component App = struct
   type props = { title : string; children : element }
 
@@ -59,6 +79,7 @@ module%export_component App = struct
     in
     jsx.div
       [|
+        nav ();
         suspense [| hello ~name:"world"; hello ~name:"something else" |];
         jsx.h2 [| textf "Hello, %s!" props.title |];
         suspense [| counter ~init:42 ~title:"Counter" |];

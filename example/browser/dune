@@ -43,6 +43,7 @@
 (rule
  (target ./bundle.js)
  (deps
+  %{lib-private:react_browser:runtime.js}
   (alias browser_js))
  (action
   (run
