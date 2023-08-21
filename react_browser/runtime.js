@@ -18,27 +18,45 @@ function Page({loading}) {
   return React.use(loading);
 }
 
-async function main() {
-  if (window.React_of_caml_ssr) {
-    let loading = ReactServerDOM.createFromReadableStream(
-      window.React_of_caml_ssr.stream,
-      { callServer, }
-    );
-    let element = React.createElement(Page, {loading})
-    React.startTransition(() => {
-      ReactDOM.hydrateRoot(document, element)
-    })
-  } else {
-    let loading = ReactServerDOM.createFromFetch(
-      fetch(window.location.pathname, { 
+let loading = null;
+let root = null;
+
+function loadPage(path) {
+  React.startTransition(() => {
+    loading = ReactServerDOM.createFromFetch(
+      fetch(path, { 
         method: "GET", 
         headers: {Accept: 'application/react.component'} 
       }),
       { callServer, }
     );
-    let root = ReactDOM.createRoot(document);
+    if (root === null)
+      root = ReactDOM.createRoot(document);
     root.render(React.createElement(Page, {loading}));
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, null, path);
+    }
+  });
+}
+
+window.React_of_caml_navigate = loadPage;
+
+function main() {
+  if (window.React_of_caml_ssr) {
+    loading = ReactServerDOM.createFromReadableStream(
+      window.React_of_caml_ssr.stream,
+      { callServer, }
+    );
+    let element = React.createElement(Page, {loading})
+    React.startTransition(() => {
+      root = ReactDOM.hydrateRoot(document, element);
+    })
+  } else {
+    loadPage(window.location.pathname);
   }
+  window.addEventListener("popstate", (event) => {
+    loadPage(window.location.pathname);
+  });
 }
 
 main();

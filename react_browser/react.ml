@@ -27,12 +27,16 @@ type html_props
 let html_props_null : html_props = Obj.magic Js.null
 
 type unsafeHTML = { __html : string }
+type mouse_event
+
+external prevent_default : mouse_event -> unit = "preventDefault" [@@mel.send]
 
 external html_props :
   ?key:string ->
   ?className:string ->
+  ?href:string ->
   ?children:children ->
-  ?onClick:(unit -> unit) ->
+  ?onClick:(mouse_event -> unit) ->
   ?dangerouslySetInnerHTML:unsafeHTML ->
   unit ->
   html_props = ""
@@ -62,3 +66,5 @@ external use : 'a promise -> 'a = "use" [@@mel.module "react"]
 
 external render_to_string : element -> string = "renderToString"
 [@@mel.module "react-dom/server"]
+
+external navigate : string -> unit = "React_of_caml_navigate"

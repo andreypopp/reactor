@@ -14,6 +14,7 @@ module Html_prop = struct
   let s v : value = `String v
   let b v : value = `Bool v
   let className v = "className", s v
+  let href v = "href", s v
 end
 
 type element =

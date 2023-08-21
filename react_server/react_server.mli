@@ -42,6 +42,7 @@ module React : sig
     type prop
 
     val className : string -> prop
+    val href : string -> prop
   end
 
   type unsafe_html = { __html : string }
