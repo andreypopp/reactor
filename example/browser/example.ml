@@ -7,8 +7,24 @@ let%component button ~onPress:onClick label =
     [| text label |]
 
 let%component hello ~name =
-  let msg = use (Remote.run (Api.hello ~name)) in
-  jsx.div [| textf "Hello, %s!" msg |]
+  let q, setq = use_state (fun () -> Api.hello ~name) in
+  use_effect'
+    (fun () ->
+      start_transition @@ fun () -> setq (fun _ -> Api.hello ~name))
+    [| name |];
+  let msg = use (Remote.run_query q) in
+  let%browser_only onClick () =
+    ignore
+      (Promise.(
+         let* () =
+           Remote.run_mutation @@ Api.update_greeting ~greeting:"HELLLO"
+         in
+         Remote.invalidate (Api.hello ~name);
+         (start_transition @@ fun () -> setq (fun _ -> Api.hello ~name));
+         return ())
+        : unit Promise.t)
+  in
+  jsx.div ~onClick [| text msg |]
 
 let%component counter ~init ~title =
   let v, setv = use_state (Fun.const init) in

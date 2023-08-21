@@ -13,16 +13,29 @@ type 'output query =
     }
       -> 'output query
 
-and 'a query_key = (string * string, 'a Promise.t) Hashtbl.t Hmap.key
-and ('input, 'output) query_def = 'input -> 'output query
+and 'output mutation =
+  | Mutation : {
+      f : 'input -> 'output Lwt.t;
+      input : 'input;
+    }
+      -> 'output mutation
 
-let define_query ~yojson_of_input ~yojson_of_output ~path
-    (f : 'a -> 'b Lwt.t) : ('a, 'b) query_def =
+and 'a query_key = (string * string, 'a Promise.t) Hashtbl.t Hmap.key
+
+type ('input, 'output) query_endpoint = 'input -> 'output query
+type ('input, 'output) mutation_endpoint = 'input -> 'output mutation
+
+let define_query ~yojson_of_input ~yojson_of_output ~path f =
   let query_key = Hmap.Key.create () in
   fun input ->
     Query { f; yojson_of_output; yojson_of_input; path; input; query_key }
 
-let make_query def input = def input
+let define_mutation ~yojson_of_input:_ ~yojson_of_output:_ ~path:_ f input
+    =
+  Mutation { f; input }
+
+let make_query endpoint input = endpoint input
+let make_mutation endpoint input = endpoint input
 
 module Runner = struct
   type ctx = { mutable cache : Hmap.t; mutable running : running list }
@@ -47,7 +60,7 @@ module Runner = struct
     v, running
 end
 
-let run
+let run_query
     (Query
       { f; path; input; yojson_of_input; yojson_of_output; query_key }) =
   match !Runner.ctx with
@@ -76,3 +89,5 @@ let run
               { path; input = input_json; yojson_of_output; promise }
             :: ctx.running;
           promise)
+
+let run_mutation (Mutation { f; input }) = f input

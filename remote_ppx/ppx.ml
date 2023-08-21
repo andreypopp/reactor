@@ -48,8 +48,25 @@ let as_attr =
         ^:: nil))
     (fun x -> x)
 
+let mutation_attr =
+  Attribute.declare "remote.mutation" Attribute.Context.value_description
+    Ast_pattern.(pstr nil)
+    ()
+
+let query_attr =
+  Attribute.declare "remote.query" Attribute.Context.value_description
+    Ast_pattern.(pstr nil)
+    ()
+
 module Method_desc = struct
-  type t = { name : label loc; args : arg list; typ : core_type }
+  type t = {
+    name : label loc;
+    args : arg list;
+    typ : core_type;
+    kind : kind;
+  }
+
+  and kind = Kind_query | Kind_mutation
 
   and arg = {
     arg_label : arg_label;
@@ -84,9 +101,25 @@ module Method_desc = struct
               "remote: the output type of an RPC method should be \
                Promise.t" )
     in
-    match collect_args 0 [] desc.pval_type with
+    let kind =
+      match
+        Attribute.get query_attr desc, Attribute.get mutation_attr desc
+      with
+      | None, None ->
+          Error (desc.pval_loc, "specify either [@@mutation] or [@@query]")
+      | Some (), Some () ->
+          Error
+            ( desc.pval_loc,
+              "canont specify both [@@mutation] and [@@query]" )
+      | Some (), None -> Ok Kind_query
+      | None, Some () -> Ok Kind_mutation
+    in
+    match kind with
     | Error err -> Error err
-    | Ok (args, typ) -> Ok { name = desc.pval_name; args; typ }
+    | Ok kind -> (
+        match collect_args 0 [] desc.pval_type with
+        | Error err -> Error err
+        | Ok (args, typ) -> Ok { name = desc.pval_name; args; typ; kind })
 end
 
 let build_input_mod ~ctxt ?yojson_of ?of_yojson (m : Method_desc.t) =
@@ -199,6 +232,13 @@ module Remote_browser = struct
   let build_remote_call ~ctxt (m : Method_desc.t) =
     let loc = Expansion_context.Deriver.derived_item_loc ctxt in
     let rev_args = List.rev m.args in
+    let define, make =
+      match m.kind with
+      | Kind_query ->
+          [%expr Remote.define_query], [%expr Remote.make_query]
+      | Kind_mutation ->
+          [%expr Remote.define_mutation], [%expr Remote.make_mutation]
+    in
     let input =
       pexp_record ~loc
         (List.map m.args ~f:(fun (a : Method_desc.arg) ->
@@ -208,7 +248,7 @@ module Remote_browser = struct
     in
     let body =
       List.fold_left rev_args
-        ~init:[%expr Remote.make_query query_def [%e input]]
+        ~init:[%expr [%e make] query_def [%e input]]
         ~f:(fun prev (arg : Method_desc.arg) ->
           pexp_fun ~loc arg.arg_label None
             (ppat_var ~loc arg.arg_name)
@@ -217,7 +257,7 @@ module Remote_browser = struct
     [%stri
       let [%p ppat_var ~loc m.name] =
         let query_def =
-          Remote.define_query
+          [%e define]
             ~output_of_yojson:[%e output_conv `of_yojson ~loc m]
             ~yojson_of_input:[%e input_conv `yojson_of ~loc m]
             ~path:[%e string_constf ~loc "/%s" m.name.txt]
@@ -240,6 +280,13 @@ module Remote_native = struct
   open Ast_builder.Default
 
   let build_query ~loc ~mod_name (m : Method_desc.t) =
+    let define, make =
+      match m.kind with
+      | Kind_query ->
+          [%expr Remote.define_query], [%expr Remote.make_query]
+      | Kind_mutation ->
+          [%expr Remote.define_mutation], [%expr Remote.make_mutation]
+    in
     let make_query =
       (* Remote.make_query query_def {Input.arg1=...; arg2=...; ...} *)
       let body =
@@ -250,7 +297,7 @@ module Remote_native = struct
                    pexp_ident ~loc (longidentf ~loc "%s" a.arg_name.txt) )))
             None
         in
-        [%expr Remote.make_query query_def [%e input]]
+        [%expr [%e make] query_def [%e input]]
       in
       (* fun arg1 arg2 -> ... *)
       List.fold_left (List.rev m.args) ~init:body
@@ -278,7 +325,7 @@ module Remote_native = struct
     [%stri
       let [%p ppat_var ~loc m.name] =
         let query_def =
-          Remote.define_query
+          [%e define]
             ~yojson_of_output:[%e output_conv `yojson_of ~loc m]
             ~yojson_of_input:[%e input_conv `yojson_of ~loc m]
             ~path:[%e string_constf ~loc "/%s" m.name.txt]
@@ -300,33 +347,50 @@ module Remote_native = struct
                  pexp_field ~loc [%expr input]
                    (longidentf ~loc "%s" arg.arg_name.txt) )))
       in
+      let json =
+        match m.kind with
+        | Kind_query ->
+            [%expr
+              match Dream.query req "input" with
+              | Some data -> Ok (Lwt.return data)
+              | None -> Error "missing input= param"]
+        | Kind_mutation -> [%expr Ok (Dream.body req)]
+      in
       [%expr
         let open Lwt.Infix in
-        Dream.body req >>= fun body ->
-        match Yojson.Safe.from_string body with
-        | exception Yojson.Json_error _ ->
-            let err = `Assoc [ "error", `String "invalid JSON" ] in
+        match [%e json] with
+        | Error msg ->
+            let err = `Assoc [ "error", `String msg ] in
             Dream.respond ~status:`Bad_Request (Yojson.Safe.to_string err)
-        | json -> (
-            match [%e input_conv `of_yojson ~loc m] json with
-            | exception
-                Ppx_yojson_conv_lib.Yojson_conv.Of_yojson_error (exn, json)
-              ->
-                let err =
-                  `Assoc
-                    [
-                      "error", `String "invalid JSON payload";
-                      "json", json;
-                    ]
-                in
-                print_endline (Printexc.to_string exn);
+        | Ok data -> (
+            data >>= fun data ->
+            match Yojson.Safe.from_string data with
+            | exception Yojson.Json_error _ ->
+                let err = `Assoc [ "error", `String "invalid JSON" ] in
                 Dream.respond ~status:`Bad_Request
                   (Yojson.Safe.to_string err)
-            | input ->
-                [%e call_into_impl] >>= fun output ->
-                let json = [%e output_conv `yojson_of ~loc m] output in
-                let data = Yojson.Safe.to_string json in
-                Dream.respond ~status:`OK data)]
+            | json -> (
+                match [%e input_conv `of_yojson ~loc m] json with
+                | exception
+                    Ppx_yojson_conv_lib.Yojson_conv.Of_yojson_error
+                      (exn, json) ->
+                    let err =
+                      `Assoc
+                        [
+                          "error", `String "invalid JSON payload";
+                          "json", json;
+                        ]
+                    in
+                    print_endline (Printexc.to_string exn);
+                    Dream.respond ~status:`Bad_Request
+                      (Yojson.Safe.to_string err)
+                | input ->
+                    [%e call_into_impl] >>= fun output ->
+                    let json =
+                      [%e output_conv `yojson_of ~loc m] output
+                    in
+                    let data = Yojson.Safe.to_string json in
+                    Dream.respond ~status:`OK data))]
     in
     [%str
       [%%i build_input_mod ~ctxt ~yojson_of:true ~of_yojson:true m]
@@ -354,12 +418,17 @@ module Remote_native = struct
       List.fold_left (List.rev methods) ~init:[%expr []] ~f:(fun rs m ->
           match m with
           | Ok m ->
+              let register_route =
+                match m.Method_desc.kind with
+                | Kind_query -> [%expr Dream.get]
+                | Kind_mutation -> [%expr Dream.post]
+              in
               let r =
                 let path =
                   string_constf ~loc "%s" m.Method_desc.name.txt
                 in
                 [%expr
-                  Dream.post [%e path]
+                  [%e register_route] [%e path]
                     [%e
                       pexp_ident ~loc
                         (longidentf ~loc "%s_req" m.name.txt)]]

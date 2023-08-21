@@ -1,18 +1,16 @@
 open Fetch
+open Printf
 open Promise
 
 type json = Yojson.Safe.t
 
-type 'b query =
-  | Query : {
-      query_key : query_key;
-      output_of_yojson : json -> 'b;
-    }
-      -> 'b query
-
+type 'a req = { query_key : query_key; output_of_yojson : json -> 'a }
 and query_key = { path : string; input : string Lazy.t }
 
-type ('a, 'b) query_def = 'a -> 'b query
+type 'b query = Query : 'b req -> 'b query
+type 'b mutation = Mutation : 'b req -> 'b mutation
+type ('a, 'b) query_endpoint = 'a -> 'b query
+type ('a, 'b) mutation_endpoint = 'a -> 'b mutation
 
 let define_query ~yojson_of_input ~output_of_yojson ~path input =
   Query
@@ -25,7 +23,19 @@ let define_query ~yojson_of_input ~output_of_yojson ~path input =
       output_of_yojson;
     }
 
-let make_query def input = def input
+let define_mutation ~yojson_of_input ~output_of_yojson ~path input =
+  Mutation
+    {
+      query_key =
+        {
+          path;
+          input = lazy (Yojson.Safe.to_string (yojson_of_input input));
+        };
+      output_of_yojson;
+    }
+
+let make_query endpoint input = endpoint input
+let make_mutation = make_query
 
 module Cache : sig
   val find : query_key -> string Promise.t option
@@ -59,7 +69,7 @@ end = struct
         Js.Dict.unsafeDeleteKey (Obj.magic t) (Lazy.force req.input) [@bs]
 end
 
-let run (Query req) =
+let run_query (Query req) =
   match Cache.find req.query_key with
   | Some promise ->
       let* data = promise in
@@ -67,17 +77,36 @@ let run (Query req) =
       return (req.output_of_yojson json)
   | None ->
       let promise =
+        let path =
+          sprintf "%s?input=%s" req.query_key.path
+            (Js.Global.encodeURIComponent
+               (Lazy.force req.query_key.input))
+        in
         let* response =
           Fetch.fetchWithRequest
-          @@ Request.makeWithInit req.query_key.path
-          @@ RequestInit.make ~method_:Post
-               ~body:(BodyInit.make (Lazy.force req.query_key.input))
-               ()
+          @@ Request.makeWithInit path
+          @@ RequestInit.make ~method_:Get ()
         in
-        Response.text response
+        match Fetch.Response.ok response with
+        | true -> Response.text response
+        | false -> failwith "got non 200"
       in
       Cache.set req.query_key promise;
       let* data = promise in
       return (req.output_of_yojson (Yojson.Safe.from_string data))
 
 let invalidate (Query query) = Cache.invalidate query.query_key
+
+let run_mutation (Mutation req) =
+  let promise =
+    let* response =
+      Fetch.fetchWithRequest
+      @@ Request.makeWithInit req.query_key.path
+      @@ RequestInit.make ~method_:Post
+           ~body:(BodyInit.make (Lazy.force req.query_key.input))
+           ()
+    in
+    Response.text response
+  in
+  let* data = promise in
+  return (req.output_of_yojson (Yojson.Safe.from_string data))

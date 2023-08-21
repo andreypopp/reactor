@@ -1,22 +1,28 @@
 type json = Yojson.Safe.t
-
-type ('a, 'b) query_def
-(** Query definition. *)
+type ('a, 'b) query_endpoint
+type ('a, 'b) mutation_endpoint
 
 val define_query :
   yojson_of_input:('a -> json) ->
   yojson_of_output:('b -> json) ->
   path:string ->
   ('a -> 'b Promise.t) ->
-  ('a, 'b) query_def
+  ('a, 'b) query_endpoint
+
+val define_mutation :
+  yojson_of_input:('a -> json) ->
+  yojson_of_output:('b -> json) ->
+  path:string ->
+  ('a -> 'b Promise.t) ->
+  ('a, 'b) mutation_endpoint
 
 type 'b query
-(** Query. *)
+type 'b mutation
 
-val make_query : ('a, 'b) query_def -> 'a -> 'b query
-
-val run : 'b query -> 'b Promise.t
-(** Run query and wait till result is available. *)
+val make_query : ('a, 'b) query_endpoint -> 'a -> 'b query
+val make_mutation : ('a, 'b) mutation_endpoint -> 'a -> 'b mutation
+val run_query : 'b query -> 'b Promise.t
+val run_mutation : 'b mutation -> 'b Promise.t
 
 module Runner : sig
   type ctx
