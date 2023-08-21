@@ -305,7 +305,7 @@ let render el =
   | None ->
       let html =
         Html.splice
-          [ html_shell; Emit_model.html_start; Emit_model.html_end ]
+          [ Emit_model.html_start; html_shell; Emit_model.html_end ]
       in
       Html_rendering_done { html }
   | Some async ->
