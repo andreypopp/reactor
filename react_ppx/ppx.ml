@@ -184,7 +184,8 @@ module Ext_export_component = struct
       attr_payload = PStr [ [%stri yojson_of] ];
     }
 
-  let expand_native ~ctxt items =
+  let expand_native ~ctxt name items =
+    let name = Option.get name in
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
     let props = ref None in
     let items =
@@ -236,21 +237,32 @@ module Ext_export_component = struct
           [%expr ([%e name], [%e value]) :: [%e xs]])
         [%expr []] props
     in
+    let component_name =
+      pexp_constant ~loc (Pconst_string (name, loc, None))
+    in
     [ [%stri open Ppx_yojson_conv_lib.Yojson_conv.Primitives] ]
     @ items
     @ [
         [%stri
           let make props =
-            React_server.React.client_thunk "App" [%e props_fields]
+            React_server.React.client_thunk [%e component_name]
+              [%e props_fields]
               (React_server.React.thunk (fun () -> make props))];
       ]
 
-  let expand_js ~ctxt items =
+  let expand_js ~ctxt name items =
+    let loc = Expansion_context.Extension.extension_point_loc ctxt in
+    let name = Option.get name in
+    let component_name =
+      pexp_constant ~loc (Pconst_string (name, loc, None))
+    in
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
     items
     @ [%str
         let make props = React.unsafe_create_element make props
-        let () = React_browser.Component_map.register "App" make]
+
+        let () =
+          React_browser.Component_map.register [%e component_name] make]
 
   let expand ~ctxt name expr =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
@@ -258,8 +270,8 @@ module Ext_export_component = struct
     | Pmod_structure items ->
         let items =
           match !mode with
-          | Target_js -> expand_js ~ctxt items
-          | Target_native -> expand_native ~ctxt items
+          | Target_js -> expand_js ~ctxt name items
+          | Target_native -> expand_native ~ctxt name items
         in
         pstr_module ~loc
           (module_binding ~loc ~name:{ loc; txt = name }
