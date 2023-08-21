@@ -17,7 +17,8 @@ let%component hello ~name =
     ignore
       (Promise.(
          let* () =
-           Remote.run_mutation @@ Api.update_greeting ~greeting:"HELLLO"
+           Remote.run_mutation
+           @@ Api.update_greeting ~greeting:Api.Greeting_informal
          in
          Remote.invalidate (Api.hello ~name);
          (start_transition @@ fun () -> setq (fun _ -> Api.hello ~name));

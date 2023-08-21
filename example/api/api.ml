@@ -1,16 +1,21 @@
 open Printf
 open Lwt.Infix
+open Api_spec
 
-let greeting = ref "Hello"
+let current_greeting = ref "Hello"
 
-include Api_spec.Hello_make (struct
+include Hello_make (struct
   let hello ~name =
     Lwt.pause () >>= fun () ->
-    Lwt.return (sprintf "%s, %s" !greeting (String.capitalize_ascii name))
+    Lwt.return
+      (sprintf "%s, %s" !current_greeting (String.capitalize_ascii name))
 
-  let update_greeting ~greeting:v =
-    greeting := v;
+  let update_greeting ~greeting =
+    (current_greeting :=
+       match greeting with
+       | Greeting_formal -> "Hello"
+       | Greeting_informal -> "HIIII");
     Lwt.return ()
 
-  let world ~lab ?opt name = Lwt.return { Api_spec.name; lab; opt }
+  let world ~lab ?opt name = Lwt.return { name; lab; opt }
 end)
