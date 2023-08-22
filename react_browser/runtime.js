@@ -19,14 +19,20 @@ function Page({loading}) {
 }
 
 let loading = null;
+let loadingController = null;
 let root = null;
 
 function loadPage(path) {
   React.startTransition(() => {
+    if (loadingController != null) {
+      loadingController.abort();
+    }
+    loadingController = new AbortController();
     loading = ReactServerDOM.createFromFetch(
       fetch(path, { 
         method: "GET", 
-        headers: {Accept: 'application/react.component'} 
+        headers: {Accept: 'application/react.component'},
+        signal: loadingController.signal,
       }),
       { callServer, }
     );
