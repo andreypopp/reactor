@@ -177,12 +177,11 @@ end
 module Ext_export_component = struct
   open Ast_builder.Default
 
-  let deriving_yojson ~loc =
-    {
-      attr_loc = loc;
-      attr_name = { txt = "deriving"; loc };
-      attr_payload = PStr [ [%stri yojson_of] ];
-    }
+  let component_id ~ctxt name =
+    let loc = Expansion_context.Extension.extension_point_loc ctxt in
+    let fname = loc.loc_start.pos_fname in
+    let id = sprintf "%s#%s" fname name in
+    pexp_constant ~loc (Pconst_string (id, loc, None))
 
   let expand_native ~ctxt name items =
     let name = Option.get name in
@@ -237,32 +236,26 @@ module Ext_export_component = struct
           [%expr ([%e name], [%e value]) :: [%e xs]])
         [%expr []] props
     in
-    let component_name =
-      pexp_constant ~loc (Pconst_string (name, loc, None))
-    in
     [ [%stri open Ppx_yojson_conv_lib.Yojson_conv.Primitives] ]
     @ items
     @ [
         [%stri
           let make props =
-            React_server.React.client_thunk [%e component_name]
+            React_server.React.client_thunk [%e component_id ~ctxt name]
               [%e props_fields]
               (React_server.React.thunk (fun () -> make props))];
       ]
 
   let expand_js ~ctxt name items =
-    let loc = Expansion_context.Extension.extension_point_loc ctxt in
     let name = Option.get name in
-    let component_name =
-      pexp_constant ~loc (Pconst_string (name, loc, None))
-    in
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
     items
     @ [%str
         let make props = React.unsafe_create_element make props
 
         let () =
-          React_browser.Component_map.register [%e component_name] make]
+          React_browser.Component_map.register
+            [%e component_id ~ctxt name] make]
 
   let expand ~ctxt name expr =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
