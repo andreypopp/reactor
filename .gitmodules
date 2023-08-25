@@ -19,3 +19,6 @@
 [submodule "deps/ocaml-lsp"]
 	path = deps/ocaml-lsp
 	url = https://github.com/ocaml/ocaml-lsp.git
+[submodule "deps/melange-json"]
+	path = deps/melange-json
+	url = https://github.com/melange-community/melange-json.git
