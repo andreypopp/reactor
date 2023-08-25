@@ -180,8 +180,7 @@ module Ext_export_component = struct
   let component_id ~ctxt name =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
     let fname = loc.loc_start.pos_fname in
-    let id = sprintf "%s#%s" fname name in
-    pexp_constant ~loc (Pconst_string (id, loc, None))
+    estring ~loc (sprintf "%s#%s" fname name)
 
   let expand_native ~ctxt name items =
     let name = Option.get name in
@@ -220,9 +219,7 @@ module Ext_export_component = struct
         (fun xs { pld_name; pld_type; pld_loc; _ } ->
           let lab = longident pld_name in
           let prop = pexp_field ~loc:pld_loc [%expr props] lab in
-          let name =
-            pexp_constant ~loc (Pconst_string (pld_name.txt, loc, None))
-          in
+          let name = estring ~loc pld_name.txt in
           let value =
             match pld_type.ptyp_desc with
             | Ptyp_constr ({ txt = ident; loc }, [])
@@ -402,9 +399,7 @@ module Jsx = struct
               ({ pexp_desc = Pexp_field ([%expr jsx], id); _ }, args) -> (
               let id =
                 match id.txt with
-                | Lident lab ->
-                    pexp_constant ~loc:id.loc
-                      (Pconst_string (lab, id.loc, None))
+                | Lident lab -> estring ~loc:id.loc lab
                 | _ ->
                     pexp_errorf ~loc:id.loc "should be a DOM element name"
               in
@@ -454,9 +449,7 @@ module Jsx = struct
               ({ pexp_desc = Pexp_field ([%expr jsx], id); _ }, args) -> (
               let id =
                 match id.txt with
-                | Lident lab ->
-                    pexp_constant ~loc:id.loc
-                      (Pconst_string (lab, id.loc, None))
+                | Lident lab -> estring ~loc:id.loc lab
                 | _ ->
                     pexp_errorf ~loc:id.loc "should be a DOM element name"
               in

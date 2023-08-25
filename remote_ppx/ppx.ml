@@ -29,11 +29,7 @@ let with_deriving ?(yojson_of = false) ?(of_yojson = false)
 let longidentf ~loc fmt =
   ksprintf (fun txt -> { txt = Longident.parse txt; loc }) fmt
 
-let string_constf ~loc fmt =
-  let open Ast_builder.Default in
-  ksprintf
-    (fun msg -> pexp_constant ~loc (Pconst_string (msg, loc, None)))
-    fmt
+let estringf ~loc fmt = ksprintf (Ast_builder.Default.estring ~loc) fmt
 
 let mod_decl_of_expr ~loc ~name ~expr =
   let open Ast_builder.Default in
@@ -214,7 +210,7 @@ let process_signature ~ctxt mod_type_decl f =
                 match Method_desc.of_value_description value_desc with
                 | Ok m -> Ok m :: methods
                 | Error (loc, msg) ->
-                    let msg = string_constf ~loc "remote: %s" msg in
+                    let msg = estringf ~loc "remote: %s" msg in
                     Error [%stri [%%ocaml.error [%e msg]]] :: methods)
             | _ ->
                 let loc = item.psig_loc in
@@ -260,7 +256,7 @@ module Remote_browser = struct
           [%e define]
             ~output_of_yojson:[%e output_conv `of_yojson ~loc m]
             ~yojson_of_input:[%e input_conv `yojson_of ~loc m]
-            ~path:[%e string_constf ~loc "/%s" m.name.txt]
+            ~path:[%e estringf ~loc "/%s" m.name.txt]
         in
         [%e body]]
 
@@ -328,7 +324,7 @@ module Remote_native = struct
           [%e define]
             ~yojson_of_output:[%e output_conv `yojson_of ~loc m]
             ~yojson_of_input:[%e input_conv `yojson_of ~loc m]
-            ~path:[%e string_constf ~loc "/%s" m.name.txt]
+            ~path:[%e estringf ~loc "/%s" m.name.txt]
             [%e call_into_impl]
         in
         [%e make_query]]
@@ -424,9 +420,7 @@ module Remote_native = struct
                 | Kind_mutation -> [%expr Dream.post]
               in
               let r =
-                let path =
-                  string_constf ~loc "%s" m.Method_desc.name.txt
-                in
+                let path = estring ~loc m.Method_desc.name.txt in
                 [%expr
                   [%e register_route] [%e path]
                     [%e
