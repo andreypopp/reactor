@@ -32,10 +32,14 @@ let ident label =
   pexp_ident ~loc:label.loc (longident label)
 
 module Let_component = struct
-  type t = {
-    name : label loc;
-    props : (arg_label * expression option * pattern * label loc) list;
-    body : expression;
+  type t = { name : label loc; props : prop list; body : expression }
+
+  and prop = {
+    arg_label : arg_label;
+    expr : expression option;
+    pat : pattern;
+    typ : core_type option;
+    label : label loc;
   }
 
   let parse ~loc pat expr =
@@ -50,21 +54,38 @@ module Let_component = struct
       let rec collect_props n acc expr =
         match expr.pexp_desc with
         | Pexp_fun
-            ( label,
+            ( ((Labelled arg | Optional arg) as arg_label),
               default,
-              ({ ppat_desc = Ppat_var arg; _ } as pat),
+              pat,
               expr ) ->
-            collect_props (n + 1) ((label, default, pat, arg) :: acc) expr
-        | Pexp_fun
-            (((Labelled arg | Optional arg) as label), default, pat, expr)
-          ->
+            let typ =
+              match pat.ppat_desc with
+              | Ppat_constraint (_, typ) -> Some typ
+              | _ -> None
+            in
             collect_props (n + 1)
-              ((label, default, pat, { txt = arg; loc = pat.ppat_loc })
+              ({
+                 arg_label;
+                 expr = default;
+                 pat;
+                 label = { txt = arg; loc = pat.ppat_loc };
+                 typ;
+               }
               :: acc)
               expr
-        | Pexp_fun ((Nolabel as label), default, pat, expr) ->
-            let arg = { txt = sprintf "prop_%i" n; loc = pat.ppat_loc } in
-            collect_props (n + 1) ((label, default, pat, arg) :: acc) expr
+        | Pexp_fun (arg_label, default, pat, expr) ->
+            let label, typ =
+              match pat.ppat_desc with
+              | Ppat_constraint ({ ppat_desc = Ppat_var label; _ }, typ)
+                ->
+                  label, Some typ
+              | Ppat_var label -> label, None
+              | _ ->
+                  { txt = sprintf "prop_%i" n; loc = pat.ppat_loc }, None
+            in
+            collect_props (n + 1)
+              ({ arg_label; expr = default; pat; label; typ } :: acc)
+              expr
         | Pexp_function _ ->
             raise_errorf ~loc:expr.pexp_loc
               "component arguments can only be simple patterns"
@@ -82,8 +103,13 @@ module Ext_component = struct
     let unpack_expr =
       let args =
         List.rev_map
-          (fun (label, _default, _pat, name) ->
-            label, [%expr props ## [%e ident name]])
+          (fun {
+                 Let_component.arg_label;
+                 expr = _;
+                 pat = _;
+                 typ = _;
+                 label;
+               } -> arg_label, [%expr props ## [%e ident label]])
           component.Let_component.props
       in
       pexp_apply ~loc (ident component.name) args
@@ -91,7 +117,8 @@ module Ext_component = struct
     let pack_expr =
       let fields =
         List.rev_map
-          (fun (_, _, _, name) -> longident name, ident name)
+          (fun prop ->
+            longident prop.Let_component.label, ident prop.label)
           component.props
       in
       let props = pexp_record ~loc fields None in
@@ -100,8 +127,13 @@ module Ext_component = struct
           [%expr
             React.unsafe_create_element [%e ident component.name]
               [%mel.obj [%e props]]]
-        ~f:(fun body (label, _default, pat, name) ->
-          pexp_fun ~loc label None (ppat_var ~loc:pat.ppat_loc name) body)
+        ~f:(fun
+            body
+            { Let_component.arg_label; expr = _; pat; typ = _; label }
+          ->
+          pexp_fun ~loc arg_label None
+            (ppat_var ~loc:pat.ppat_loc label)
+            body)
     in
     [%stri
       let [%p pat] =
@@ -114,8 +146,10 @@ module Ext_component = struct
       ListLabels.fold_left component.props
         ~init:
           [%expr [%e ctor] (fun () -> [%e component.Let_component.body])]
-        ~f:(fun body (label, default, pat, _name) ->
-          pexp_fun ~loc label default pat body)
+        ~f:(fun
+            body
+            { Let_component.arg_label; expr; pat; typ = _; label = _ }
+          -> pexp_fun ~loc arg_label expr pat body)
     in
     [%stri let [%p pat] = [%e pack_expr]]
 
@@ -182,96 +216,111 @@ module Ext_export_component = struct
     let fname = loc.loc_start.pos_fname in
     estring ~loc (sprintf "%s#%s" fname name)
 
-  let expand_native ~ctxt name items =
-    let name = Option.get name in
+  let props_to_model ~ctxt (props : Let_component.prop list) =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
-    let props = ref None in
-    let items =
-      List.map
-        (fun stri ->
-          match stri.pstr_desc with
-          | Pstr_type (f, ts) ->
-              let ts =
-                List.map
-                  (function
-                    | {
-                        ptype_name = { txt = "props"; _ };
-                        ptype_kind = Ptype_record fs;
-                        _;
-                      } as t ->
-                        assert (Option.is_none !props);
-                        props := Some fs;
-                        t
-                    | t -> t)
-                  ts
-              in
-              { stri with pstr_desc = Pstr_type (f, ts) }
-          | _ -> stri)
-        items
-    in
-    let props =
-      match !props with
-      | Some props -> props
-      | None -> failwith "no props type found"
-    in
-    let props_fields =
-      List.fold_left
-        (fun xs { pld_name; pld_type; pld_loc; _ } ->
-          let lab = longident pld_name in
-          let prop = pexp_field ~loc:pld_loc [%expr props] lab in
-          let name = estring ~loc pld_name.txt in
-          let value =
-            match pld_type.ptyp_desc with
-            | Ptyp_constr ({ txt = ident; loc }, [])
-              when Longident.name ident = "element" ->
-                [%expr `Element [%e prop]]
-            | _ ->
-                [%expr
-                  ([%yojson_of: [%t pld_type]] [%e prop]
-                    :> [ React_server.json | `Element of React.element ])]
-          in
-          [%expr ([%e name], [%e value]) :: [%e xs]])
-        [%expr []] props
-    in
-    [ [%stri open Ppx_yojson_conv_lib.Yojson_conv.Primitives] ]
-    @ items
-    @ [
-        [%stri
-          let make props =
-            React_server.React.client_thunk [%e component_id ~ctxt name]
-              [%e props_fields]
-              (React_server.React.thunk (fun () -> make props))];
-      ]
+    List.fold_left
+      (fun xs { Let_component.label; typ; _ } ->
+        match typ with
+        | None -> pexp_errorf ~loc:label.loc "missing type annotation"
+        | Some typ ->
+            let prop = pexp_ident ~loc (longident label) in
+            let name = estring ~loc label.txt in
+            let value =
+              match typ.ptyp_desc with
+              | Ptyp_constr ({ txt = ident; loc }, [])
+                when Longident.name ident = "element" ->
+                  [%expr `Element [%e prop]]
+              | _ ->
+                  [%expr
+                    let json = [%yojson_of: [%t typ]] [%e prop] in
+                    let json = Yojson.Safe.to_string json in
+                    `Json json]
+            in
+            [%expr ([%e name], [%e value]) :: [%e xs]])
+      [%expr []] props
 
-  let expand_js ~ctxt name items =
-    let name = Option.get name in
+  let call_from_server ~ctxt (component : Let_component.t) =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
-    items
-    @ [%str
-        let make props = React.unsafe_create_element make props
+    let args =
+      List.rev_map
+        (fun { Let_component.arg_label; typ; label; _ } ->
+          match typ with
+          | None ->
+              let value =
+                pexp_errorf ~loc:label.loc "missing type annotation"
+              in
+              arg_label, value
+          | Some typ ->
+              let name = estring ~loc label.txt in
+              let value =
+                match typ.ptyp_desc with
+                | Ptyp_constr ({ txt = ident; loc }, [])
+                  when Longident.name ident = "element" ->
+                    [%expr
+                      (Obj.magic Js.Dict.unsafeGet props [%e name]
+                        : React.element)]
+                | _ ->
+                    [%expr
+                      let json = Js.Dict.unsafeGet props [%e name] in
+                      let json = Yojson.Safe.from_string json in
+                      [%of_yojson: [%t typ]] json]
+              in
+              arg_label, value)
+        component.props
+    in
+    pexp_apply ~loc (pexp_ident ~loc (longident component.name)) args
+
+  let expand_native ~ctxt (component : Let_component.t) pat _expr =
+    let loc = Expansion_context.Extension.extension_point_loc ctxt in
+    let expr =
+      let body =
+        [%expr
+          React_server.React.client_thunk
+            [%e component_id ~ctxt component.name.txt]
+            (let open Ppx_yojson_conv_lib.Yojson_conv.Primitives in
+             [%e props_to_model ~ctxt component.props])
+            (React_server.React.thunk (fun () -> [%e component.body]))]
+      in
+      ListLabels.fold_left component.props ~init:body
+        ~f:(fun
+            body
+            { Let_component.arg_label; expr; pat; typ = _; label = _ }
+          -> pexp_fun ~loc arg_label expr pat body)
+    in
+    [%stri let [%p pat] = [%e expr]]
+
+  let expand_js ~ctxt (component : Let_component.t) pat expr =
+    let loc = Expansion_context.Extension.extension_point_loc ctxt in
+    let js_component =
+      Ext_component.expand_js ~ctxt ~loc component pat expr
+    in
+    [%stri
+      include struct
+        [%%i js_component]
 
         let () =
+          let open Ppx_yojson_conv_lib.Yojson_conv.Primitives in
           React_browser.Component_map.register
-            [%e component_id ~ctxt name] make]
+            [%e component_id ~ctxt component.name.txt] (fun props ->
+              [%e call_from_server ~ctxt component])
+      end]
 
-  let expand ~ctxt name expr =
+  let expand ~ctxt pat expr =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
-    match expr.pmod_desc with
-    | Pmod_structure items ->
-        let items =
-          match !mode with
-          | Target_js -> expand_js ~ctxt name items
-          | Target_native -> expand_native ~ctxt name items
-        in
-        pstr_module ~loc
-          (module_binding ~loc ~name:{ loc; txt = name }
-             ~expr:{ expr with pmod_desc = Pmod_structure items })
-    | _ -> failwith "not a structure"
+    try
+      let component = Let_component.parse ~loc pat expr in
+      match !mode with
+      | Target_js -> expand_js ~ctxt component pat expr
+      | Target_native -> expand_native ~ctxt component pat expr
+    with Error err -> [%stri let [%p pat] = [%e err]]
 
   let ext =
     let pattern =
       let open Ast_pattern in
-      pstr @@ pstr_module (module_binding ~name:__ ~expr:__) ^:: nil
+      let extractor_in_let =
+        pstr_value drop (value_binding ~pat:__ ~expr:__ ^:: nil)
+      in
+      pstr @@ extractor_in_let ^:: nil
     in
     Context_free.Rule.extension
       (Extension.V3.declare "export_component"

@@ -103,7 +103,7 @@ let rec to_model ctx idx el =
         let props =
           List.map props ~f:(function
             | name, `Element element -> name, to_model' element
-            | name, (#json as json) -> name, (json :> json))
+            | name, `Json json -> name, `String json)
         in
         node ~name:(sprintf "$%i" idx) ~props None
   in

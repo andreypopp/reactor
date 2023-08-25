@@ -266,7 +266,7 @@ let rec server_to_html t = function
             | `Element element ->
                 server_to_html t element >|= fun (_html, model) ->
                 name, model
-            | #json as jsony -> Lwt.return (name, (jsony :> json)))
+            | `Json json -> Lwt.return (name, `String json))
           props
       in
       let html = client_to_html t thunk in

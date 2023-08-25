@@ -40,7 +40,8 @@ and html_children =
   | Html_children of children
   | Html_children_raw of unsafe_html
 
-and client_props = (string * [ json | `Element of element ]) list
+and client_props =
+  (string * [ `Json of string | `Element of element ]) list
 
 let null = El_null
 let text s = El_text s

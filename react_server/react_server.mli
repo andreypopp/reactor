@@ -31,7 +31,8 @@ module React : sig
   (** [async_thunk f props children] works the same as [thunk f props children]
       but is asynchronous. *)
 
-  type client_props = (string * [ json | `Element of element ]) list
+  type client_props =
+    (string * [ `Json of string | `Element of element ]) list
 
   val client_thunk :
     ?import_name:string -> string -> client_props -> element -> element

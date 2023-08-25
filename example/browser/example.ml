@@ -61,47 +61,43 @@ let%component nav () =
       jsx.li [| link ~href:"/about" "About" |];
     |]
 
-module%export_component About = struct
-  type props = { num : int }
+type about_mode = About_light | About_dark [@@deriving yojson]
 
-  let make _props = jsx.div [| nav () |]
-end
+let%export_component about ~(mode : about_mode) ~(num : int) =
+  let%browser_only () =
+    match mode with
+    | About_dark -> Js.log "dark"
+    | About_light -> Js.log "light"
+  in
+  jsx.div [| nav () |]
 
-module%export_component App = struct
-  type props = { title : string; children : element }
-
-  let make props =
-    let promise = Promise.sleep 1.0 in
-    let promise2 = Promise.sleep 2.0 in
-    let promise_inner = Promise.sleep 0.5 in
-    let%browser_only () =
-      use_effect' (fun () -> Js.log "HELLO, I'M READY") [||]
-    in
-    jsx.div
-      [|
-        nav ();
-        suspense [| hello ~name:"world"; hello ~name:"something else" |];
-        jsx.h2 [| textf "Hello, %s!" props.title |];
-        suspense [| counter ~init:42 ~title:"Counter" |];
-        jsx.div ~className:"footer" [| props.children; props.children |];
-        jsx.ul
-          [|
-            suspense
-              [|
-                suspense
-                  [|
-                    wait_and_print ~promise:promise_inner "INNER SLEPT";
-                  |];
-                suspense
-                  [|
-                    wait_and_print ~promise:promise_inner "INNER SLEPT";
-                  |];
-                wait_and_print ~promise ~promise2 "SLEPT";
-                wait_and_print ~promise ~promise2 "SLEPT";
-              |];
-          |];
-      |]
-end
+let%export_component app ~(title : string) (children : element) =
+  let promise = Promise.sleep 1.0 in
+  let promise2 = Promise.sleep 2.0 in
+  let promise_inner = Promise.sleep 0.5 in
+  let%browser_only () =
+    use_effect' (fun () -> Js.log "HELLO, I'M READY") [||]
+  in
+  jsx.div
+    [|
+      nav ();
+      suspense [| hello ~name:"world"; hello ~name:"something else" |];
+      jsx.h2 [| textf "Hello, %s!" title |];
+      suspense [| counter ~init:42 ~title:"Counter" |];
+      jsx.div ~className:"footer" [| children; children |];
+      jsx.ul
+        [|
+          suspense
+            [|
+              suspense
+                [| wait_and_print ~promise:promise_inner "INNER SLEPT" |];
+              suspense
+                [| wait_and_print ~promise:promise_inner "INNER SLEPT" |];
+              wait_and_print ~promise ~promise2 "SLEPT";
+              wait_and_print ~promise ~promise2 "SLEPT";
+            |];
+        |];
+    |]
 
 let%browser_only () =
   Js.log "this will execute only in browser on startup"

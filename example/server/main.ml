@@ -37,12 +37,8 @@ module UI = struct
       [|
         jsx.div ~className:"flex flex-column g2 measure-wide"
           [|
-            Example_native.Example.App.make
-              {
-                title = "Hello from Client Component";
-                children =
-                  text "As you can see, this one is SSR'ed as well.";
-              };
+            Example.app ~title:"Hello from Client Component"
+              (text "As you can see, this one is SSR'ed as well.");
             card ~title:"Initial Data" ~delay:0.
               [|
                 text
@@ -84,7 +80,7 @@ module UI = struct
       [|
         jsx.div ~className:"flex flex-column g2 measure-wide"
           [|
-            Example_native.Example.About.make { num = 1 };
+            Example.about ~num:1 ~mode:About_light;
             jsx.p [| text "Just an about page" |];
           |];
       |]

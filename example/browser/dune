@@ -1,15 +1,17 @@
 (library
  (name example)
+ (wrapped false)
  (libraries react_browser api_browser remote_browser env_browser)
  (flags :standard -open Env)
  (modes melange)
  (preprocess
-  (pps melange.ppx react_ppx)))
+  (pps melange.ppx react_ppx ppx_yojson_conv)))
 
 (subdir
  native
  (library
   (name example_native)
+  (wrapped false)
   (modes native)
   (libraries
    react_server

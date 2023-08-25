@@ -1,7 +1,8 @@
 (library
  (name react_browser)
  (public_name react.browser)
+ (flags :standard -open Env)
  (modes melange)
- (libraries react_api env_browser)
+ (libraries react_api env_browser yojson)
  (preprocess
   (pps melange.ppx)))

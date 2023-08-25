@@ -11,7 +11,7 @@ using the same syntax for both browser and native environments:
   let name =
     let name children = BODY in
     let name props = name props##children in
-    fun children -> React.unsafe_create_element name [%bs.obj { children }]
+    fun children -> React.unsafe_create_element name [%mel.obj { children }]
   
   (* NATIVE *)
   open React_server.React_browser
@@ -35,7 +35,7 @@ Labeled/optional arguments are supported:
     in
     fun ~label ?optional ?with_default ->
       React.unsafe_create_element name
-        [%bs.obj { label; optional; with_default }]
+        [%mel.obj { label; optional; with_default }]
   
   (* NATIVE *)
   open React_server.React_browser
@@ -54,9 +54,11 @@ Labeled/optional arguments support aliasing label to another:
   
   let name =
     let name ~labeled:alias ?optional:opt = BODY in
-    let name props = name ~labeled:props##alias ?optional:props##opt in
-    fun ~labeled:alias ?optional:opt ->
-      React.unsafe_create_element name [%bs.obj { alias; opt }]
+    let name props =
+      name ~labeled:props##labeled ?optional:props##optional
+    in
+    fun ~labeled ?optional ->
+      React.unsafe_create_element name [%mel.obj { labeled; optional }]
   
   (* NATIVE *)
   open React_server.React_browser
@@ -79,7 +81,7 @@ Labeled/optional arguments support destructuring pattern matching:
       name ~labeled:props##labeled ?optional:props##optional
     in
     fun ~labeled ?optional ->
-      React.unsafe_create_element name [%bs.obj { labeled; optional }]
+      React.unsafe_create_element name [%mel.obj { labeled; optional }]
   
   (* NATIVE *)
   open React_server.React_browser
@@ -100,9 +102,30 @@ Unlabeled arguments support destructuring pattern matching:
     let name { name; value } () = BODY in
     let name props = name props##prop_0 props##prop_1 in
     fun prop_0 prop_1 ->
-      React.unsafe_create_element name [%bs.obj { prop_0; prop_1 }]
+      React.unsafe_create_element name [%mel.obj { prop_0; prop_1 }]
   
   (* NATIVE *)
   open React_server.React_browser
   
   let name { name; value } () = React_server.React.thunk (fun () -> BODY)
+
+Patterns with type constraint:
+
+  $ ./ppx_test_runner <<EOF
+  > let%component name ~(label : label_type) (pos : pos_type) =
+  >   BODY
+  > EOF
+  (* BROWSER *)
+  open React_browser
+  
+  let name =
+    let name ~(label : label_type) (pos : pos_type) = BODY in
+    let name props = name ~label:props##label props##pos in
+    fun ~label pos ->
+      React.unsafe_create_element name [%mel.obj { label; pos }]
+  
+  (* NATIVE *)
+  open React_server.React_browser
+  
+  let name ~(label : label_type) (pos : pos_type) =
+    React_server.React.thunk (fun () -> BODY)
