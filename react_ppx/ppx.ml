@@ -40,7 +40,10 @@ module Let_component = struct
     pat : pattern;
     typ : core_type option;
     label : label loc;
+    label_synthetic : bool;
   }
+
+  let unit_longident = Longident.parse "()"
 
   let parse ~loc pat expr =
     let name =
@@ -69,22 +72,39 @@ module Let_component = struct
                  expr = default;
                  pat;
                  label = { txt = arg; loc = pat.ppat_loc };
+                 label_synthetic = false;
                  typ;
                }
               :: acc)
               expr
-        | Pexp_fun (arg_label, default, pat, expr) ->
-            let label, typ =
+        | Pexp_fun ((Nolabel as arg_label), default, pat, expr) ->
+            let gen_label () =
+              { txt = sprintf "prop_%i" n; loc = pat.ppat_loc }
+            in
+            let label, label_synthetic, typ =
               match pat.ppat_desc with
+              | Ppat_construct (ident, None)
+                when Longident.compare ident.txt unit_longident = 0 ->
+                  let typ = [%type: unit] in
+                  gen_label (), true, Some typ
               | Ppat_constraint ({ ppat_desc = Ppat_var label; _ }, typ)
                 ->
-                  label, Some typ
-              | Ppat_var label -> label, None
-              | _ ->
-                  { txt = sprintf "prop_%i" n; loc = pat.ppat_loc }, None
+                  label, false, Some typ
+              | Ppat_constraint ({ ppat_desc = _; _ }, typ) ->
+                  gen_label (), true, Some typ
+              | Ppat_var label -> label, false, None
+              | _ -> gen_label (), true, None
             in
             collect_props (n + 1)
-              ({ arg_label; expr = default; pat; label; typ } :: acc)
+              ({
+                 arg_label;
+                 expr = default;
+                 pat;
+                 label;
+                 label_synthetic;
+                 typ;
+               }
+              :: acc)
               expr
         | Pexp_function _ ->
             raise_errorf ~loc:expr.pexp_loc
@@ -109,6 +129,7 @@ module Ext_component = struct
                  pat = _;
                  typ = _;
                  label;
+                 label_synthetic = _;
                } -> arg_label, [%expr props ## [%e ident label]])
           component.Let_component.props
       in
@@ -129,7 +150,14 @@ module Ext_component = struct
               [%mel.obj [%e props]]]
         ~f:(fun
             body
-            { Let_component.arg_label; expr = _; pat; typ = _; label }
+            {
+              Let_component.arg_label;
+              expr = _;
+              pat;
+              typ = _;
+              label;
+              label_synthetic = _;
+            }
           ->
           pexp_fun ~loc arg_label None
             (ppat_var ~loc:pat.ppat_loc label)
@@ -148,7 +176,14 @@ module Ext_component = struct
           [%expr [%e ctor] (fun () -> [%e component.Let_component.body])]
         ~f:(fun
             body
-            { Let_component.arg_label; expr; pat; typ = _; label = _ }
+            {
+              Let_component.arg_label;
+              expr;
+              pat;
+              typ = _;
+              label = _;
+              label_synthetic = _;
+            }
           -> pexp_fun ~loc arg_label expr pat body)
     in
     [%stri let [%p pat] = [%e pack_expr]]
@@ -286,8 +321,19 @@ module Ext_export_component = struct
       ListLabels.fold_left component.props ~init:body
         ~f:(fun
             body
-            { Let_component.arg_label; expr; pat; typ = _; label = _ }
-          -> pexp_fun ~loc arg_label expr pat body)
+            {
+              Let_component.arg_label;
+              expr;
+              pat;
+              typ = _;
+              label;
+              label_synthetic;
+            }
+          ->
+          let pat =
+            if label_synthetic then ppat_alias ~loc pat label else pat
+          in
+          pexp_fun ~loc arg_label expr pat body)
     in
     [%stri let [%p pat] = [%e expr]]
 
@@ -487,7 +533,11 @@ module Jsx = struct
           | _ -> super#expression expr
     end
 
-  let js_only_prop = function "onClick" -> true | _ -> false
+  let js_only_prop = function
+    | "onClick" -> true
+    | "onChange" -> true
+    | "key" -> true
+    | _ -> false
 
   let jsx_rewrite_native =
     object
@@ -566,9 +616,12 @@ module Jsx = struct
     end
 
   let run xs =
-    match !mode with
-    | Target_js -> jsx_rewrite_js#structure xs
-    | Target_native -> jsx_rewrite_native#structure xs
+    let loc = Location.none in
+    try
+      match !mode with
+      | Target_js -> jsx_rewrite_js#structure xs
+      | Target_native -> jsx_rewrite_native#structure xs
+    with Error err -> [%str [%e err]]
 end
 
 let () =
