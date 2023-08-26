@@ -15,6 +15,9 @@ module Html_prop = struct
   let b v : value = `Bool v
   let className v = "className", s v
   let href v = "href", s v
+  let _type v = "type", s v
+  let checked v = "checked", b v
+  let value v = "value", s v
 end
 
 type element =

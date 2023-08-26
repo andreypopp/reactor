@@ -44,6 +44,9 @@ module React : sig
 
     val className : string -> prop
     val href : string -> prop
+    val value : string -> prop
+    val _type : string -> prop
+    val checked : bool -> prop
   end
 
   type unsafe_html = { __html : string }
