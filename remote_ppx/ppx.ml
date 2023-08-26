@@ -118,34 +118,45 @@ module Method_desc = struct
         | Ok (args, typ) -> Ok { name = desc.pval_name; args; typ; kind })
 end
 
+let longident_unit = Longident.parse "unit"
+
 let build_input_mod ~ctxt ?yojson_of ?of_yojson (m : Method_desc.t) =
   let open Ast_builder.Default in
   let loc = Expansion_context.Deriver.derived_item_loc ctxt in
   let input_type =
     let fields =
       List.map m.args ~f:(fun (arg : Method_desc.arg) ->
-          let type_, add_yojson_option =
+          let type_, yojson_option =
             match arg.arg_label with
             | Nolabel | Labelled _ -> arg.arg_typ, false
             | Optional _ -> [%type: [%t arg.arg_typ] option], true
+          in
+          let drop_default_unit =
+            match arg.arg_label, arg.arg_typ.ptyp_desc with
+            | Nolabel, Ptyp_constr (ident, [])
+              when Longident.compare ident.txt longident_unit = 0 ->
+                true
+            | _ -> false
           in
           let decl =
             label_declaration ~loc ~name:arg.arg_name ~mutable_:Immutable
               ~type_
           in
-          if add_yojson_option then
-            {
-              decl with
-              pld_attributes =
-                [
-                  {
-                    attr_loc = loc;
-                    attr_name = { txt = "yojson.option"; loc };
-                    attr_payload = PStr [];
-                  };
-                ];
-            }
-          else decl)
+          let pld_attributes =
+            let pld_attributes = ref [] in
+            let add ?(payload = []) txt =
+              let attr_name = { txt; loc } in
+              pld_attributes :=
+                { attr_loc = loc; attr_name; attr_payload = PStr payload }
+                :: !pld_attributes
+            in
+            if yojson_option then add "yojson.option";
+            if drop_default_unit then (
+              add "yojson.default" ~payload:[%str ()];
+              add "yojson.yojson_drop_default" ~payload:[%str ( = )]);
+            !pld_attributes
+          in
+          { decl with pld_attributes })
     in
     let type_declaration =
       with_deriving ?yojson_of ?of_yojson
@@ -225,7 +236,7 @@ let process_signature ~ctxt mod_type_decl f =
 module Remote_browser = struct
   open Ast_builder.Default
 
-  let build_remote_call ~ctxt (m : Method_desc.t) =
+  let build_remote_call ~ctxt ~path (m : Method_desc.t) =
     let loc = Expansion_context.Deriver.derived_item_loc ctxt in
     let rev_args = List.rev m.args in
     let define, make =
@@ -256,24 +267,35 @@ module Remote_browser = struct
           [%e define]
             ~output_of_yojson:[%e output_conv `of_yojson ~loc m]
             ~yojson_of_input:[%e input_conv `yojson_of ~loc m]
-            ~path:[%e estringf ~loc "/%s" m.name.txt]
+            ~path:
+              [%e
+                estringf ~loc "%s/%s"
+                  (Option.value path ~default:"")
+                  m.name.txt]
         in
         [%e body]]
 
-  let expand ~ctxt mod_type_decl =
+  let expand ~ctxt ~path mod_type_decl =
     process_signature ~ctxt mod_type_decl @@ fun _mod_type methods ->
     List.flat_map methods ~f:(function
       | Ok m ->
           [
             build_input_mod ~ctxt ~yojson_of:true m;
             build_output_mod `of_yojson ~ctxt m;
-            build_remote_call ~ctxt m;
+            build_remote_call ~ctxt ~path m;
           ]
       | Error str -> [ str ])
 end
 
 module Remote_native = struct
   open Ast_builder.Default
+
+  let respond_error ~loc ?(payload = [%expr []]) ~status msg =
+    [%expr
+      let err : Yojson.Safe.t =
+        `Assoc (("error", `String [%e estring ~loc msg]) :: [%e payload])
+      in
+      Dream.respond ~status:[%e status] (Yojson.Safe.to_string err)]
 
   let build_query ~loc ~mod_name (m : Method_desc.t) =
     let define, make =
@@ -343,50 +365,38 @@ module Remote_native = struct
                  pexp_field ~loc [%expr input]
                    (longidentf ~loc "%s" arg.arg_name.txt) )))
       in
-      let json =
+      let json_data =
         match m.kind with
         | Kind_query ->
             [%expr
               match Dream.query req "input" with
-              | Some data -> Ok (Lwt.return data)
-              | None -> Error "missing input= param"]
-        | Kind_mutation -> [%expr Ok (Dream.body req)]
+              | Some data -> Lwt.return data
+              | None -> Lwt.return "{}"]
+        | Kind_mutation -> [%expr Dream.body req]
       in
       [%expr
         let open Lwt.Infix in
-        match [%e json] with
-        | Error msg ->
-            let err = `Assoc [ "error", `String msg ] in
-            Dream.respond ~status:`Bad_Request (Yojson.Safe.to_string err)
-        | Ok data -> (
-            data >>= fun data ->
-            match Yojson.Safe.from_string data with
-            | exception Yojson.Json_error _ ->
-                let err = `Assoc [ "error", `String "invalid JSON" ] in
-                Dream.respond ~status:`Bad_Request
-                  (Yojson.Safe.to_string err)
-            | json -> (
-                match [%e input_conv `of_yojson ~loc m] json with
-                | exception
-                    Ppx_yojson_conv_lib.Yojson_conv.Of_yojson_error
-                      (exn, json) ->
-                    let err =
-                      `Assoc
-                        [
-                          "error", `String "invalid JSON payload";
-                          "json", json;
-                        ]
-                    in
-                    print_endline (Printexc.to_string exn);
-                    Dream.respond ~status:`Bad_Request
-                      (Yojson.Safe.to_string err)
-                | input ->
-                    [%e call_into_impl] >>= fun output ->
-                    let json =
-                      [%e output_conv `yojson_of ~loc m] output
-                    in
-                    let data = Yojson.Safe.to_string json in
-                    Dream.respond ~status:`OK data))]
+        [%e json_data] >>= fun json_data ->
+        match Yojson.Safe.from_string json_data with
+        | exception Yojson.Json_error _ ->
+            [%e
+              respond_error ~loc ~status:[%expr `Bad_Request]
+                "invalid JSON"]
+        | json -> (
+            match [%e input_conv `of_yojson ~loc m] json with
+            | exception
+                Ppx_yojson_conv_lib.Yojson_conv.Of_yojson_error (exn, json)
+              ->
+                print_endline (Printexc.to_string exn);
+                [%e
+                  respond_error ~loc ~status:[%expr `Bad_Request]
+                    ~payload:[%expr [ "json", json ]]
+                    "invalid JSON payload"]
+            | input ->
+                [%e call_into_impl] >>= fun output ->
+                let json = [%e output_conv `yojson_of ~loc m] output in
+                let data = Yojson.Safe.to_string json in
+                Dream.respond ~status:`OK data)]
     in
     [%str
       [%%i build_input_mod ~ctxt ~yojson_of:true ~of_yojson:true m]
@@ -401,7 +411,7 @@ module Remote_native = struct
               }] =
        fun req -> [%e body_req]]
 
-  let expand ~ctxt mod_type_decl =
+  let expand ~ctxt ~path mod_type_decl =
     process_signature ~ctxt mod_type_decl @@ fun mod_type methods ->
     let loc = Expansion_context.Deriver.derived_item_loc ctxt in
     let mod_name = mod_type_decl.pmtd_name in
@@ -411,7 +421,8 @@ module Remote_native = struct
         | Error str -> [ str ])
     in
     let routes_expr =
-      List.fold_left (List.rev methods) ~init:[%expr []] ~f:(fun rs m ->
+      List.fold_left (List.rev methods) ~init:[%expr []]
+        ~f:(fun routes m ->
           match m with
           | Ok m ->
               let register_route =
@@ -419,16 +430,31 @@ module Remote_native = struct
                 | Kind_query -> [%expr Dream.get]
                 | Kind_mutation -> [%expr Dream.post]
               in
-              let r =
-                let path = estring ~loc m.Method_desc.name.txt in
+              let path =
+                let path =
+                  match path with
+                  | None -> m.name.txt
+                  | Some path -> sprintf "%s/%s" path m.name.txt
+                in
+                estring ~loc path
+              in
+              let route =
                 [%expr
                   [%e register_route] [%e path]
                     [%e
                       pexp_ident ~loc
                         (longidentf ~loc "%s_req" m.name.txt)]]
               in
-              [%expr [%e r] :: [%e rs]]
-          | Error _ -> rs)
+              let route_not_allowed =
+                [%expr
+                  Dream.any [%e path] (fun _req ->
+                      [%e
+                        respond_error ~loc
+                          ~status:[%expr `Method_Not_Allowed]
+                          "method not allowed"])]
+              in
+              [%expr [%e route] :: [%e route_not_allowed] :: [%e routes]]
+          | Error _ -> routes)
     in
     let make_str = make_str @ [%str let routes = [%e routes_expr]] in
     let impl_mod_make =
@@ -442,13 +468,13 @@ module Remote_native = struct
     [ impl_mod_make ]
 end
 
-let derive_remote ~ctxt modtype =
+let derive_remote ~ctxt modtype path =
   match !mode with
-  | Target_native -> Remote_native.expand ~ctxt modtype
-  | Target_js -> Remote_browser.expand ~ctxt modtype
+  | Target_native -> Remote_native.expand ~ctxt ~path modtype
+  | Target_js -> Remote_browser.expand ~ctxt ~path modtype
 
 let _ =
-  let args = Deriving.Args.empty in
+  let args = Deriving.Args.(empty +> arg "path" (estring __)) in
   let str_module_type_decl =
     Deriving.Generator.V2.make args derive_remote
   in
