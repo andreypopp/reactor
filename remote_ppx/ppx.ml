@@ -276,15 +276,24 @@ module Remote_browser = struct
         [%e body]]
 
   let expand ~ctxt ~path mod_type_decl =
-    process_signature ~ctxt mod_type_decl @@ fun _mod_type methods ->
-    List.flat_map methods ~f:(function
-      | Ok m ->
-          [
-            build_input_mod ~ctxt ~yojson_of:true m;
-            build_output_mod `of_yojson ~ctxt m;
-            build_remote_call ~ctxt ~path m;
-          ]
-      | Error str -> [ str ])
+    let loc = Expansion_context.Deriver.derived_item_loc ctxt in
+    let str =
+      process_signature ~ctxt mod_type_decl @@ fun _mod_type methods ->
+      List.flat_map methods ~f:(function
+        | Ok m ->
+            [
+              build_input_mod ~ctxt ~yojson_of:true m;
+              build_output_mod `of_yojson ~ctxt m;
+              build_remote_call ~ctxt ~path m;
+            ]
+        | Error str -> [ str ])
+    in
+    [
+      pstr_module ~loc
+        (module_binding ~loc
+           ~name:{ loc; txt = Some mod_type_decl.pmtd_name.txt }
+           ~expr:(pmod_structure ~loc str));
+    ]
 end
 
 module Remote_native = struct
