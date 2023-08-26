@@ -56,7 +56,11 @@ module React : sig
     | Html_children_raw of unsafe_html
 
   val unsafe_create_html_element :
-    string -> Html_prop.prop list -> html_children option -> element
+    ?key:string ->
+    string ->
+    Html_prop.prop list ->
+    html_children option ->
+    element
 
   val use_effect : (unit -> unit -> unit) -> 'a array -> unit
   [@@alert

@@ -155,12 +155,25 @@ end
 let rec client_to_html t = function
   | React.El_null -> Lwt.return (Html.text "")
   | El_text s -> Lwt.return (Html.text s)
-  | El_html (name, props, None) -> Lwt.return (Html.node name props [])
-  | El_html (name, props, Some (Html_children children)) ->
+  | El_html { tag_name; key = _; props; children = None } ->
+      Lwt.return (Html.node tag_name props [])
+  | El_html
+      {
+        tag_name;
+        key = _;
+        props;
+        children = Some (Html_children children);
+      } ->
       client_to_html_many t children >|= fun children ->
-      Html.node name props [ children ]
-  | El_html (name, props, Some (Html_children_raw { __html })) ->
-      Lwt.return (Html.node name props [ Html.unsafe_raw __html ])
+      Html.node tag_name props [ children ]
+  | El_html
+      {
+        tag_name;
+        key = _;
+        props;
+        children = Some (Html_children_raw { __html });
+      } ->
+      Lwt.return (Html.node tag_name props [ Html.unsafe_raw __html ])
   | El_thunk f ->
       let rec wait () =
         match
@@ -189,7 +202,7 @@ let rec client_to_html t = function
       in
       wait ()
   | El_async_thunk _ -> failwith "async component in client mode"
-  | El_suspense { children; fallback = _ } -> (
+  | El_suspense { children; fallback = _; key = _ } -> (
       match Array.length children with
       | 0 -> Lwt.return (Emit_html.html_suspense Html.empty)
       | _ ->
@@ -211,31 +224,39 @@ and client_to_html_many t els : Html.t Lwt.t =
 let rec server_to_html t = function
   | React.El_null -> Lwt.return (Html.empty, Render_to_model.null)
   | El_text s -> Lwt.return (Html.text s, Render_to_model.text s)
-  | El_html (name, props, Some (Html_children children)) ->
+  | El_html
+      { tag_name; key; props; children = Some (Html_children children) }
+    ->
       server_to_html_many t children >|= fun (html, children) ->
-      ( Html.node name props [ html ],
-        Render_to_model.node ~name
+      ( Html.node tag_name props [ html ],
+        Render_to_model.node ~tag_name ~key
           ~props:(props :> (string * json) list)
           (Some children) )
-  | El_html (name, props, Some (Html_children_raw { __html })) ->
+  | El_html
+      {
+        tag_name;
+        key;
+        props;
+        children = Some (Html_children_raw { __html });
+      } ->
       Lwt.return
-        ( Html.node name props [ Html.unsafe_raw __html ],
+        ( Html.node tag_name props [ Html.unsafe_raw __html ],
           let props = (props :> (string * json) list) in
           let props =
             ( "dangerouslySetInnerHTML",
               `Assoc [ "__html", `String __html ] )
             :: props
           in
-          Render_to_model.node ~name ~props None )
-  | El_html (name, props, None) ->
+          Render_to_model.node ~tag_name ~key ~props None )
+  | El_html { tag_name; key; props; children = None } ->
       Lwt.return
-        ( Html.node name props [],
-          Render_to_model.node ~name
+        ( Html.node tag_name props [],
+          Render_to_model.node ~tag_name ~key
             ~props:(props :> (string * json) list)
             None )
   | El_thunk f -> server_to_html t (f ())
   | El_async_thunk f -> f () >>= server_to_html t
-  | El_suspense { children; fallback = _ } -> (
+  | El_suspense { children; fallback = _; key } -> (
       Computation.fork t @@ fun t ->
       let promise = server_to_html_many t children in
       match Lwt.state promise with
@@ -251,12 +272,13 @@ let rec server_to_html t = function
           in
           let html_sync =
             ( Emit_html.html_suspense_placeholder idx,
-              Render_to_model.suspense_placeholder idx )
+              Render_to_model.suspense_placeholder ~key idx )
           in
           `Fork (html_async, html_sync)
       | Return (html, model) ->
           `Sync
-            (Emit_html.html_suspense html, Render_to_model.suspense model)
+            ( Emit_html.html_suspense html,
+              Render_to_model.suspense ~key model )
       | Fail exn -> `Fail exn)
   | El_client_thunk { import_module; import_name; props; thunk } ->
       let props =
@@ -275,7 +297,8 @@ let rec server_to_html t = function
         let idx = Computation.use_idx t in
         let ref = Render_to_model.ref ~import_module ~import_name in
         Computation.emit_html t (Emit_model.html_model (idx, C_ref ref));
-        Render_to_model.node ~name:(sprintf "$%i" idx) ~props None
+        Render_to_model.node ~tag_name:(sprintf "$%i" idx) ~key:None
+          ~props None
       in
       html, model
 

@@ -13,8 +13,13 @@ external suspense_create_element :
   suspense -> 'props -> element array -> element = "createElement"
 [@@mel.module "react"] [@@mel.variadic]
 
-let suspense ?fallback:_ children =
-  suspense_create_element suspense_t Js.null children
+let suspense ?key ?fallback:_ children =
+  let props =
+    match key with
+    | None -> Js.Json.null
+    | Some key -> (Obj.magic [%mel.obj { key }] : Js.Json.t)
+  in
+  suspense_create_element suspense_t props children
 
 let null = Obj.magic Js.null
 
@@ -27,16 +32,25 @@ type html_props
 let html_props_null : html_props = Obj.magic Js.null
 
 type unsafeHTML = { __html : string }
+type 'kind event
 type mouse_event
+type change_event
+type dom_element
 
-external prevent_default : mouse_event -> unit = "preventDefault" [@@mel.send]
+external prevent_default : _ event -> unit = "preventDefault" [@@mel.send]
+external event_target : _ event -> dom_element = "target" [@@mel.get]
+external value : dom_element -> string = "value" [@@mel.get]
 
 external html_props :
   ?key:string ->
   ?className:string ->
   ?href:string ->
+  ?_type:string ->
+  ?checked:bool ->
+  ?value:string ->
   ?children:children ->
-  ?onClick:(mouse_event -> unit) ->
+  ?onClick:(mouse_event event -> unit) ->
+  ?onChange:(change_event event -> unit) ->
   ?dangerouslySetInnerHTML:unsafeHTML ->
   unit ->
   html_props = ""

@@ -7,19 +7,20 @@ let text text = `String text
 let null = `Null
 let list xs = `List xs
 
-let node ~name ~props children : model =
+let node ~tag_name ~key ~props children : model =
+  let key = match key with None -> `Null | Some key -> `String key in
   let props =
     match children with
     | None -> props
     | Some children -> ("children", children) :: props
   in
-  `List [ `String "$"; `String name; `Null; `Assoc props ]
+  `List [ `String "$"; `String tag_name; key; `Assoc props ]
 
-let suspense children =
-  node ~name:"$Sreact.suspense" ~props:[] (Some children)
+let suspense ~key children =
+  node ~tag_name:"$Sreact.suspense" ~key ~props:[] (Some children)
 
-let suspense_placeholder idx =
-  node ~name:"$Sreact.suspense" ~props:[]
+let suspense_placeholder ~key idx =
+  node ~tag_name:"$Sreact.suspense" ~key ~props:[]
     (Some (`String (sprintf "$L%i" idx)))
 
 let ref ~import_module ~import_name =
@@ -63,7 +64,7 @@ let rec to_model ctx idx el =
   let rec to_model' : React.element -> model = function
     | React.El_null -> `Null
     | El_text s -> `String s
-    | El_html (name, props, children) ->
+    | El_html { tag_name; key; props; children } ->
         let props = (props :> (string * json) list) in
         let children, props =
           match children with
@@ -78,10 +79,10 @@ let rec to_model ctx idx el =
                   `Assoc [ "__html", `String __html ] )
                 :: props )
         in
-
-        node ~name ~props children
-    | El_suspense { children; fallback = _ } ->
-        suspense (Array.to_list children |> List.map ~f:to_model' |> list)
+        node ~tag_name ~key ~props children
+    | El_suspense { children; fallback = _; key } ->
+        suspense ~key
+          (Array.to_list children |> List.map ~f:to_model' |> list)
     | El_thunk f -> to_model' (f ())
     | El_async_thunk f -> (
         let tree = f () in
@@ -105,7 +106,7 @@ let rec to_model ctx idx el =
             | name, `Element element -> name, to_model' element
             | name, `Json json -> name, `String json)
         in
-        node ~name:(sprintf "$%i" idx) ~props None
+        node ~tag_name:(sprintf "$%i" idx) ~key:None ~props None
   in
   push ctx (idx, C_tree (to_model' el));
   if ctx.pending = 0 then ctx.push None

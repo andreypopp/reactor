@@ -3,14 +3,18 @@ open! Import
 type model = json
 
 val node :
-  name:string -> props:(string * model) list -> model option -> model
+  tag_name:string ->
+  key:string option ->
+  props:(string * model) list ->
+  model option ->
+  model
 
 val ref : import_module:string -> import_name:string -> model
 val null : model
 val text : string -> model
 val list : model list -> model
-val suspense : model -> model
-val suspense_placeholder : int -> model
+val suspense : key:string option -> model -> model
+val suspense_placeholder : key:string option -> int -> model
 
 type chunk = C_tree of model | C_ref of model
 

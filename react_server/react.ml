@@ -22,10 +22,19 @@ end
 
 type element =
   | El_null : element
-  | El_suspense : { children : children; fallback : children } -> element
+  | El_suspense : {
+      children : children;
+      fallback : children;
+      key : string option;
+    }
+      -> element
   | El_text : string -> element
-  | El_html :
-      string * Html_prop.prop list * html_children option
+  | El_html : {
+      tag_name : string;
+      key : string option;
+      props : Html_prop.prop list;
+      children : html_children option;
+    }
       -> element
   | El_thunk : (unit -> element) -> element
   | El_async_thunk : (unit -> element Lwt.t) -> element
@@ -52,14 +61,14 @@ let textf fmt = ksprintf text fmt
 let thunk f = El_thunk f
 let async_thunk f = El_async_thunk f
 
-let suspense ?(fallback = [| null |]) children =
-  El_suspense { children; fallback }
+let suspense ?key ?(fallback = [| null |]) children =
+  El_suspense { children; fallback; key }
 
 let client_thunk ?(import_name = "") import_module props thunk =
   El_client_thunk { import_module; import_name; props; thunk }
 
-let unsafe_create_html_element tag_name props children =
-  El_html (tag_name, props, children)
+let unsafe_create_html_element ?key tag_name props children =
+  El_html { tag_name; key; props; children }
 
 exception Browser_only
 

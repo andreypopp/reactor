@@ -32,6 +32,8 @@ let ident label =
   pexp_ident ~loc:label.loc (longident label)
 
 module Let_component = struct
+  open Ast_builder.Default
+
   type t = { name : label loc; props : prop list; body : expression }
 
   and prop = {
@@ -54,6 +56,17 @@ module Let_component = struct
             "let%%component should only be applied to functions"
     in
     let props, body =
+      let key_prop =
+        let label = { txt = "key"; loc } in
+        {
+          arg_label = Optional "key";
+          expr = None;
+          pat = ppat_var ~loc label;
+          label;
+          label_synthetic = false;
+          typ = Some [%type: string option];
+        }
+      in
       let rec collect_props n acc expr =
         match expr.pexp_desc with
         | Pexp_fun
@@ -111,7 +124,7 @@ module Let_component = struct
               "component arguments can only be simple patterns"
         | _ -> acc, expr
       in
-      collect_props 0 [] expr
+      collect_props 0 [ key_prop ] expr
     in
     { name; props; body }
 end
@@ -122,16 +135,14 @@ module Ext_component = struct
   let expand_js ~ctxt:_ ~loc component pat expr =
     let unpack_expr =
       let args =
-        List.rev_map
-          (fun {
-                 Let_component.arg_label;
-                 expr = _;
-                 pat = _;
-                 typ = _;
-                 label;
-                 label_synthetic = _;
-               } -> arg_label, [%expr props ## [%e ident label]])
-          component.Let_component.props
+        List.fold_left
+          (fun args arg ->
+            match arg.Let_component.label.txt with
+            | "key" -> args
+            | _ ->
+                (arg.arg_label, [%expr props ## [%e ident arg.label]])
+                :: args)
+          [] component.Let_component.props
       in
       pexp_apply ~loc (ident component.name) args
     in
@@ -148,19 +159,9 @@ module Ext_component = struct
           [%expr
             React.unsafe_create_element [%e ident component.name]
               [%mel.obj [%e props]]]
-        ~f:(fun
-            body
-            {
-              Let_component.arg_label;
-              expr = _;
-              pat;
-              typ = _;
-              label;
-              label_synthetic = _;
-            }
-          ->
-          pexp_fun ~loc arg_label None
-            (ppat_var ~loc:pat.ppat_loc label)
+        ~f:(fun body arg ->
+          pexp_fun ~loc arg.Let_component.arg_label None
+            (ppat_var ~loc:pat.ppat_loc arg.label)
             body)
     in
     [%stri
@@ -173,7 +174,9 @@ module Ext_component = struct
     let pack_expr =
       ListLabels.fold_left component.props
         ~init:
-          [%expr [%e ctor] (fun () -> [%e component.Let_component.body])]
+          [%expr
+            let _ = key in
+            [%e ctor] (fun () -> [%e component.Let_component.body])]
         ~f:(fun
             body
             {
