@@ -15,7 +15,8 @@ window.__webpack_require__ = (id) => {
 
 
 function Page({loading}) {
-  return React.use(loading);
+  let tree = React.use(loading);
+  return tree;
 }
 
 let loading = null;
@@ -38,7 +39,7 @@ function loadPage(path) {
     );
     if (root === null)
       root = ReactDOM.createRoot(document);
-    root.render(React.createElement(Page, {loading}));
+    root.render(<Page loading={loading} />);
     if (window.location.pathname !== path) {
       window.history.pushState({}, null, path);
     }
@@ -53,10 +54,9 @@ function main() {
       window.React_of_caml_ssr.stream,
       { callServer, }
     );
-    let element = React.createElement(Page, {loading})
     React.startTransition(() => {
-      root = ReactDOM.hydrateRoot(document, element);
-    })
+      root = ReactDOM.hydrateRoot(document, <Page loading={loading} />);
+    });
   } else {
     loadPage(window.location.pathname);
   }

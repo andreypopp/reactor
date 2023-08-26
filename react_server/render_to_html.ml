@@ -25,8 +25,8 @@ end = struct
 
   type t = {
     ctx : ctx;
-    emit_html : Html.t -> unit;
     finished : unit Lwt.t;
+    mutable emit_html : Html.t -> unit;
   }
 
   let remote_runner_ctx t = t.ctx.remote_runner_ctx
@@ -48,11 +48,22 @@ end = struct
         remote_runner_ctx = Remote.Runner.create ();
       }
     in
-    let htmls = ref [] in
+    let htmls = ref (Some []) in
     let finished, parent_done = Lwt.wait () in
-    let emit_html import = htmls := import :: !htmls in
+    let emit_html chunk =
+      match !htmls with
+      | Some chunks -> htmls := Some (chunk :: chunks)
+      | None -> failwith "invariant violation: root computation finished"
+    in
     f ({ ctx; emit_html; finished }, idx) >|= fun html ->
-    let html = Html.splice [ Html.splice !htmls; html ] in
+    let htmls =
+      match !htmls with
+      | Some chunks ->
+          htmls := None;
+          chunks
+      | None -> assert false
+    in
+    let html = Html.splice [ Html.splice htmls; html ] in
     Lwt.wakeup_later parent_done ();
     ctx.pending <- ctx.pending - 1;
     match ctx.pending = 0 with
@@ -64,11 +75,11 @@ end = struct
   let fork parent_t f =
     let ctx = parent_t.ctx in
     let finished, parent_done = Lwt.wait () in
-    let emit_html html = ctx.push (Some html) in
-    let t = { ctx; emit_html; finished } in
+    let t = { ctx; emit_html = parent_t.emit_html; finished } in
     match f t with
     | `Fork (async, sync) ->
         ctx.pending <- ctx.pending + 1;
+        t.emit_html <- (fun html -> ctx.push (Some html));
         Lwt.async (fun () ->
             parent_t.finished >>= fun () ->
             async >|= fun html ->
@@ -292,6 +303,9 @@ let rec server_to_html t = function
           props
       in
       let html = client_to_html t thunk in
+      (* NOTE: this Lwt.pause () is important as we resolve client component in
+         an async way we need to suspend above, otherwise React.js runtime won't work *)
+      Lwt.pause () >>= fun () ->
       Lwt.both html props >|= fun (html, props) ->
       let model =
         let idx = Computation.use_idx t in
