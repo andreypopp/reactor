@@ -228,7 +228,8 @@ module Ext_export_component = struct
             let value =
               match typ.ptyp_desc with
               | Ptyp_constr ({ txt = ident; loc }, [])
-                when Longident.name ident = "element" ->
+                when Longident.name ident = "element"
+                     || Longident.name ident = "React.element" ->
                   [%expr `Element [%e prop]]
               | _ ->
                   [%expr
@@ -255,7 +256,8 @@ module Ext_export_component = struct
               let value =
                 match typ.ptyp_desc with
                 | Ptyp_constr ({ txt = ident; loc }, [])
-                  when Longident.name ident = "element" ->
+                  when Longident.name ident = "element"
+                       || Longident.name ident = "React.element" ->
                     [%expr
                       (Obj.magic Js.Dict.unsafeGet props [%e name]
                         : React.element)]

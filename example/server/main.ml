@@ -1,36 +1,33 @@
-[@@@warning "-32"]
-
 open! ContainersLabels
 open! Monomorphic
 open Lwt.Infix
 
 module UI = struct
   open React_server
-  open React
 
   let%async_component card ~delay ~title children =
     Lwt_unix.sleep delay >|= fun () ->
     jsx.div ~className:"ba pa2"
       [|
-        jsx.h3 ~className:"ma0 pa0 pb2" [| text title |];
+        jsx.h3 ~className:"ma0 pa0 pb2" [| React.text title |];
         jsx.div ~className:"pb2" children;
         jsx.div ~className:"f7 bt pa1"
           [|
-            textf "I've been sleeping for %0.1fsec before appearing."
-              delay;
+            React.textf
+              "I've been sleeping for %0.1fsec before appearing." delay;
           |];
       |]
 
   let%component page ~title children =
     jsx.html ~className:"h-100"
       [|
-        jsx.head [| jsx.title [| text title |] |];
+        jsx.head [| jsx.title [| React.text title |] |];
         jsx.body
           ~className:"pa4 sans-serif dark-gray bg-washed-yellow h-100"
-          [| jsx.h1 [| jsx.span [| text title |] |]; jsx.div children |];
+          [|
+            jsx.h1 [| jsx.span [| React.text title |] |]; jsx.div children;
+          |];
       |]
-
-  let xapp _req = page ~title:"React componn" [||]
 
   let app _req =
     page ~title:"React of OCaml"
@@ -38,38 +35,45 @@ module UI = struct
         jsx.div ~className:"flex flex-column g2 measure-wide"
           [|
             Example.app ~title:"Hello from Client Component"
-              (text "As you can see, this one is SSR'ed as well.");
+              (React.text "As you can see, this one is SSR'ed as well.");
             card ~title:"Initial Data" ~delay:0.
               [|
-                text
+                React.text
                   "This components loads some async data but will block \
                    the shell until this data is ready.";
               |];
-            suspense
+            React.suspense
               [|
-                card ~title:"Async Data" ~delay:1. [| text "HELLO" |];
-                card ~title:"Async Data" ~delay:1. [| text "HELLO" |];
+                card ~title:"Async Data" ~delay:1.
+                  [| React.text "HELLO" |];
+                card ~title:"Async Data" ~delay:1.
+                  [| React.text "HELLO" |];
               |];
-            suspense
+            React.suspense
               [|
-                card ~title:"Async Data" ~delay:2. [| text "OUTER" |];
-                suspense
+                card ~title:"Async Data" ~delay:2.
+                  [| React.text "OUTER" |];
+                React.suspense
                   [|
                     card ~title:"Inner Async Data" ~delay:1.
-                      [| text "INNER" |];
+                      [| React.text "INNER" |];
                   |];
               |];
             jsx.div
               [|
-                jsx.h2 [| text "Testing XSS" |];
+                jsx.h2 [| React.text "Testing XSS" |];
                 jsx.ul
                   [|
                     jsx.li
                       [|
-                        text "</script><script>console.log(1)</script>";
+                        React.text
+                          "</script><script>console.log(1)</script>";
                       |];
                     jsx.li
-                      [| text "\u{2028}<script>console.log(1)</script>" |];
+                      [|
+                        React.text
+                          "\u{2028}<script>console.log(1)</script>";
+                      |];
                   |];
               |];
           |];
@@ -81,7 +85,7 @@ module UI = struct
         jsx.div ~className:"flex flex-column g2 measure-wide"
           [|
             Example.about ~num:1 ~mode:About_light;
-            jsx.p [| text "Just an about page" |];
+            jsx.p [| React.text "Just an about page" |];
           |];
       |]
 end
