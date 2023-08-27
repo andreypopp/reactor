@@ -1,4 +1,6 @@
 module React = React
+module Event = React_browser_event
+module Html_props = React_browser_html_props
 module Component_map = Component_map
 
 let () =

@@ -23,8 +23,10 @@ module type REACT = sig
   (** Renders a React Suspense boundary. *)
 
   val use_state : (unit -> 'a) -> 'a * (('a -> 'a) -> unit)
-  val use_effect : (unit -> unit -> unit) -> 'a array -> unit
-  val use_effect' : (unit -> unit) -> 'a array -> unit
+  val use_effect : (unit -> unit -> unit) -> _ array -> unit
+  val use_effect' : (unit -> unit) -> _ array -> unit
+  val use_memo : (unit -> 'a) -> _ array -> 'a
+  val use_callback : ('a -> 'b) -> _ array -> 'a -> 'b
   val start_transition : (unit -> unit) -> unit
 
   type 'a promise

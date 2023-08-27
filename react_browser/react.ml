@@ -27,34 +27,10 @@ external text : string -> element = "%identity"
 
 let textf fmt = Printf.ksprintf text fmt
 
-type html_props
+type html_props = React_browser_html_props.props
 
 let html_props_null : html_props = Obj.magic Js.null
-
-type unsafeHTML = { __html : string }
-type 'kind event
-type mouse_event
-type change_event
-type dom_element
-
-external prevent_default : _ event -> unit = "preventDefault" [@@mel.send]
-external event_target : _ event -> dom_element = "target" [@@mel.get]
-external value : dom_element -> string = "value" [@@mel.get]
-
-external html_props :
-  ?key:string ->
-  ?className:string ->
-  ?href:string ->
-  ?_type:string ->
-  ?checked:bool ->
-  ?value:string ->
-  ?children:children ->
-  ?onClick:(mouse_event event -> unit) ->
-  ?onChange:(change_event event -> unit) ->
-  ?dangerouslySetInnerHTML:unsafeHTML ->
-  unit ->
-  html_props = ""
-[@@mel.obj]
+let html_props = React_browser_html_props.props
 
 external unsafe_create_html_element :
   string -> html_props -> element array -> element = "createElement"
@@ -70,6 +46,11 @@ external use_effect' : (unit -> unit) -> 'a array -> unit = "useEffect"
 external use_effect : (unit -> unit -> unit) -> 'a array -> unit
   = "useEffect"
 [@@mel.module "react"]
+
+external use_memo : (unit -> 'a) -> _ array -> 'a = "useMemo"
+[@@mel.module "react"]
+
+let use_callback (f : 'a -> 'b) deps = use_memo (fun () -> f) deps
 
 external start_transition : (unit -> unit) -> unit = "startTransition"
 [@@mel.module "react"]

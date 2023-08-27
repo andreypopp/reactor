@@ -39,15 +39,7 @@ module React : sig
   (** This instructs to render a client components in browser which is
       implemented in JavaScript. *)
 
-  module Html_prop : sig
-    type prop
-
-    val className : string -> prop
-    val href : string -> prop
-    val value : string -> prop
-    val _type : string -> prop
-    val checked : bool -> prop
-  end
+  module Html_props : module type of React_server_html_props
 
   type unsafe_html = { __html : string }
 
@@ -58,7 +50,7 @@ module React : sig
   val unsafe_create_html_element :
     ?key:string ->
     string ->
-    Html_prop.prop list ->
+    Html_props.props ->
     html_children option ->
     element
 

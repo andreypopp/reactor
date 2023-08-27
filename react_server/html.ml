@@ -9,7 +9,9 @@ open ContainersLabels
 open Monomorphic
 
 type attrs = (string * attr_value) list
-and attr_value = [ `String of string | `Bool of bool | `Int of int ]
+
+and attr_value =
+  [ `String of string | `Bool of bool | `Int of int | `Float of float ]
 
 type t =
   | H_node of string * attrs * t list
@@ -106,6 +108,9 @@ let rec write buf =
                 | `Int v ->
                     adds name;
                     adds (sprintf "=\"%i\"" v)
+                | `Float v ->
+                    adds name;
+                    adds (sprintf "=\"%f\"" v)
                 | `String value ->
                     adds name;
                     adds "=\"";

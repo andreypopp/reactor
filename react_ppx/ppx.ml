@@ -403,25 +403,47 @@ module Browser_only_expression = struct
     |> List.map (fun (pat, expr) ->
            value_binding ~loc:pat.ppat_loc ~pat ~expr)
 
-  let expand ~ctxt orig_expr recflag bindings body =
+  let expand ~ctxt payload =
+    let mode = !mode in
+    let loc = Expansion_context.Extension.extension_point_loc ctxt in
     try
-      match !mode with
-      | Target_js -> orig_expr
-      | Target_native ->
-          let bindings = build_bindings ~ctxt bindings in
-          pexp_let ~loc:orig_expr.pexp_loc recflag bindings body
+      match payload with
+      | `Let_form (orig_expr, recflag, bindings, body) -> (
+          match mode with
+          | Target_js -> orig_expr
+          | Target_native ->
+              let bindings = build_bindings ~ctxt bindings in
+              pexp_let ~loc:orig_expr.pexp_loc recflag bindings body)
+      | `Fun_form (orig_expr, recflag, default, pat) -> (
+          match mode with
+          | Target_js -> orig_expr
+          | Target_native ->
+              pexp_fun ~loc recflag default pat
+                [%expr raise React_server.React.Browser_only])
     with Error err -> err
 
   let ext =
     let pattern =
       let open Ast_pattern in
-      single_expr_payload
-        (as__
-           (pexp_let __
-              (many
-                 (value_binding ~pat:__ ~expr:__
-                 |> map2 ~f:(fun a b -> a, b)))
-              __))
+      let let_form =
+        single_expr_payload
+          (as__
+             (pexp_let __
+                (many
+                   (value_binding ~pat:__ ~expr:__
+                   |> map2 ~f:(fun a b -> a, b)))
+                __))
+        |> map2 ~f:(fun a b -> a, b)
+        |> map2 ~f:(fun (a, b) c -> a, b, c)
+        |> map2 ~f:(fun (a, b, c) d -> `Let_form (a, b, c, d))
+      in
+      let fun_form =
+        single_expr_payload (as__ (pexp_fun __ __ __ drop))
+        |> map2 ~f:(fun a b -> a, b)
+        |> map2 ~f:(fun (a, b) c -> a, b, c)
+        |> map2 ~f:(fun (a, b, c) d -> `Fun_form (a, b, c, d))
+      in
+      let_form ||| fun_form
     in
     Context_free.Rule.extension
       (Extension.V3.declare "browser_only" Extension.Context.expression
@@ -475,7 +497,7 @@ module Jsx = struct
           Some (visit arg), dangerouslySetInnerHTML, props
       | (Nolabel, arg) :: _ ->
           raise_errorf ~loc:arg.pexp_loc
-            "an argument without a label could on be the last one"
+            "an argument without a label could only be the last one"
       | ( (( Optional "dangerouslySetInnerHTML"
            | Labelled "dangerouslySetInnerHTML" ) as label),
           prop )
@@ -517,8 +539,9 @@ module Jsx = struct
                 match props with
                 | [] -> [%expr React_browser.React.html_props_null]
                 | props ->
-                    pexp_apply ~loc [%expr React_browser.React.html_props]
-                      ((Nolabel, [%expr ()]) :: props)
+                    pexp_apply ~loc
+                      [%expr React_browser.React.html_props ()]
+                      props
               in
               match children, dangerouslySetInnerHTML with
               | Some _, Some _ ->
@@ -536,10 +559,86 @@ module Jsx = struct
           | _ -> super#expression expr
     end
 
-  let js_only_prop = function
-    | "onClick" -> true
+  let browser_only_prop = function
+    | "ref" -> true
+    | "onCopy" -> true
+    | "onCut" -> true
+    | "onPaste" -> true
+    | "onCompositionEnd" -> true
+    | "onCompositionStart" -> true
+    | "onCompositionUpdate" -> true
+    | "onKeyDown" -> true
+    | "onKeyPress" -> true
+    | "onKeyUp" -> true
+    | "onFocus" -> true
+    | "onBlur" -> true
     | "onChange" -> true
-    | "key" -> true
+    | "onInput" -> true
+    | "onSubmit" -> true
+    | "onInvalid" -> true
+    | "onClick" -> true
+    | "onContextMenu" -> true
+    | "onDoubleClick" -> true
+    | "onDrag" -> true
+    | "onDragEnd" -> true
+    | "onDragEnter" -> true
+    | "onDragExit" -> true
+    | "onDragLeave" -> true
+    | "onDragOver" -> true
+    | "onDragStart" -> true
+    | "onDrop" -> true
+    | "onMouseDown" -> true
+    | "onMouseEnter" -> true
+    | "onMouseLeave" -> true
+    | "onMouseMove" -> true
+    | "onMouseOut" -> true
+    | "onMouseOver" -> true
+    | "onMouseUp" -> true
+    | "onSelect" -> true
+    | "onTouchCancel" -> true
+    | "onTouchEnd" -> true
+    | "onTouchMove" -> true
+    | "onTouchStart" -> true
+    | "onPointerOver" -> true
+    | "onPointerEnter" -> true
+    | "onPointerDown" -> true
+    | "onPointerMove" -> true
+    | "onPointerUp" -> true
+    | "onPointerCancel" -> true
+    | "onPointerOut" -> true
+    | "onPointerLeave" -> true
+    | "onGotPointerCapture" -> true
+    | "onLostPointerCapture" -> true
+    | "onScroll" -> true
+    | "onWheel" -> true
+    | "onAbort" -> true
+    | "onCanPlay" -> true
+    | "onCanPlayThrough" -> true
+    | "onDurationChange" -> true
+    | "onEmptied" -> true
+    | "onEncrypetd" -> true
+    | "onEnded" -> true
+    | "onError" -> true
+    | "onLoadedData" -> true
+    | "onLoadedMetadata" -> true
+    | "onLoadStart" -> true
+    | "onPause" -> true
+    | "onPlay" -> true
+    | "onPlaying" -> true
+    | "onProgress" -> true
+    | "onRateChange" -> true
+    | "onSeeked" -> true
+    | "onSeeking" -> true
+    | "onStalled" -> true
+    | "onSuspend" -> true
+    | "onTimeUpdate" -> true
+    | "onVolumeChange" -> true
+    | "onWaiting" -> true
+    | "onLoad" -> true
+    | "onAnimationStart" -> true
+    | "onAnimationEnd" -> true
+    | "onAnimationIteration" -> true
+    | "onTransitionEnd" -> true
     | _ -> false
 
   let jsx_rewrite_native =
@@ -576,20 +675,21 @@ module Jsx = struct
                           | Optional _ -> assert false
                           | Labelled name -> name
                         in
-                        if js_only_prop name then xs
-                        else
-                          let make =
-                            pexp_ident ~loc:x.pexp_loc
-                              {
-                                txt =
-                                  Longident.parse
-                                    (sprintf
-                                       "React_server.React.Html_prop.%s"
-                                       name);
-                                loc = x.pexp_loc;
-                              }
-                          in
-                          [%expr [%e make] [%e x] :: [%e xs]])
+                        match browser_only_prop name with
+                        | true -> xs
+                        | false ->
+                            let make =
+                              pexp_ident ~loc:x.pexp_loc
+                                {
+                                  txt =
+                                    Longident.parse
+                                      (sprintf
+                                         "React_server.React.Html_props.%s"
+                                         name);
+                                  loc = x.pexp_loc;
+                                }
+                            in
+                            [%expr [%e make] [%e x] :: [%e xs]])
                       [%expr []] props
               in
 

@@ -39,7 +39,11 @@ function loadPage(path) {
     );
     if (root === null)
       root = ReactDOM.createRoot(document);
-    root.render(<Page loading={loading} />);
+    root.render(
+      <React.StrictMode>
+        <Page loading={loading} />
+      </React.StrictMode>
+    );
     if (window.location.pathname !== path) {
       window.history.pushState({}, null, path);
     }
@@ -55,7 +59,11 @@ function main() {
       { callServer, }
     );
     React.startTransition(() => {
-      root = ReactDOM.hydrateRoot(document, <Page loading={loading} />);
+      root = ReactDOM.hydrateRoot(document, 
+        <React.StrictMode>
+          <Page loading={loading} />
+        </React.StrictMode>
+      );
     });
   } else {
     loadPage(window.location.pathname);

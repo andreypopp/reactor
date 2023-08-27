@@ -7,18 +7,7 @@ exception Suspend of any_promise
 
 type unsafe_html = { __html : string }
 
-module Html_prop = struct
-  type prop = string * value
-  and value = [ `String of string | `Bool of bool | `Int of int ]
-
-  let s v : value = `String v
-  let b v : value = `Bool v
-  let className v = "className", s v
-  let href v = "href", s v
-  let _type v = "type", s v
-  let checked v = "checked", b v
-  let value v = "value", s v
-end
+module Html_props = React_server_html_props
 
 type element =
   | El_null : element
@@ -32,7 +21,7 @@ type element =
   | El_html : {
       tag_name : string;
       key : string option;
-      props : Html_prop.prop list;
+      props : Html_props.props;
       children : html_children option;
     }
       -> element
@@ -73,6 +62,8 @@ let unsafe_create_html_element ?key tag_name props children =
 exception Browser_only
 
 let use_state init = init (), fun _update -> raise Browser_only
+let use_memo f _deps = f ()
+let use_callback f _deps = f
 let use_effect _thunk _deps = raise Browser_only
 let use_effect' _thunk _deps = raise Browser_only
 let start_transition _thunk = raise Browser_only

@@ -7,7 +7,8 @@
 type attrs = (string * attr_value) list
 (** A list of HTML attributes. *)
 
-and attr_value = [ `String of string | `Bool of bool | `Int of int ]
+and attr_value =
+  [ `String of string | `Bool of bool | `Int of int | `Float of float ]
 
 val s : string -> attr_value
 val b : bool -> attr_value
