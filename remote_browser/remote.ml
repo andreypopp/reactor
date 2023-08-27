@@ -91,14 +91,21 @@ let make_query endpoint input = endpoint input
 let make_mutation = make_query
 
 module Cache : sig
-  val find : 'a query -> 'a Promise.t option
-  val set : 'a query -> string Promise.t -> 'a Promise.t
-  val invalidate : 'a query -> unit
+  val cached : 'a req -> (unit -> string Promise.t) -> 'a Promise.t
+  val invalidate : 'a req -> unit
 end = struct
-  type cached_data =
+  type record = {
+    json : string Promise.t;
+    mutable data : cached_data Js.nullable;
+  }
+  (** Cache record. We split into json and data fields b/c SSR payload
+      contains only json data, so we should be able to decode such "partial"
+      cache into a properly typed value. *)
+
+  and cached_data =
     | Cached_data : 'a Typed_key.key * 'a Promise.t -> cached_data
 
-  let cache_data req json =
+  let cached_data req json =
     let data =
       let* json = json in
       let json = Yojson.Safe.from_string json in
@@ -106,34 +113,13 @@ end = struct
     in
     data, Cached_data (req.key, data)
 
-  type record = {
-    json : string Promise.t;
-    mutable data : cached_data Js.nullable;
-  }
-
   type t = record Js.Dict.t Js.Dict.t
 
   external window : t Js.Dict.t = "window"
   external t : t Js.Undefined.t = "window.__Remote_cache"
 
-  let ( let@ ) = Option.bind
-
-  let find (type a) (Query req : a query) : a Promise.t option =
-    let@ t = Js.Undefined.toOption t in
-    let@ t' = Js.Dict.get t req.path in
-    let@ record = Js.Dict.get t' (Lazy.force req.input) in
-    match Js.Nullable.toOption record.data with
-    | None ->
-        let data, cached_data = cache_data req record.json in
-        record.data <- Js.Nullable.return cached_data;
-        Some data
-    | Some (Cached_data (key, data)) -> (
-        match Typed_key.equal req.key key with
-        | None -> None
-        | Some Eq -> Some data)
-
-  let set (Query req : 'a query) json =
-    let t =
+  let lookup req =
+    let cache =
       match Js.Undefined.toOption t with
       | None ->
           let t = Js.Dict.empty () in
@@ -141,20 +127,44 @@ end = struct
           t
       | Some t -> t
     in
-    let t' =
-      match Js.Dict.get t req.path with
+    let cache =
+      match Js.Dict.get cache req.path with
       | None ->
-          let t' = Js.Dict.empty () in
-          Js.Dict.set t req.path t';
-          t'
-      | Some t' -> t'
+          let cache' = Js.Dict.empty () in
+          Js.Dict.set cache req.path cache';
+          cache'
+      | Some cache' -> cache'
     in
-    let data, cached_data = cache_data req json in
-    Js.Dict.set t' (Lazy.force req.input)
-      { json; data = Js.Nullable.return cached_data };
-    data
+    let key = Lazy.force req.input in
+    cache, key, Js.Dict.get cache key
 
-  let invalidate (Query req) =
+  let cached (type a) (req : a req) (f : unit -> string Promise.t) :
+      a Promise.t =
+    let cache, key, record = lookup req in
+    let fresh () =
+      let json = f () in
+      let data, cached_data = cached_data req json in
+      Js.Dict.set cache key
+        { json; data = Js.Nullable.return cached_data };
+      data
+    in
+    match record with
+    | None -> fresh ()
+    | Some record -> (
+        match Js.Nullable.toOption record.data with
+        | None ->
+            let data, cached_data = cached_data req record.json in
+            record.data <- Js.Nullable.return cached_data;
+            data
+        | Some (Cached_data (key, data)) -> (
+            match Typed_key.equal req.key key with
+            | None ->
+                (* This shouldn't happen as requests are identified by
+                   path and we already found a corresponding cache record *)
+                assert false
+            | Some Eq -> data))
+
+  let invalidate req =
     match Js.Undefined.toOption t with
     | None -> ()
     | Some t -> (
@@ -165,26 +175,20 @@ end = struct
             [@bs])
 end
 
-let run_query (Query req as q) =
-  (* NOTE: it is important not to create fresh promises here *)
-  match Cache.find q with
-  | Some promise -> promise
-  | None ->
-      let json =
-        let path =
-          sprintf "%s?input=%s" req.path
-            (Js.Global.encodeURIComponent (Lazy.force req.input))
-        in
-        let* response =
-          Fetch.fetchWithRequest
-          @@ Request.makeWithInit path
-          @@ RequestInit.make ~method_:Get ()
-        in
-        match Fetch.Response.ok response with
-        | true -> Response.text response
-        | false -> failwith "got non 200"
-      in
-      Cache.set q json
+let run_query (Query req) =
+  Cache.cached req @@ fun () ->
+  let path =
+    sprintf "%s?input=%s" req.path
+      (Js.Global.encodeURIComponent (Lazy.force req.input))
+  in
+  let* response =
+    Fetch.fetchWithRequest
+    @@ Request.makeWithInit path
+    @@ RequestInit.make ~method_:Get ()
+  in
+  match Fetch.Response.ok response with
+  | true -> Response.text response
+  | false -> failwith "got non 200"
 
 let run_mutation (Mutation req) =
   let promise =
@@ -200,4 +204,4 @@ let run_mutation (Mutation req) =
   let* data = promise in
   return (req.output_of_yojson (Yojson.Safe.from_string data))
 
-let invalidate q = Cache.invalidate q
+let invalidate (Query req) = Cache.invalidate req
