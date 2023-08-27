@@ -84,9 +84,16 @@ module UI = struct
       [|
         jsx.div ~className:"flex flex-column g2 measure-wide"
           [|
-            Example.about ~num:1 ~mode:About_light;
+            Example.about ~num:1 ~mode:About_light ();
             jsx.p [| React.text "Just an about page" |];
           |];
+      |]
+
+  let todos _req =
+    page ~title:"TODOs"
+      [|
+        jsx.div ~className:"flex flex-column g2 measure-wide"
+          [| Example.todo_list () |];
       |]
 end
 
@@ -106,7 +113,9 @@ let () =
           Dream.get "/static/**" (Dream.static static);
           Dream.get "/" (render UI.app);
           Dream.get "/about" (render UI.about);
+          Dream.get "/todo" (render UI.todos);
           Dream.get "/no-ssr"
             (React_dream.render ~enable_ssr:false ~links ~scripts UI.app);
         ]
-       @ Api.routes)
+       @ Api.Hello.routes
+       @ Api.Todo.routes)

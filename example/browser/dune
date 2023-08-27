@@ -1,7 +1,7 @@
 (library
  (name example)
  (wrapped false)
- (libraries react_browser api_browser remote_browser env_browser)
+ (libraries melange.dom react_browser api_browser remote_browser env_browser)
  (flags :standard -open Env)
  (modes melange)
  (preprocess
@@ -14,7 +14,7 @@
   (wrapped false)
   (modes native)
   (libraries
-   react_server
+   react.browser_server
    ppx_yojson_conv_lib
    remote_native
    env_native
@@ -40,12 +40,14 @@
    %{target}
    (progn
     (run echo "import './output/example/browser/example.js';")
-    (run echo "import '%{lib-private:react_browser:runtime.js}';")))))
+    (run
+     echo
+     "import '%{lib-private:react_browser:react_browser_runtime.js}';")))))
 
 (rule
  (target ./bundle.js)
  (deps
-  %{lib-private:react_browser:runtime.js}
+  %{lib-private:react_browser:react_browser_runtime.js}
   (alias browser_js))
  (action
   (run

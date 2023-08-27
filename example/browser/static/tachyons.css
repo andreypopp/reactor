@@ -3321,3 +3321,9 @@ code, .code { font-family: Consolas, monaco, monospace; }
 .g5 { gap: 4rem; }
 .g6 { gap: 8rem; }
 .g7 { gap: 16rem; }
+
+.scale1 { transform: scale(1.1); }
+.scale2 { transform: scale(1.2); }
+.scale3 { transform: scale(1.3); }
+.scale4 { transform: scale(1.4); }
+.scale5 { transform: scale(1.5); }

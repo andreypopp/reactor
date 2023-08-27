@@ -1,7 +1,6 @@
 (library
  (name api_native)
- (wrapped
-  (as api))
+ (wrapped false)
  (libraries lwt dream remote_native env_native)
  (flags :standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives -open Env)
  (preprocess
@@ -14,8 +13,7 @@
  browser
  (library
   (name api_browser)
-  (wrapped
-   (as api))
+  (wrapped false)
   (modes melange)
   (flags
    :standard
