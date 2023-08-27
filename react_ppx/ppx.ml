@@ -481,12 +481,6 @@ module Browser_only_structure_item = struct
          Extension.Context.structure_item pattern expand)
 end
 
-let preprocess_impl xs =
-  let loc = Location.none in
-  match !mode with
-  | Target_js -> xs
-  | Target_native -> [%stri open React_server.React_browser] :: xs
-
 module Jsx = struct
   open Ast_builder.Default
 
@@ -740,4 +734,4 @@ let () =
         Browser_only_expression.ext;
         Browser_only_structure_item.ext;
       ]
-    ~impl:Jsx.run ~preprocess_impl "react_jsx"
+    ~impl:Jsx.run "react_jsx"

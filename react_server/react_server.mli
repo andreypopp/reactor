@@ -71,21 +71,10 @@ module React : sig
        components on server instead"]
 
   exception Browser_only
-end
 
-(** {2 Client Components on server} *)
+  type any_promise = Any_promise : 'a promise -> any_promise
 
-(** Module which implements {!module-type: React_api.REACT} and
-    {!module-type: React_api.PROMISE} interfaces.
-
-    This module is automatically opened by [react.ppx] when compiling for native
-    environment.
-  *)
-module React_browser : sig
-  module React :
-    React_api.REACT
-      with type element = React.element
-       and type 'a promise = 'a Env.Promise.t
+  exception Suspend of any_promise
 end
 
 (** {1 Rendering to RSC model} *)

@@ -164,7 +164,7 @@ module Emit_model = struct
 end
 
 let rec client_to_html t = function
-  | React.El_null -> Lwt.return (Html.text "")
+  | React_model.El_null -> Lwt.return (Html.text "")
   | El_text s -> Lwt.return (Html.text s)
   | El_html { tag_name; key = _; props; children = None } ->
       Lwt.return (Html.node tag_name props [])
@@ -190,7 +190,7 @@ let rec client_to_html t = function
         match
           Remote.Runner.with_ctx (Computation.remote_runner_ctx t) f
         with
-        | exception React.Suspend (Any_promise promise) ->
+        | exception React_model.Suspend (Any_promise promise) ->
             promise >>= fun _ -> wait ()
         | v, [] -> client_to_html t v
         | v, reqs ->
@@ -233,7 +233,7 @@ and client_to_html_many t els : Html.t Lwt.t =
   >|= Emit_html.splice
 
 let rec server_to_html t = function
-  | React.El_null -> Lwt.return (Html.empty, Render_to_model.null)
+  | React_model.El_null -> Lwt.return (Html.empty, Render_to_model.null)
   | El_text s -> Lwt.return (Html.text s, Render_to_model.text s)
   | El_html
       { tag_name; key; props; children = Some (Html_children children) }

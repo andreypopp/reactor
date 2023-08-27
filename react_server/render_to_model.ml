@@ -61,8 +61,8 @@ let use_idx ctx =
 let push ctx chunk = ctx.push (Some (chunk_to_string chunk))
 
 let rec to_model ctx idx el =
-  let rec to_model' : React.element -> model = function
-    | React.El_null -> `Null
+  let rec to_model' : React_model.element -> model = function
+    | El_null -> `Null
     | El_text s -> `String s
     | El_html { tag_name; key; props; children } ->
         let props = (props :> (string * json) list) in

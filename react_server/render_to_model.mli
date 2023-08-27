@@ -20,5 +20,5 @@ type chunk = C_tree of model | C_ref of model
 
 val chunk_to_string : int * chunk -> string
 
-val render : React.element -> (string -> unit Lwt.t) -> unit Lwt.t
+val render : React_model.element -> (string -> unit Lwt.t) -> unit Lwt.t
 (** Render React elements into a serialized model. *)

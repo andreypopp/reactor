@@ -2,8 +2,7 @@ open! Import
 
 type json = Yojson.Safe.t
 
-module React = React
-module React_browser = React_browser
+module React = React_model
 
 let render_to_model = Render_to_model.render
 
