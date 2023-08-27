@@ -1,7 +1,7 @@
 module React = React
 module Event = React_browser_event
 module Html_props = React_browser_html_props
-module Component_map = Component_map
+module Component_map = React_browser_component_map
 
 let () =
   (* we don't want to hide React behind react_api.REACT to hide external
