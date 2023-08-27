@@ -9,14 +9,14 @@ dependencies:
     specifier: ^0.18.17
     version: 0.18.19
   react:
-    specifier: 18.3.0-canary-493f72b0a-20230727
-    version: 18.3.0-canary-493f72b0a-20230727
+    specifier: 18.3.0-canary-ab31a9ed2-20230824
+    version: 18.3.0-canary-ab31a9ed2-20230824
   react-dom:
-    specifier: 18.3.0-canary-493f72b0a-20230727
-    version: 18.3.0-canary-493f72b0a-20230727(react@18.3.0-canary-493f72b0a-20230727)
+    specifier: 18.3.0-canary-ab31a9ed2-20230824
+    version: 18.3.0-canary-ab31a9ed2-20230824(react@18.3.0-canary-ab31a9ed2-20230824)
   react-server-dom-webpack:
-    specifier: 18.3.0-canary-493f72b0a-20230727
-    version: 18.3.0-canary-493f72b0a-20230727(react-dom@18.3.0-canary-493f72b0a-20230727)(react@18.3.0-canary-493f72b0a-20230727)(webpack@5.88.2)
+    specifier: 18.3.0-canary-ab31a9ed2-20230824
+    version: 18.3.0-canary-ab31a9ed2-20230824(react-dom@18.3.0-canary-ab31a9ed2-20230824)(react@18.3.0-canary-ab31a9ed2-20230824)(webpack@5.88.2)
   react_of_ocaml:
     specifier: 'link:'
     version: 'link:'
@@ -642,34 +642,34 @@ packages:
       safe-buffer: 5.2.1
     dev: false
 
-  /react-dom@18.3.0-canary-493f72b0a-20230727(react@18.3.0-canary-493f72b0a-20230727):
-    resolution: {integrity: sha512-pNKxbwZ1rVhwfmeAZi1jgVnNJws7rfgIAnaW/ToVO8UdIVO3n0G0lQRjiriUvI3pB562SH3DioKltheAciajbA==}
+  /react-dom@18.3.0-canary-ab31a9ed2-20230824(react@18.3.0-canary-ab31a9ed2-20230824):
+    resolution: {integrity: sha512-06mPAfR3+9bJmLmuMDutUjmVHpNtF6iyeMJTGoe/0LsHoX+ptvj43yOLLv/vD1updpn+zo2CKd3TkbiSiW6Xwg==}
     peerDependencies:
-      react: 18.3.0-canary-493f72b0a-20230727
+      react: 18.3.0-canary-ab31a9ed2-20230824
     dependencies:
       loose-envify: 1.4.0
-      react: 18.3.0-canary-493f72b0a-20230727
-      scheduler: 0.24.0-canary-493f72b0a-20230727
+      react: 18.3.0-canary-ab31a9ed2-20230824
+      scheduler: 0.24.0-canary-ab31a9ed2-20230824
     dev: false
 
-  /react-server-dom-webpack@18.3.0-canary-493f72b0a-20230727(react-dom@18.3.0-canary-493f72b0a-20230727)(react@18.3.0-canary-493f72b0a-20230727)(webpack@5.88.2):
-    resolution: {integrity: sha512-RIwlXPbuknj3chaNat7AGXoVD1A3sgjnV8GTKw4H7LLXbUYZ0s2LvBZy7IzyTaNxseQ6EzHFqt8XFTkSt25ZAg==}
+  /react-server-dom-webpack@18.3.0-canary-ab31a9ed2-20230824(react-dom@18.3.0-canary-ab31a9ed2-20230824)(react@18.3.0-canary-ab31a9ed2-20230824)(webpack@5.88.2):
+    resolution: {integrity: sha512-j7AUuAGH7WSJe69/tVRb3DXLoHxUFoEO91SVbRaTjYVxIRhRcdLeSjAJKXQs7AigeFSCdcXBBBr+p3gn4Sugbg==}
     engines: {node: '>=0.10.0'}
     peerDependencies:
-      react: 18.3.0-canary-493f72b0a-20230727
-      react-dom: 18.3.0-canary-493f72b0a-20230727
+      react: 18.3.0-canary-ab31a9ed2-20230824
+      react-dom: 18.3.0-canary-ab31a9ed2-20230824
       webpack: ^5.59.0
     dependencies:
       acorn-loose: 8.3.0
       loose-envify: 1.4.0
       neo-async: 2.6.2
-      react: 18.3.0-canary-493f72b0a-20230727
-      react-dom: 18.3.0-canary-493f72b0a-20230727(react@18.3.0-canary-493f72b0a-20230727)
+      react: 18.3.0-canary-ab31a9ed2-20230824
+      react-dom: 18.3.0-canary-ab31a9ed2-20230824(react@18.3.0-canary-ab31a9ed2-20230824)
       webpack: 5.88.2(esbuild@0.18.19)
     dev: false
 
-  /react@18.3.0-canary-493f72b0a-20230727:
-    resolution: {integrity: sha512-Aix5TuFF0VgBjMjVDOOEGtcWZyEWosQ0WXh+zXNg1qMf61fN5ebfByd/l9hqa7biqp7mjwBLtUUtT6WACyoUjA==}
+  /react@18.3.0-canary-ab31a9ed2-20230824:
+    resolution: {integrity: sha512-HD+uBKLoOvI0aRUjpxj6w5El7fit6m/8/WFtsqkfcjDHuFAWl5CGa9Xp9CtKwZgl+Aali9SOj+fgt0aTar5Hhg==}
     engines: {node: '>=0.10.0'}
     dependencies:
       loose-envify: 1.4.0
@@ -679,8 +679,8 @@ packages:
     resolution: {integrity: sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ==}
     dev: false
 
-  /scheduler@0.24.0-canary-493f72b0a-20230727:
-    resolution: {integrity: sha512-u/UiqraOFLMEF7cBkK4hqHJZ5i954lxY7hl7daNEjtRLQyjkW7lrJTwF5UBYTT8pKKcooBHOF9Rh13V9zdqiAA==}
+  /scheduler@0.24.0-canary-ab31a9ed2-20230824:
+    resolution: {integrity: sha512-cOfFsR1hEQixGUXVH821IosKeiRGC498z2GXAbSB1RHEWyD76e4jybqdZB1DqF0t3RNlbBEM/vY5LjaErCseoA==}
     dependencies:
       loose-envify: 1.4.0
     dev: false

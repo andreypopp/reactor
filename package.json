@@ -5,9 +5,9 @@
   "license": "ISC",
   "dependencies": {
     "esbuild": "^0.18.17",
-    "react": "18.3.0-canary-493f72b0a-20230727",
-    "react-dom": "18.3.0-canary-493f72b0a-20230727",
-    "react-server-dom-webpack": "18.3.0-canary-493f72b0a-20230727",
+    "react": "18.3.0-canary-ab31a9ed2-20230824",
+    "react-dom": "18.3.0-canary-ab31a9ed2-20230824",
+    "react-server-dom-webpack": "18.3.0-canary-ab31a9ed2-20230824",
     "react_of_ocaml": "link:"
   }
 }
