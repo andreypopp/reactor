@@ -306,7 +306,7 @@ module Remote_native = struct
       in
       Dream.respond ~status:[%e status] (Yojson.Safe.to_string err)]
 
-  let build_query ~loc ~mod_name (m : Method_desc.t) =
+  let build_query ~loc ~path ~mod_name (m : Method_desc.t) =
     let define, make =
       match m.kind with
       | Kind_query ->
@@ -355,12 +355,16 @@ module Remote_native = struct
           [%e define]
             ~yojson_of_output:[%e output_conv `yojson_of ~loc m]
             ~yojson_of_input:[%e input_conv `yojson_of ~loc m]
-            ~path:[%e estringf ~loc "/%s" m.name.txt]
+            ~path:
+              [%e
+                estringf ~loc "%s/%s"
+                  (Option.value path ~default:"")
+                  m.name.txt]
             [%e call_into_impl]
         in
         [%e make_query]]
 
-  let build_functor ~ctxt ~mod_name (m : Method_desc.t) =
+  let build_functor ~ctxt ~path ~mod_name (m : Method_desc.t) =
     let loc = Expansion_context.Deriver.derived_item_loc ctxt in
     let body_req =
       let call_into_impl =
@@ -410,7 +414,7 @@ module Remote_native = struct
     [%str
       [%%i build_input_mod ~ctxt ~yojson_of:true ~of_yojson:true m]
       [%%i build_output_mod `yojson_of ~ctxt m]
-      [%%i build_query ~loc ~mod_name m]
+      [%%i build_query ~loc ~path ~mod_name m]
 
       let [%p
             ppat_var ~loc
@@ -426,7 +430,7 @@ module Remote_native = struct
     let mod_name = mod_type_decl.pmtd_name in
     let make_str =
       List.flat_map methods ~f:(function
-        | Ok m -> build_functor ~ctxt ~mod_name m
+        | Ok m -> build_functor ~ctxt ~path ~mod_name m
         | Error str -> [ str ])
     in
     let routes_expr =
