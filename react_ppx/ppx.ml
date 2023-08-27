@@ -484,7 +484,7 @@ end
 let preprocess_impl xs =
   let loc = Location.none in
   match !mode with
-  | Target_js -> [%stri open React_browser] :: xs
+  | Target_js -> xs
   | Target_native -> [%stri open React_server.React_browser] :: xs
 
 module Jsx = struct
@@ -537,10 +537,10 @@ module Jsx = struct
               let loc = expr.pexp_loc in
               let make_props =
                 match props with
-                | [] -> [%expr React_browser.React.html_props_null]
+                | [] -> [%expr React.html_props_null]
                 | props ->
                     pexp_apply ~loc
-                      [%expr React_browser.React.html_props ()]
+                      [%expr React_browser_html_props.props ()]
                       props
               in
               match children, dangerouslySetInnerHTML with

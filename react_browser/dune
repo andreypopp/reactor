@@ -1,6 +1,7 @@
 (library
  (name react_browser)
  (public_name react.browser)
+ (wrapped false)
  (flags :standard -open Env)
  (modes melange)
  (libraries melange.dom react_api env_browser yojson)
