@@ -1,6 +1,6 @@
 (library
  (name env_browser)
- (wrapped (as env))
+ (wrapped false)
  (public_name react.env_browser)
  (preprocess
   (pps melange.ppx))

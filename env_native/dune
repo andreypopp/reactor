@@ -1,6 +1,6 @@
 (library
  (name env_native)
- (wrapped (as env))
+ (wrapped false)
  (public_name react.env_native)
  (libraries lwt lwt.unix)
  (modes native))
