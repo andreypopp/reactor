@@ -137,7 +137,7 @@ module Emit_model = struct
             let output = el.dataset.output;
             window.__Remote_cache = window.__Remote_cache || {};
             window.__Remote_cache[path] = window.__Remote_cache[path] || {};
-            window.__Remote_cache[path][input] = Promise.resolve(output);
+            window.__Remote_cache[path][input] = {json: Promise.resolve(output), data: null};
           };
           React_of_caml_ssr.close = () => {
             React_of_caml_ssr._c.close();
