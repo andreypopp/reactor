@@ -1,5 +1,6 @@
 module Promise = struct
   type 'a t = 'a Js.Promise.t
+
   let return v = Js.Promise.resolve v
   let ( let* ) v e = Js.Promise.then_ e v
 
@@ -8,6 +9,6 @@ module Promise = struct
     let unit = () in
     ignore
       (Js.Global.setIntervalFloat
-        (fun () -> (resolve unit [@bs]))
-        (sec *. 1000.))
+         (fun () -> (resolve unit [@bs]))
+         (sec *. 1000.))
 end

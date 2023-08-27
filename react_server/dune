@@ -2,7 +2,14 @@
  (name react_server)
  (public_name react.server)
  (modules :standard \ react)
- (libraries react_api containers yojson lwt lwt.unix remote.native env_native))
+ (libraries
+  react_api
+  containers
+  yojson
+  lwt
+  lwt.unix
+  remote.native
+  env_native))
 
 (library
  (name react_browser_server)

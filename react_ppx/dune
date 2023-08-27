@@ -3,7 +3,8 @@
  (modules ppx)
  ; (flags :standard -w -9)
  (libraries ppxlib)
- (preprocess (pps ppxlib.metaquot))
+ (preprocess
+  (pps ppxlib.metaquot))
  (kind ppx_rewriter))
 
 (executable

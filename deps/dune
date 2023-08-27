@@ -1,6 +1,6 @@
 (dirs :standard \ yojson melange ocaml-lsp)
 
-(vendored_dirs 
+(vendored_dirs
  melange-fetch
  melange-json
  ppx_yojson_conv

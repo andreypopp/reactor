@@ -2,7 +2,13 @@
  (name main)
  (public_name react-example)
  (package react_example)
- (libraries api_native react_server react_dream dream example_native dune-site)
+ (libraries
+  api_native
+  react_server
+  react_dream
+  dream
+  example_native
+  dune-site)
  (flags :standard -alert ++browser_only)
  (preprocess
   (pps react_ppx -native ppx_yojson_conv)))
