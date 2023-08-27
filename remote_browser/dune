@@ -1,6 +1,6 @@
 (library
  (name remote_browser)
- (wrapped (as remote))
+ (wrapped false)
  (public_name remote.browser)
  (modes melange)
  (flags :standard -open Env)

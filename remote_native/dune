@@ -1,7 +1,6 @@
 (library
  (name remote_native)
- (wrapped
-  (as remote))
+ (wrapped false)
  (public_name remote.native)
  (modes native)
  (flags :standard -open Env)
