@@ -1,7 +1,8 @@
 (library
  (name example)
  (wrapped false)
- (libraries melange.dom react_browser api_browser remote_browser env_browser)
+ (libraries melange.dom react_browser api_browser remote_browser env_browser
+            melange-webapi)
  (flags :standard -open Env)
  (modes melange)
  (preprocess

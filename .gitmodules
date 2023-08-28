@@ -22,3 +22,6 @@
 [submodule "deps/melange-json"]
 	path = deps/melange-json
 	url = https://github.com/melange-community/melange-json.git
+[submodule "deps/melange-webapi"]
+	path = deps/melange-webapi
+	url = https://github.com/melange-community/melange-webapi.git

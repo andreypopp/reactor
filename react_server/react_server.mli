@@ -54,15 +54,65 @@ module React : sig
     html_children option ->
     element
 
-  val use_effect : (unit -> unit -> unit) -> 'a array -> unit
+  val use_effect0 : (unit -> unit -> unit) -> unit
   [@@alert
     browser_only
       "React.use_effect is only available for client side components"]
 
-  val use_effect' : (unit -> unit) -> 'a array -> unit
+  val use_effect1 : 'a -> (unit -> unit -> unit) -> unit
   [@@alert
     browser_only
-      "React.use_effect' is only available for client side components"]
+      "React.use_effect is only available for client side components"]
+
+  val use_effect2 : 'a -> 'b -> (unit -> unit -> unit) -> unit
+  [@@alert
+    browser_only
+      "React.use_effect is only available for client side components"]
+
+  val use_effect0' : (unit -> unit) -> unit
+  [@@alert
+    browser_only
+      "React.use_effect is only available for client side components"]
+
+  val use_effect1' : 'a -> (unit -> unit) -> unit
+  [@@alert
+    browser_only
+      "React.use_effect is only available for client side components"]
+
+  val use_effect2' : 'a -> 'b -> (unit -> unit) -> unit
+  [@@alert
+    browser_only
+      "React.use_effect is only available for client side components"]
+
+  val use_layout_effect0 : (unit -> unit -> unit) -> unit
+  [@@alert
+    browser_only
+      "React.use_layout_effect is only available for client side components"]
+
+  val use_layout_effect1 : 'a -> (unit -> unit -> unit) -> unit
+  [@@alert
+    browser_only
+      "React.use_layout_effect is only available for client side components"]
+
+  val use_layout_effect2 : 'a -> 'b -> (unit -> unit -> unit) -> unit
+  [@@alert
+    browser_only
+      "React.use_layout_effect is only available for client side components"]
+
+  val use_layout_effect0' : (unit -> unit) -> unit
+  [@@alert
+    browser_only
+      "React.use_layout_effect is only available for client side components"]
+
+  val use_layout_effect1' : 'a -> (unit -> unit) -> unit
+  [@@alert
+    browser_only
+      "React.use_layout_effect is only available for client side components"]
+
+  val use_layout_effect2' : 'a -> 'b -> (unit -> unit) -> unit
+  [@@alert
+    browser_only
+      "React.use_layout_effect is only available for client side components"]
 
   val use : 'a promise -> 'a
   [@@alert

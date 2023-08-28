@@ -3,7 +3,7 @@
 let%component link ~href label =
   let%browser_only onClick ev =
     React_browser.Event.preventDefault ev;
-    React.navigate href
+    React_browser.navigate href
   in
   jsx.a ~href ~onClick [| React.text label |]
 
@@ -13,11 +13,11 @@ let%component button ~onPress:onClick label =
 
 let%component hello ~name () =
   let q, setq = React.use_state (fun () -> Api.Hello.hello ~name) in
-  React.use_effect'
-    (fun () ->
-      React.start_transition @@ fun () ->
-      setq (fun _ -> Api.Hello.hello ~name))
-    [| name |];
+  let () =
+    React.use_effect1' name @@ fun () ->
+    React.start_transition @@ fun () ->
+    setq (fun _ -> Api.Hello.hello ~name)
+  in
   let msg = React.use (Remote.run_query q) in
   let%browser_only onClick _ev =
     ignore
@@ -79,7 +79,7 @@ let%export_component app ~(title : string) (children : React.element) =
   let promise2 = Promise.sleep 2.0 in
   let promise_inner = Promise.sleep 0.5 in
   let%browser_only () =
-    React.use_effect' (fun () -> Js.log "HELLO, I'M READY") [||]
+    React.use_effect0' (fun () -> Js.log "HELLO, I'M READY")
   in
   jsx.div
     [|
@@ -134,23 +134,28 @@ let%component todo_section ~title ~on_completed todos =
 
 let%component add_todo_form ~on_create () =
   let value, set_value = React.use_state (fun () -> "") in
+  let input, set_input = React.use_dom_ref () in
   let%browser_only onChange ev =
     let value = React_browser.Event.(target ev |> Target.value_exn) in
     set_value (fun _ -> value)
   in
-  let%browser_only onClick _ev =
+  let%browser_only create () =
     ignore
       Promise.(
         let* () = on_create value in
         set_value (fun _ -> "");
+        Option.iter Webapi.Dom.HtmlElement.focus (React.deref input);
         return ())
   in
-  let on_input =
-    React.use_callback (fun%browser_only el -> Js.log el) [||]
+  let%browser_only onKeyDown ev =
+    match React_browser.Event.Keyboard.key ev with
+    | "Enter" -> create ()
+    | _ -> ()
   in
+  let%browser_only onClick _ev = create () in
   jsx.div
     [|
-      jsx.input ~ref:on_input ~onChange ~type_:"text" ~value;
+      jsx.input ~ref:set_input ~onChange ~onKeyDown ~type_:"text" ~value;
       jsx.button ~onClick [| React.text "Add" |];
     |]
 

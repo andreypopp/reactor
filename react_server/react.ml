@@ -1,7 +1,17 @@
 include React_server.React
 
-let use_effect _thunk _deps = ()
-let use_effect' _thunk _deps = ()
+let use_effect0 _thunk = ()
+let use_effect1 _a _thunk = ()
+let use_effect2 _a _b _thunk = ()
+let use_effect0' _thunk = ()
+let use_effect1' _a _thunk = ()
+let use_effect2' _a _b _thunk = ()
+let use_layout_effect0 _thunk = ()
+let use_layout_effect1 _a _thunk = ()
+let use_layout_effect2 _a _b _thunk = ()
+let use_layout_effect0' _thunk = ()
+let use_layout_effect1' _a _thunk = ()
+let use_layout_effect2' _a _b _thunk = ()
 
 type 'a promise = 'a Lwt.t
 

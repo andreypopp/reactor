@@ -1,5 +1,7 @@
 type element
 type children = element array
+type dom_element = Dom.element
+type 'a nullable = 'a Js.nullable
 
 external unsafe_create_element : ('props -> element) -> 'props -> element
   = "createElement"
@@ -40,17 +42,71 @@ external use_state : (unit -> 'a) -> 'a * (('a -> 'a) -> unit)
   = "useState"
 [@@mel.module "react"]
 
-external use_effect' : (unit -> unit) -> 'a array -> unit = "useEffect"
-[@@mel.module "react"]
+type dep
 
-external use_effect : (unit -> unit -> unit) -> 'a array -> unit
+external to_dep : 'a -> dep = "%identity"
+
+external use_effect_ : (unit -> unit -> unit) -> dep array -> unit
   = "useEffect"
 [@@mel.module "react"]
 
-external use_memo : (unit -> 'a) -> _ array -> 'a = "useMemo"
+external use_effect_' : (unit -> unit) -> dep array -> unit = "useEffect"
 [@@mel.module "react"]
 
-let use_callback (f : 'a -> 'b) deps = use_memo (fun () -> f) deps
+let use_effect0 f = use_effect_ f [||]
+let use_effect1 a f = use_effect_ f [| to_dep a |]
+let use_effect2 a b f = use_effect_ f [| to_dep a; to_dep b |]
+let use_effect0' f = use_effect_' f [||]
+let use_effect1' a f = use_effect_' f [| to_dep a |]
+let use_effect2' a b f = use_effect_' f [| to_dep a; to_dep b |]
+
+external use_layout_effect_ : (unit -> unit -> unit) -> dep array -> unit
+  = "useLayoutEffect"
+[@@mel.module "react"]
+
+external use_layout_effect_' : (unit -> unit) -> dep array -> unit
+  = "useLayoutEffect"
+[@@mel.module "react"]
+
+let use_layout_effect0 f = use_layout_effect_ f [||]
+let use_layout_effect1 a f = use_layout_effect_ f [| to_dep a |]
+
+let use_layout_effect2 a b f =
+  use_layout_effect_ f [| to_dep a; to_dep b |]
+
+let use_layout_effect0' f = use_layout_effect_' f [||]
+let use_layout_effect1' a f = use_layout_effect_' f [| to_dep a |]
+
+let use_layout_effect2' a b f =
+  use_layout_effect_' f [| to_dep a; to_dep b |]
+
+external use_memo_ : (unit -> 'a) -> dep array -> 'a = "useMemo"
+[@@mel.module "react"]
+
+let use_memo0 f = use_memo_ f [||]
+let use_memo1 a f = use_memo_ f [| to_dep a |]
+let use_memo2 a b f = use_memo_ f [| to_dep a; to_dep b |]
+let use_callback0 (f : 'a -> 'b) = use_memo0 (fun () -> f)
+let use_callback1 a (f : 'a -> 'b) = use_memo1 a (fun () -> f)
+let use_callback2 a b (f : 'a -> 'b) = use_memo2 a b (fun () -> f)
+
+type 'a ref = { mutable current : 'a Js.null_undefined }
+
+external use_ref' : unit -> 'a ref = "useRef" [@@mel.module "react"]
+
+let deref ref = Js.Null_undefined.toOption ref.current
+
+let use_ref () =
+  let ref = use_ref' () in
+  let set =
+    use_callback0 (fun v -> ref.current <- Js.Null_undefined.fromOption v)
+  in
+  ref, set
+
+let use_dom_ref () =
+  let ref = use_ref' () in
+  let set = use_callback0 (fun v -> ref.current <- v) in
+  ref, set
 
 external start_transition : (unit -> unit) -> unit = "startTransition"
 [@@mel.module "react"]
@@ -58,8 +114,3 @@ external start_transition : (unit -> unit) -> unit = "startTransition"
 type 'a promise = 'a Env.Promise.t
 
 external use : 'a promise -> 'a = "use" [@@mel.module "react"]
-
-external render_to_string : element -> string = "renderToString"
-[@@mel.module "react-dom/server"]
-
-external navigate : string -> unit = "React_of_caml_navigate"
