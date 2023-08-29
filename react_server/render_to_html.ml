@@ -163,6 +163,18 @@ module Emit_model = struct
     Html.unsafe_rawf "<script>window.React_of_caml_ssr.close()</script>"
 end
 
+let handle_remote_reqs t reqs =
+  Lwt_list.map_p
+    (fun (Remote.Runner.Running
+           { path; input; promise; yojson_of_output }) ->
+      promise >|= fun output ->
+      let html =
+        Emit_model.html_rpc_payload path input (yojson_of_output output)
+      in
+      html)
+    reqs
+  >|= fun payload -> Computation.emit_html t (Html.splice payload)
+
 let rec client_to_html t = function
   | React_model.El_null -> Lwt.return (Html.text "")
   | El_text s -> Lwt.return (Html.text s)
@@ -194,20 +206,7 @@ let rec client_to_html t = function
             promise >>= fun _ -> wait ()
         | v, [] -> client_to_html t v
         | v, reqs ->
-            let payload =
-              Lwt_list.map_p
-                (fun (Remote.Runner.Running
-                       { path; input; promise; yojson_of_output }) ->
-                  promise >|= fun output ->
-                  let html =
-                    Emit_model.html_rpc_payload path input
-                      (yojson_of_output output)
-                  in
-                  html)
-                reqs
-              >|= fun payload ->
-              Computation.emit_html t (Html.splice payload)
-            in
+            let payload = handle_remote_reqs t reqs in
             let children = client_to_html t v in
             Lwt.both children payload >|= fun (children, ()) -> children
       in
@@ -265,8 +264,16 @@ let rec server_to_html t = function
           Render_to_model.node ~tag_name ~key
             ~props:(props :> (string * json) list)
             None )
-  | El_thunk f -> server_to_html t (f ())
-  | El_async_thunk f -> f () >>= server_to_html t
+  | El_thunk f ->
+      let tree, _reqs =
+        Remote.Runner.with_ctx (Computation.remote_runner_ctx t) f
+      in
+      (* TODO: need to register them somewhere? *)
+      (* let payload = handle_remote_reqs t reqs in *)
+      server_to_html t tree
+  | El_async_thunk f ->
+      Remote.Runner.with_ctx_async (Computation.remote_runner_ctx t) f
+      >>= fun (tree, _reqs) -> server_to_html t tree
   | El_suspense { children; fallback = _; key } -> (
       Computation.fork t @@ fun t ->
       let promise = server_to_html_many t children in
@@ -277,7 +284,7 @@ let rec server_to_html t = function
             promise >|= fun (html, model) ->
             Html.splice
               [
-                Emit_model.html_model (idx, Render_to_model.C_tree model);
+                Emit_model.html_model (idx, Render_to_model.C_value model);
                 Emit_html.html_chunk idx html;
               ]
           in
@@ -296,10 +303,21 @@ let rec server_to_html t = function
         Lwt_list.map_p
           (fun (name, jsony) ->
             match jsony with
-            | `Element element ->
+            | React_model.Element element ->
                 server_to_html t element >|= fun (_html, model) ->
                 name, model
-            | `Json json -> Lwt.return (name, `String json))
+            | Promise (promise, value_to_yojson) ->
+                Computation.fork t @@ fun t ->
+                let idx = Computation.use_idx t in
+                let sync = name, Render_to_model.promise_value idx in
+                let async =
+                  promise >|= fun value ->
+                  let json = value_to_yojson value in
+                  let json = Yojson.Safe.to_string json in
+                  Emit_model.html_model (idx, C_value (`String json))
+                in
+                `Fork (async, sync)
+            | Json json -> Lwt.return (name, `String json))
           props
       in
       let html = client_to_html t thunk in
@@ -335,7 +353,7 @@ let render el =
     Computation.root @@ fun (t, idx) ->
     server_to_html t el >|= fun (html, model) ->
     Html.splice
-      [ Emit_model.html_model (idx, Render_to_model.C_tree model); html ]
+      [ Emit_model.html_model (idx, Render_to_model.C_value model); html ]
   in
   html >|= fun (html_shell, async) ->
   match async with

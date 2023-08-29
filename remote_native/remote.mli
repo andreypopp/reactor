@@ -28,6 +28,7 @@ module Runner : sig
   type ctx
 
   val create : unit -> ctx
+  val wait : ctx -> unit Lwt.t
 
   type running =
     | Running : {
@@ -39,4 +40,7 @@ module Runner : sig
         -> running
 
   val with_ctx : ctx -> (unit -> 'a) -> 'a * running list
+
+  val with_ctx_async :
+    ctx -> (unit -> 'a Promise.t) -> ('a * running list) Promise.t
 end

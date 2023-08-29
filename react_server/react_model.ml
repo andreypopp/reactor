@@ -41,8 +41,12 @@ and html_children =
   | Html_children of children
   | Html_children_raw of unsafe_html
 
-and client_props =
-  (string * [ `Json of string | `Element of element ]) list
+and client_props = (string * client_prop) list
+
+and client_prop =
+  | Json : string -> client_prop
+  | Element : element -> client_prop
+  | Promise : 'a Env.Promise.t * ('a -> json) -> client_prop
 
 let null = El_null
 let text s = El_text s

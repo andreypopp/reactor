@@ -31,8 +31,12 @@ module React : sig
   (** [async_thunk f props children] works the same as [thunk f props children]
       but is asynchronous. *)
 
-  type client_props =
-    (string * [ `Json of string | `Element of element ]) list
+  type client_props = (string * client_prop) list
+
+  and client_prop =
+    | Json : string -> client_prop
+    | Element : element -> client_prop
+    | Promise : 'a Env.Promise.t * ('a -> json) -> client_prop
 
   val client_thunk :
     ?import_name:string -> string -> client_props -> element -> element
@@ -87,32 +91,38 @@ module React : sig
   val use_layout_effect0 : (unit -> unit -> unit) -> unit
   [@@alert
     browser_only
-      "React.use_layout_effect is only available for client side components"]
+      "React.use_layout_effect is only available for client side \
+       components"]
 
   val use_layout_effect1 : 'a -> (unit -> unit -> unit) -> unit
   [@@alert
     browser_only
-      "React.use_layout_effect is only available for client side components"]
+      "React.use_layout_effect is only available for client side \
+       components"]
 
   val use_layout_effect2 : 'a -> 'b -> (unit -> unit -> unit) -> unit
   [@@alert
     browser_only
-      "React.use_layout_effect is only available for client side components"]
+      "React.use_layout_effect is only available for client side \
+       components"]
 
   val use_layout_effect0' : (unit -> unit) -> unit
   [@@alert
     browser_only
-      "React.use_layout_effect is only available for client side components"]
+      "React.use_layout_effect is only available for client side \
+       components"]
 
   val use_layout_effect1' : 'a -> (unit -> unit) -> unit
   [@@alert
     browser_only
-      "React.use_layout_effect is only available for client side components"]
+      "React.use_layout_effect is only available for client side \
+       components"]
 
   val use_layout_effect2' : 'a -> 'b -> (unit -> unit) -> unit
   [@@alert
     browser_only
-      "React.use_layout_effect is only available for client side components"]
+      "React.use_layout_effect is only available for client side \
+       components"]
 
   val use : 'a promise -> 'a
   [@@alert

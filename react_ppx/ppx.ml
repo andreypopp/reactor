@@ -268,12 +268,18 @@ module Ext_export_component = struct
               | Ptyp_constr ({ txt = ident; loc }, [])
                 when Longident.name ident = "element"
                      || Longident.name ident = "React.element" ->
-                  [%expr `Element [%e prop]]
+                  [%expr React_server.React.Element [%e prop]]
+              | Ptyp_constr ({ txt = ident; loc }, [ typ ])
+                when Longident.name ident = "promise"
+                     || Longident.name ident = "Promise.t" ->
+                  [%expr
+                    React_server.React.Promise
+                      ([%e prop], [%yojson_of: [%t typ]])]
               | _ ->
                   [%expr
                     let json = [%yojson_of: [%t typ]] [%e prop] in
                     let json = Yojson.Safe.to_string json in
-                    `Json json]
+                    React_server.React.Json json]
             in
             [%expr ([%e name], [%e value]) :: [%e xs]])
       [%expr []] props
@@ -299,6 +305,29 @@ module Ext_export_component = struct
                     [%expr
                       (Obj.magic Js.Dict.unsafeGet props [%e name]
                         : React.element)]
+                | Ptyp_constr ({ txt = ident; loc }, [ typ ])
+                  when Longident.name ident = "promise"
+                       || Longident.name ident = "Promise.t" ->
+                    [%expr
+                      let promise = Js.Dict.unsafeGet props [%e name] in
+                      let promise' =
+                        (Obj.magic promise : [%t typ] Promise.t Js.Dict.t)
+                      in
+                      match Js.Dict.get promise' "__promise" with
+                      | Some promise -> promise
+                      | None ->
+                          let promise =
+                            Promise.(
+                              let* json =
+                                (Obj.magic (Js.Promise.resolve promise)
+                                  : string Promise.t)
+                              in
+                              let json = Yojson.Safe.from_string json in
+                              let data = [%of_yojson: [%t typ]] json in
+                              return data)
+                          in
+                          Js.Dict.set promise' "__promise" promise;
+                          promise]
                 | _ ->
                     [%expr
                       let json = Js.Dict.unsafeGet props [%e name] in

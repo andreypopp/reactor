@@ -1,4 +1,5 @@
 open ContainersLabels
+open Lwt.Infix
 
 type json = Yojson.Safe.t
 
@@ -38,7 +39,11 @@ let make_query endpoint input = endpoint input
 let make_mutation endpoint input = endpoint input
 
 module Runner = struct
-  type ctx = { mutable cache : Hmap.t; mutable running : running list }
+  type ctx = {
+    mutable cache : Hmap.t;
+    mutable running : running list;
+    mutable all_running : running list;
+  }
 
   and running =
     | Running : {
@@ -49,21 +54,39 @@ module Runner = struct
       }
         -> running
 
-  let create () = { cache = Hmap.empty; running = [] }
-  let ctx : ctx option ref = ref None
+  let create () = { cache = Hmap.empty; running = []; all_running = [] }
+  let ctx : ctx Lwt.key = Lwt.new_key ()
 
   let with_ctx ctx' f =
-    ctx := Some ctx';
-    let v = Fun.protect f ~finally:(fun () -> ctx := None) in
+    let v = Lwt.with_value ctx (Some ctx') f in
     let running = ctx'.running in
     ctx'.running <- [];
     v, running
+
+  let with_ctx_async ctx' f =
+    let v = Lwt.with_value ctx (Some ctx') f in
+    Lwt.map
+      (fun v ->
+        let running = ctx'.running in
+        ctx'.running <- [];
+        v, running)
+      v
+
+  let wait ctx =
+    Lwt.join
+    @@ List.filter_map
+         ~f:(fun (Running { promise; _ }) ->
+           match Lwt.state promise with
+           | Fail _exn -> None
+           | Return _v -> None
+           | Sleep -> Some (promise >|= Fun.const ()))
+         ctx.all_running
 end
 
 let run_query
     (Query
       { f; path; input; yojson_of_input; yojson_of_output; query_key }) =
-  match !Runner.ctx with
+  match Lwt.get Runner.ctx with
   | None ->
       failwith
         "no Runner_ctx.t available, did you forgot to wrap the call site \
@@ -84,10 +107,12 @@ let run_query
       | None ->
           let promise = f input in
           Hashtbl.replace cache key promise;
-          ctx.running <-
-            Running
+          let running =
+            Runner.Running
               { path; input = input_json; yojson_of_output; promise }
-            :: ctx.running;
+          in
+          ctx.running <- running :: ctx.running;
+          ctx.all_running <- running :: ctx.all_running;
           promise)
 
 let run_mutation (Mutation { f; input }) = f input
