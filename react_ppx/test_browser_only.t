@@ -11,8 +11,6 @@ againts () value:
   >   ()
   > EOF
   (* BROWSER *)
-  open React_browser
-  
   let () = Js.log "OOPS"
   
   let () =
@@ -20,8 +18,6 @@ againts () value:
     ()
   
   (* NATIVE *)
-  open React_server.React_browser
-  
   let () = ()
   
   let () =
@@ -43,8 +39,6 @@ syntactically represent a function:
   >   ()
   > EOF
   (* BROWSER *)
-  open React_browser
-  
   let f () = Js.log "OOPS"
   
   let () =
@@ -58,8 +52,6 @@ syntactically represent a function:
     ()
   
   (* NATIVE *)
-  open React_server.React_browser
-  
   let f _ = raise React_server.React.Browser_only
   
   let () =
@@ -81,8 +73,6 @@ Any other uses are disallowed:
   >   ()
   > EOF
   (* BROWSER *)
-  open React_browser
-  
   let f = Js.log "OOPS"
   
   let () =
@@ -90,8 +80,6 @@ Any other uses are disallowed:
     ()
   
   (* NATIVE *)
-  open React_server.React_browser
-  
   let [%e ()] =
     [%ocaml.error
       "Invalid %browser_only usage, only the following is allowed:\n\
