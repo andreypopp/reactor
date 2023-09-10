@@ -45,17 +45,15 @@ module Let_component = struct
     label_synthetic : bool;
   }
 
-  let unit_longident = Longident.parse "()"
-
   let parse ~loc pat expr =
     let name =
       match pat.ppat_desc with
       | Ppat_var label -> label
       | _ ->
           raise_errorf ~loc
-            "let%%component should only be applied to functions"
+            "%%component: should only be applied to functions"
     in
-    let props, body =
+    let seen_unit, props, body =
       let key_prop =
         let label = { txt = "key"; loc } in
         {
@@ -67,7 +65,7 @@ module Let_component = struct
           typ = Some [%type: string option];
         }
       in
-      let rec collect_props n acc expr =
+      let rec collect_props ~seen_unit acc expr =
         match expr.pexp_desc with
         | Pexp_fun
             ( ((Labelled arg | Optional arg) as arg_label),
@@ -79,7 +77,7 @@ module Let_component = struct
               | Ppat_constraint (_, typ) -> Some typ
               | _ -> None
             in
-            collect_props (n + 1)
+            collect_props ~seen_unit
               ({
                  arg_label;
                  expr = default;
@@ -90,41 +88,22 @@ module Let_component = struct
                }
               :: acc)
               expr
-        | Pexp_fun ((Nolabel as arg_label), default, pat, expr) ->
-            let gen_label () =
-              { txt = sprintf "prop_%i" n; loc = pat.ppat_loc }
-            in
-            let label, label_synthetic, typ =
-              match pat.ppat_desc with
-              | Ppat_construct (ident, None)
-                when Longident.compare ident.txt unit_longident = 0 ->
-                  let typ = [%type: unit] in
-                  gen_label (), true, Some typ
-              | Ppat_constraint ({ ppat_desc = Ppat_var label; _ }, typ)
-                ->
-                  label, false, Some typ
-              | Ppat_constraint ({ ppat_desc = _; _ }, typ) ->
-                  gen_label (), true, Some typ
-              | Ppat_var label -> label, false, None
-              | _ -> gen_label (), true, None
-            in
-            collect_props (n + 1)
-              ({
-                 arg_label;
-                 expr = default;
-                 pat;
-                 label;
-                 label_synthetic;
-                 typ;
-               }
-              :: acc)
-              expr
-        | Pexp_function _ ->
-            raise_errorf ~loc:expr.pexp_loc
-              "component arguments can only be simple patterns"
-        | _ -> acc, expr
+        | Pexp_fun (Nolabel, _default, pat, expr) -> (
+            match pat.ppat_desc with
+            | Ppat_construct ({ txt = Lident "()"; _ }, None)
+              when not seen_unit ->
+                collect_props ~seen_unit:true acc expr
+            | _ ->
+                raise_errorf ~loc:pat.ppat_loc
+                  "%%component: only labelled arguments are allowed")
+        | _ -> seen_unit, acc, expr
       in
-      collect_props 0 [ key_prop ] expr
+      collect_props ~seen_unit:false [ key_prop ] expr
+    in
+    let () =
+      match seen_unit with
+      | true -> ()
+      | false -> raise_errorf ~loc "missing () argument"
     in
     { name; props; body }
 end
@@ -132,51 +111,57 @@ end
 module Ext_component = struct
   open Ast_builder.Default
 
+  let unit_arg ~loc () =
+    Nolabel, pexp_construct ~loc { txt = Lident "()"; loc } None
+
   let expand_js ~ctxt:_ ~loc component pat expr =
-    let unpack_expr =
+    let make_elem =
       let args =
-        List.fold_left
-          (fun args arg ->
+        ListLabels.fold_left component.Let_component.props
+          ~f:(fun args arg ->
             match arg.Let_component.label.txt with
             | "key" -> args
             | _ ->
                 (arg.arg_label, [%expr props ## [%e ident arg.label]])
                 :: args)
-          [] component.Let_component.props
+          ~init:[ unit_arg ~loc () ]
       in
       pexp_apply ~loc (ident component.name) args
     in
-    let pack_expr =
+    let make_props =
       let fields =
         List.rev_map
           (fun prop ->
             longident prop.Let_component.label, ident prop.label)
           component.props
       in
-      let props = pexp_record ~loc fields None in
-      ListLabels.fold_left component.props
-        ~init:
-          [%expr
-            React.unsafe_create_element [%e ident component.name]
-              [%mel.obj [%e props]]]
-        ~f:(fun body arg ->
+      let init =
+        let props = pexp_record ~loc fields None in
+        [%expr fun () -> [%mel.obj [%e props]]]
+      in
+      ListLabels.fold_left component.props ~init ~f:(fun body arg ->
           pexp_fun ~loc arg.Let_component.arg_label None
             (ppat_var ~loc:pat.ppat_loc arg.label)
             body)
     in
+    let pat_props =
+      ppat_var ~loc { txt = sprintf "%s__props" component.name.txt; loc }
+    in
     [%stri
-      let [%p pat] =
-        let [%p pat] = [%e expr] in
-        let [%p pat] = fun props -> [%e unpack_expr] in
-        [%e pack_expr]]
+      include struct
+        let [%p pat] = [%e expr]
+        let [%p pat] = fun props -> [%e make_elem]
+        let [%p pat_props] = [%e make_props]
+      end]
 
   let expand_native ctor ~ctxt:_ ~loc component pat _expr =
-    let pack_expr =
+    let make_elem =
       ListLabels.fold_left component.props
         ~init:
           [%expr
-            let _ = key in
-            [%e ctor] (fun () -> [%e component.Let_component.body])]
+            fun () ->
+              let _ = key in
+              [%e ctor] (fun () -> [%e component.Let_component.body])]
         ~f:(fun
             body
             {
@@ -189,7 +174,7 @@ module Ext_component = struct
             }
           -> pexp_fun ~loc arg_label expr pat body)
     in
-    [%stri let [%p pat] = [%e pack_expr]]
+    [%stri let [%p pat] = [%e make_elem]]
 
   let expand ~ctxt pat expr =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
@@ -337,18 +322,38 @@ module Ext_export_component = struct
               arg_label, value)
         component.props
     in
-    pexp_apply ~loc (pexp_ident ~loc (longident component.name)) args
+    let props =
+      let props_name =
+        {
+          component.name with
+          txt = sprintf "%s__props" component.name.txt;
+        }
+      in
+      pexp_apply ~loc
+        (pexp_ident ~loc (longident props_name))
+        (( Nolabel,
+           pexp_construct ~loc:Location.none
+             { txt = Lident "()"; loc = Location.none }
+             None )
+        :: args)
+    in
+    (* TODO: need to pass children properly *)
+    [%expr
+      React.unsafe_create_element
+        [%e pexp_ident ~loc (longident component.name)]
+        [%e props] [||]]
 
   let expand_native ~ctxt (component : Let_component.t) pat _expr =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
     let expr =
       let body =
         [%expr
-          React_server.React.client_thunk
-            [%e component_id ~ctxt component.name.txt]
-            (let open Ppx_yojson_conv_lib.Yojson_conv.Primitives in
-             [%e props_to_model ~ctxt component.props])
-            (React_server.React.thunk (fun () -> [%e component.body]))]
+          fun () ->
+            React_server.React.client_thunk
+              [%e component_id ~ctxt component.name.txt]
+              (let open Ppx_yojson_conv_lib.Yojson_conv.Primitives in
+               [%e props_to_model ~ctxt component.props])
+              (React_server.React.thunk (fun () -> [%e component.body]))]
       in
       ListLabels.fold_left component.props ~init:body
         ~f:(fun
@@ -533,213 +538,183 @@ module Jsx = struct
     in
     collect_props (None, []) args
 
-  let jsx_rewrite_js =
-    object
+  let rec unwrap_children ~f children = function
+    | { pexp_desc = Pexp_construct ({ txt = Lident "[]"; _ }, None); _ }
+      ->
+        List.rev children
+    | {
+        pexp_desc =
+          Pexp_construct
+            ( { txt = Lident "::"; _ },
+              Some { pexp_desc = Pexp_tuple [ child; next ]; _ } );
+        _;
+      } ->
+        unwrap_children ~f (f child :: children) next
+    | e ->
+        raise_errorf ~loc:e.pexp_loc "JSX: children prop should be a list"
+
+  let user_component_props id =
+    match id.txt with
+    | Lident name -> { id with txt = Lident (sprintf "%s__props" name) }
+    | Ldot (prefix, name) ->
+        { id with txt = Ldot (prefix, sprintf "%s__props" name) }
+    | Lapply _ -> assert false
+
+  let has_jsx_attr attrs =
+    List.exists
+      (function
+        | { attr_name = { txt = "JSX"; _ }; _ } -> true | _ -> false)
+      attrs
+
+  let jsx_rewrite ~extract_dangerouslySetInnerHTML ~f =
+    object (self)
       inherit Ast_traverse.map as super
 
       method! expression : expression -> expression =
         fun expr ->
           match expr.pexp_desc with
-          | Pexp_apply
-              ({ pexp_desc = Pexp_field ([%expr jsx], id); _ }, args) -> (
-              let id =
-                match id.txt with
-                | Lident lab -> estring ~loc:id.loc lab
-                | _ ->
-                    pexp_errorf ~loc:id.loc "should be a DOM element name"
-              in
-              let children, dangerouslySetInnerHTML, props =
-                collect_props super#expression args
-              in
-              let props =
-                match dangerouslySetInnerHTML with
-                | None -> props
-                | Some dangerouslySetInnerHTML ->
-                    dangerouslySetInnerHTML :: props
-              in
+          | Pexp_apply (tag, args) when has_jsx_attr expr.pexp_attributes
+            ->
               let loc = expr.pexp_loc in
-              let make_props =
-                match props with
-                | [] -> [%expr React.html_props_null]
-                | props ->
-                    pexp_apply ~loc
-                      [%expr React_browser_html_props.props ()]
-                      props
+              let tagname =
+                match tag.pexp_desc with
+                | Pexp_ident id -> id
+                | _ ->
+                    raise_errorf ~loc:tag.pexp_loc
+                      "JSX tag should be an identifier"
               in
-              match children, dangerouslySetInnerHTML with
-              | Some _, Some _ ->
-                  pexp_errorf ~loc
-                    "both children and dangerouslySetInnerHTML cannot be \
-                     used at once"
-              | Some children, None ->
-                  [%expr
-                    React_browser.React.unsafe_create_html_element [%e id]
-                      [%e make_props] [%e children]]
-              | None, _ ->
-                  [%expr
-                    React_browser.React.unsafe_create_html_element [%e id]
-                      [%e make_props] [||]])
+              let children = ref (Location.none, []) in
+              let dangerouslySetInnerHTML = ref None in
+              let args =
+                ListLabels.filter_map args ~f:(function
+                  | Labelled "children", e ->
+                      children :=
+                        ( e.pexp_loc,
+                          unwrap_children ~f:self#expression [] e );
+                      None
+                  | ( ( Labelled "dangerouslySetInnerHTML"
+                      | Optional "dangerouslySetInnerHTML" ),
+                      _e ) as arg
+                    when extract_dangerouslySetInnerHTML ->
+                      dangerouslySetInnerHTML := Some arg;
+                      None
+                  | arg_label, e -> Some (arg_label, self#expression e))
+              in
+              let children =
+                match !children with
+                | _loc, [] -> None
+                | loc, children -> Some (pexp_array ~loc children)
+              in
+              let tag =
+                match tag.pexp_desc with
+                | Pexp_ident { txt = Lident name; loc = name_loc }
+                  when Html.is_html name ->
+                    let name = estring ~loc:name_loc name in
+                    `Html_component name
+                | _ -> `User_component tag
+              in
+              f ~loc ~tagname
+                ~dangerouslySetInnerHTML:!dangerouslySetInnerHTML
+                ~children ~tag ~props:args ()
           | _ -> super#expression expr
     end
 
-  let browser_only_prop = function
-    | "ref" -> true
-    | "onCopy" -> true
-    | "onCut" -> true
-    | "onPaste" -> true
-    | "onCompositionEnd" -> true
-    | "onCompositionStart" -> true
-    | "onCompositionUpdate" -> true
-    | "onKeyDown" -> true
-    | "onKeyPress" -> true
-    | "onKeyUp" -> true
-    | "onFocus" -> true
-    | "onBlur" -> true
-    | "onChange" -> true
-    | "onInput" -> true
-    | "onSubmit" -> true
-    | "onInvalid" -> true
-    | "onClick" -> true
-    | "onContextMenu" -> true
-    | "onDoubleClick" -> true
-    | "onDrag" -> true
-    | "onDragEnd" -> true
-    | "onDragEnter" -> true
-    | "onDragExit" -> true
-    | "onDragLeave" -> true
-    | "onDragOver" -> true
-    | "onDragStart" -> true
-    | "onDrop" -> true
-    | "onMouseDown" -> true
-    | "onMouseEnter" -> true
-    | "onMouseLeave" -> true
-    | "onMouseMove" -> true
-    | "onMouseOut" -> true
-    | "onMouseOver" -> true
-    | "onMouseUp" -> true
-    | "onSelect" -> true
-    | "onTouchCancel" -> true
-    | "onTouchEnd" -> true
-    | "onTouchMove" -> true
-    | "onTouchStart" -> true
-    | "onPointerOver" -> true
-    | "onPointerEnter" -> true
-    | "onPointerDown" -> true
-    | "onPointerMove" -> true
-    | "onPointerUp" -> true
-    | "onPointerCancel" -> true
-    | "onPointerOut" -> true
-    | "onPointerLeave" -> true
-    | "onGotPointerCapture" -> true
-    | "onLostPointerCapture" -> true
-    | "onScroll" -> true
-    | "onWheel" -> true
-    | "onAbort" -> true
-    | "onCanPlay" -> true
-    | "onCanPlayThrough" -> true
-    | "onDurationChange" -> true
-    | "onEmptied" -> true
-    | "onEncrypetd" -> true
-    | "onEnded" -> true
-    | "onError" -> true
-    | "onLoadedData" -> true
-    | "onLoadedMetadata" -> true
-    | "onLoadStart" -> true
-    | "onPause" -> true
-    | "onPlay" -> true
-    | "onPlaying" -> true
-    | "onProgress" -> true
-    | "onRateChange" -> true
-    | "onSeeked" -> true
-    | "onSeeking" -> true
-    | "onStalled" -> true
-    | "onSuspend" -> true
-    | "onTimeUpdate" -> true
-    | "onVolumeChange" -> true
-    | "onWaiting" -> true
-    | "onLoad" -> true
-    | "onAnimationStart" -> true
-    | "onAnimationEnd" -> true
-    | "onAnimationIteration" -> true
-    | "onTransitionEnd" -> true
-    | _ -> false
+  let jsx_rewrite_js =
+    jsx_rewrite ~extract_dangerouslySetInnerHTML:false
+      ~f:(fun
+          ~loc
+          ~tagname
+          ~dangerouslySetInnerHTML:_
+          ~children
+          ~tag
+          ~props
+          ()
+        ->
+        let children = Option.value children ~default:[%expr [||]] in
+        match tag with
+        | `Html_component name ->
+            let props = pexp_apply ~loc [%expr React.html_props] props in
+            [%expr
+              React.unsafe_create_html_element [%e name] [%e props]
+                [%e children]]
+        | `User_component component ->
+            let props =
+              pexp_apply ~loc
+                (pexp_ident ~loc (user_component_props tagname))
+                props
+            in
+            [%expr
+              React.unsafe_create_element [%e component] [%e props]
+                [%e children]])
 
   let jsx_rewrite_native =
-    object
-      inherit Ast_traverse.map as super
-
-      method! expression : expression -> expression =
-        fun expr ->
-          match expr.pexp_desc with
-          | Pexp_apply
-              ({ pexp_desc = Pexp_field ([%expr jsx], id); _ }, args) -> (
-              let id =
-                match id.txt with
-                | Lident lab -> estring ~loc:id.loc lab
-                | _ ->
-                    pexp_errorf ~loc:id.loc "should be a DOM element name"
-              in
-              let children, dangerouslySetInnerHTML, props =
-                collect_props super#expression args
-              in
-              let dangerouslySetInnerHTML =
-                Option.map snd dangerouslySetInnerHTML
-              in
-              let loc = expr.pexp_loc in
-              let make_props =
-                match props with
-                | [] -> [%expr []]
-                | props ->
-                    List.fold_left
-                      (fun xs (label, x) ->
-                        let name =
-                          match label with
-                          | Nolabel -> assert false
-                          | Optional _ -> assert false
-                          | Labelled name -> name
-                        in
-                        match browser_only_prop name with
-                        | true -> xs
-                        | false ->
-                            let make =
-                              pexp_ident ~loc:x.pexp_loc
-                                {
-                                  txt =
-                                    Longident.parse
-                                      (sprintf
-                                         "React_server.React.Html_props.%s"
-                                         name);
-                                  loc = x.pexp_loc;
-                                }
-                            in
-                            [%expr [%e make] [%e x] :: [%e xs]])
-                      [%expr []] props
-              in
-
-              match children, dangerouslySetInnerHTML with
-              | Some _, Some _ ->
-                  pexp_errorf ~loc
-                    "both children and dangerouslySetInnerHTML cannot be \
-                     used at once"
-              | None, Some dangerouslySetInnerHTML ->
-                  [%expr
-                    React_server.React.unsafe_create_html_element [%e id]
-                      [%e make_props]
-                      (Some
-                         (React_server.React.Html_children_raw
-                            [%e dangerouslySetInnerHTML]))]
-              | Some children, None ->
-                  [%expr
-                    React_server.React.unsafe_create_html_element [%e id]
-                      [%e make_props]
-                      (Some
-                         (React_server.React.Html_children [%e children]))]
-              | None, None ->
-                  [%expr
-                    React_server.React.unsafe_create_html_element [%e id]
-                      [%e make_props] None])
-          | _ -> super#expression expr
-    end
+    jsx_rewrite ~extract_dangerouslySetInnerHTML:true
+      ~f:(fun
+          ~loc
+          ~tagname:_
+          ~dangerouslySetInnerHTML
+          ~children
+          ~tag
+          ~props
+          ()
+        ->
+        match tag with
+        | `Html_component name -> (
+            let make_props =
+              match props with
+              | [] -> [%expr []]
+              | props ->
+                  List.fold_left
+                    (fun xs (label, x) ->
+                      match label with
+                      | Nolabel -> xs
+                      | Optional _ -> assert false
+                      | Labelled name -> (
+                          match Html.browser_only_prop name with
+                          | true -> xs
+                          | false ->
+                              let make =
+                                pexp_ident ~loc:x.pexp_loc
+                                  {
+                                    txt =
+                                      Longident.parse
+                                        (sprintf
+                                           "React_server.React.Html_props.%s"
+                                           name);
+                                    loc = x.pexp_loc;
+                                  }
+                              in
+                              [%expr [%e make] [%e x] :: [%e xs]]))
+                    [%expr []] props
+            in
+            match children, dangerouslySetInnerHTML with
+            | None, Some dangerouslySetInnerHTML ->
+                [%expr
+                  React_server.React.unsafe_create_html_element [%e name]
+                    [%e make_props]
+                    (Some
+                       (React_server.React.Html_children_raw
+                          [%e snd dangerouslySetInnerHTML]))]
+            | Some _, Some _ ->
+                pexp_errorf ~loc
+                  "both children and dangerouslySetInnerHTML cannot be \
+                   used at once"
+            | Some children, None ->
+                [%expr
+                  React_server.React.unsafe_create_html_element [%e name]
+                    [%e make_props]
+                    (Some (React_server.React.Html_children [%e children]))]
+            | None, None ->
+                [%expr
+                  React_server.React.unsafe_create_html_element [%e name]
+                    [%e make_props] None])
+        | `User_component component ->
+            let props =
+              match children with
+              | None -> props
+              | Some children -> (Labelled "children", children) :: props
+            in
+            pexp_apply ~loc component props)
 
   let run xs =
     let loc = Location.none in
@@ -763,4 +738,4 @@ let () =
         Browser_only_expression.ext;
         Browser_only_structure_item.ext;
       ]
-    ~impl:Jsx.run "react_jsx"
+    ~preprocess_impl:Jsx.run "react_jsx"

@@ -1,6 +1,6 @@
 (library
  (name react_ppx)
- (modules ppx)
+ (modules :standard \ ppx_test)
  ; (flags :standard -w -9)
  (libraries ppxlib)
  (preprocess
