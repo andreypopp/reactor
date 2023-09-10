@@ -25,7 +25,7 @@ using the same syntax for both browser and native environments:
   include struct
     let name ~children () = BODY
     let name props = name ~children:props##children ()
-    let name__props ?key ~children () = [%mel.obj { key; children }]
+    let name__props ?key () = [%mel.obj { key; children = React.null }]
   end
   
   (* NATIVE *)

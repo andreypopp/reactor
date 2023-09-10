@@ -3,7 +3,9 @@ Producing HTML elements, no props:
   > div ~children:[] () [@JSX]
   > EOF
   (* BROWSER *)
-  React.unsafe_create_html_element "div" (React.html_props ()) [||]
+  React.unsafe_create_html_element "div"
+    (React_browser_html_props.props ())
+    [||]
   
   (* NATIVE *)
   React_server.React.unsafe_create_html_element "div" [] None
@@ -14,7 +16,7 @@ Producing HTML elements, with props:
   > EOF
   (* BROWSER *)
   React.unsafe_create_html_element "div"
-    (React.html_props ~className:"a" ())
+    (React_browser_html_props.props ~className:"a" ())
     [||]
   
   (* NATIVE *)
@@ -27,9 +29,13 @@ Producing HTML elements, with children:
   > div ~children:[a; div ~children:[] () [@JSX]] () [@JSX]
   > EOF
   (* BROWSER *)
-  React.unsafe_create_html_element "div" (React.html_props ())
+  React.unsafe_create_html_element "div"
+    (React_browser_html_props.props ())
     [|
-      a; React.unsafe_create_html_element "div" (React.html_props ()) [||];
+      a;
+      React.unsafe_create_html_element "div"
+        (React_browser_html_props.props ())
+        [||];
     |]
   
   (* NATIVE *)
@@ -46,9 +52,11 @@ Producing HTML elements, with props with nested elements:
   > EOF
   (* BROWSER *)
   React.unsafe_create_html_element "div"
-    (React.html_props
+    (React_browser_html_props.props
        ~not_children:
-         (React.unsafe_create_html_element "div" (React.html_props ()) [||])
+         (React.unsafe_create_html_element "div"
+            (React_browser_html_props.props ())
+            [||])
        ())
     [||]
   
@@ -65,7 +73,7 @@ Producing component elements, no props:
   > some_thing ~children:[] () [@JSX]
   > EOF
   (* BROWSER *)
-  React.unsafe_create_element some_thing (some_thing__props ()) [||]
+  React.unsafe_create_element' some_thing (some_thing__props ())
   
   (* NATIVE *)
   some_thing ()
@@ -75,9 +83,8 @@ Producing component elements, with props:
   > some_thing ~className:"a" () [@JSX]
   > EOF
   (* BROWSER *)
-  React.unsafe_create_element some_thing
+  React.unsafe_create_element' some_thing
     (some_thing__props ~className:"a" ())
-    [||]
   
   (* NATIVE *)
   some_thing ~className:"a" ()
@@ -89,7 +96,10 @@ Producing component elements, with children:
   (* BROWSER *)
   React.unsafe_create_element some_thing (some_thing__props ())
     [|
-      a; React.unsafe_create_html_element "div" (React.html_props ()) [||];
+      a;
+      React.unsafe_create_html_element "div"
+        (React_browser_html_props.props ())
+        [||];
     |]
   
   (* NATIVE *)
@@ -103,7 +113,7 @@ Producing component with (within module) elements, no props:
   > Some.component ~children:[] () [@JSX]
   > EOF
   (* BROWSER *)
-  React.unsafe_create_element Some.component (Some.component__props ()) [||]
+  React.unsafe_create_element' Some.component (Some.component__props ())
   
   (* NATIVE *)
   Some.component ()
