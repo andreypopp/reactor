@@ -6,9 +6,9 @@
   react_browser
   api_browser
   remote_browser
-  env_browser
+  realm_browser
   melange-webapi)
- (flags :standard -open Env)
+ (flags :standard -open Realm)
  (modes melange)
  (preprocess
   (pps melange.ppx react_ppx ppx_yojson_conv)))
@@ -23,9 +23,9 @@
    react.browser_server
    ppx_yojson_conv_lib
    remote_native
-   env_native
+   realm_native
    api_native)
-  (flags :standard -open Env)
+  (flags :standard -open Realm)
   (preprocess
    (pps react_ppx -native ppx_yojson_conv)))
  (copy_files#

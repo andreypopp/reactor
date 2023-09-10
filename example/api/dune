@@ -1,8 +1,8 @@
 (library
  (name api_native)
  (wrapped false)
- (libraries lwt dream remote_native env_native)
- (flags :standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives -open Env)
+ (libraries lwt dream remote_native realm_native)
+ (flags :standard -open Ppx_yojson_conv_lib.Yojson_conv.Primitives -open Realm)
  (preprocess
   (per_module
    ((pps remote_ppx ppx_yojson_conv)
@@ -20,8 +20,8 @@
    -open
    Ppx_yojson_conv_lib.Yojson_conv.Primitives
    -open
-   Env)
-  (libraries remote_browser env_browser)
+   Realm)
+  (libraries remote_browser realm_browser)
   (preprocess
    (pps ppx_yojson_conv remote_ppx -js)))
  (rule

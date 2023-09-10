@@ -3,7 +3,7 @@
  (wrapped false)
  (public_name remote.browser)
  (modes melange)
- (flags :standard -open Env)
- (libraries melange-fetch yojson env_browser)
+ (flags :standard -open Realm)
+ (libraries melange-fetch yojson realm_browser)
  (preprocess
   (pps melange.ppx)))

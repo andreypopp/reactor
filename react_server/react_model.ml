@@ -47,7 +47,7 @@ and client_props = (string * client_prop) list
 and client_prop =
   | Json : string -> client_prop
   | Element : element -> client_prop
-  | Promise : 'a Env.Promise.t * ('a -> json) -> client_prop
+  | Promise : 'a Promise.t * ('a -> json) -> client_prop
 
 let null = El_null
 let array els = El_frag els

@@ -43,7 +43,7 @@ module React : sig
   and client_prop =
     | Json : string -> client_prop
     | Element : element -> client_prop
-    | Promise : 'a Env.Promise.t * ('a -> json) -> client_prop
+    | Promise : 'a Promise.t * ('a -> json) -> client_prop
 
   val client_thunk :
     ?import_name:string -> string -> client_props -> element -> element

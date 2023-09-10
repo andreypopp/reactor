@@ -2,6 +2,7 @@
  (name react_server)
  (public_name react.server)
  (modules :standard \ react)
+ (flags :standard -open Realm)
  (libraries
   react_api
   containers
@@ -9,11 +10,12 @@
   lwt
   lwt.unix
   remote.native
-  env_native))
+  realm_native))
 
 (library
  (name react_browser_server)
  (public_name react.browser_server)
  (wrapped false)
+ (flags :standard -open Realm)
  (modules react)
- (libraries react_server))
+ (libraries react_server realm_native))

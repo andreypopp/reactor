@@ -2,8 +2,8 @@
  (name react_browser)
  (public_name react.browser)
  (wrapped false)
- (flags :standard -open Env)
+ (flags :standard -open Realm)
  (modes melange)
- (libraries melange.dom react_api env_browser yojson)
+ (libraries melange.dom react_api realm_browser yojson)
  (preprocess
   (pps melange.ppx)))
