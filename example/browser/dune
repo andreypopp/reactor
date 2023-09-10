@@ -1,8 +1,13 @@
 (library
  (name example)
  (wrapped false)
- (libraries melange.dom react_browser api_browser remote_browser env_browser
-            melange-webapi)
+ (libraries
+  melange.dom
+  react_browser
+  api_browser
+  remote_browser
+  env_browser
+  melange-webapi)
  (flags :standard -open Env)
  (modes melange)
  (preprocess
@@ -24,7 +29,9 @@
   (preprocess
    (pps react_ppx -native ppx_yojson_conv)))
  (copy_files#
-  (files ../**[!.pp].ml)))
+  (files ../**[!.pp][!.mlx].ml))
+ (copy_files#
+  (files ../**.mlx)))
 
 (melange.emit
  (alias browser_js)

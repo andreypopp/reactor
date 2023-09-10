@@ -1,11 +1,15 @@
 init:
-	@opam switch create . 5.1.0~rc1 --no-install
+	@opam switch create . "5.1.0~rc3" --no-install -y
+	@opam pin add "dune.3.11.0" "git+https://github.com/andreypopp/dune.git#main" --no-action
 	@opam pin add "yojson.dev" ./deps/yojson --no-action
-	@opam pin add "ppx_yojson_conv.dev" ./deps/ppx_yojson_conv --no-action
-	@opam pin add "ppx_yojson_conv_lib.dev" ./deps/ppx_yojson_conv_lib --no-action
-	@opam pin add "melange.dev" ./deps/melange --no-action
-	@opam pin add "ocaml-lsp-server.dev" ./deps/ocaml-lsp --no-action
-	@opam install . --deps-only
+	@opam pin add "ppx_yojson_conv.v999" ./deps/ppx_yojson_conv --no-action
+	@opam pin add "ppx_yojson_conv_lib.v999" ./deps/ppx_yojson_conv_lib --no-action
+	@opam pin add "melange.dev" ./deps/melange --no-action -y
+	@opam pin add "mlx.~dev" "https://github.com/andreypopp/mlx/archive/refs/heads/main.zip" --no-action -y
+	@opam pin add "ocamlmerlin-mlx.~dev" "https://github.com/andreypopp/mlx/archive/refs/heads/main.zip" --no-action -y
+	@opam pin add "ocamlformat-mlx-lib.~dev" "https://github.com/andreypopp/ocamlformat-mlx/archive/refs/heads/main.zip" --no-action -y
+	@opam pin add "ocamlformat-mlx.~dev" "https://github.com/andreypopp/ocamlformat-mlx/archive/refs/heads/main.zip" --no-action -y
+	@opam install . --deps-only -y
 	@pnpm install
 
 build:

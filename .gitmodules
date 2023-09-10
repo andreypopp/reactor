@@ -16,9 +16,6 @@
 [submodule "deps/deps/ppx_yojson_conv"]
 	path = deps/deps/ppx_yojson_conv
 	url = https://github.com/janestreet/ppx_yojson_conv.git
-[submodule "deps/ocaml-lsp"]
-	path = deps/ocaml-lsp
-	url = https://github.com/ocaml/ocaml-lsp.git
 [submodule "deps/melange-json"]
 	path = deps/melange-json
 	url = https://github.com/melange-community/melange-json.git

@@ -1,4 +1,4 @@
-(lang dune 3.9)
+(lang dune 3.11)
 
 (using melange 0.1)
 
@@ -72,3 +72,12 @@
   ppx_yojson_conv
   (ocaml-lsp-server :dev)
   (ocamlformat :dev)))
+
+(dialect
+ (name mlx)
+ (implementation
+  (extension mlx)
+  (merlin_reader mlx)
+  (format (run ocamlformat-mlx %{input-file}))
+  (preprocess
+   (run mlx-pp %{input-file}))))
