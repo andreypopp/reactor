@@ -11,8 +11,9 @@ module UI = struct
       <h3 className="ma0 pa0 pb2">(React.text title)</h3>
       <div className="pb2">(React.array children)</div>
       <div className="f7 bt pa1">
-        (React.textf "I've been sleeping for %0.1fsec before appearing."
-           delay)
+        "I've been sleeping for "
+        (React.textf "%0.1f sec" delay)
+        " before appearing"
       </div>
     </div>
 
@@ -33,9 +34,8 @@ module UI = struct
                               "As you can see, this one is SSR'ed as \
                                well.") />
         <card title="Initial Data" delay=0.>
-          (React.text
-             "This components loads some async data but will block the \
-              shell until this data is ready.")
+          "This components loads some async data but will block the \
+           shell until this data is ready."
         </card>
         <React.suspense>
           <card title="Async Data" delay=1.>(React.text "HELLO")</card>
@@ -52,12 +52,8 @@ module UI = struct
         <div>
           <h2>(React.text "Testing XSS")</h2>
           <ul>
-            <li>
-              (React.text "</script><script>console.log(1)</script>")
-            </li>
-            <li>
-              (React.text "\u{2028}<script>console.log(1)</script>")
-            </li>
+            <li>"</script><script>console.log(1)</script>"</li>
+            <li>"\u{2028}<script>console.log(1)</script>"</li>
           </ul>
         </div>
       </div>

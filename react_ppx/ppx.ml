@@ -570,7 +570,8 @@ module Jsx = struct
         | { attr_name = { txt = "JSX"; _ }; _ } -> true | _ -> false)
       attrs
 
-  let jsx_rewrite ~extract_dangerouslySetInnerHTML ~f =
+  let jsx_rewrite ~extract_dangerouslySetInnerHTML ~rewrite_child
+      ~rewrite_element =
     object (self)
       inherit Ast_traverse.map as super
 
@@ -592,9 +593,12 @@ module Jsx = struct
               let args =
                 ListLabels.filter_map args ~f:(function
                   | Labelled "children", e ->
-                      children :=
-                        ( e.pexp_loc,
-                          unwrap_children ~f:self#expression [] e );
+                      let children' =
+                        unwrap_children [] e ~f:(fun e ->
+                            let e = rewrite_child e in
+                            self#expression e)
+                      in
+                      children := e.pexp_loc, children';
                       None
                   | ( ( Labelled "dangerouslySetInnerHTML"
                       | Optional "dangerouslySetInnerHTML" ),
@@ -617,7 +621,7 @@ module Jsx = struct
                     `Html_component name
                 | _ -> `User_component tag
               in
-              f ~loc ~tagname
+              rewrite_element ~loc ~tagname
                 ~dangerouslySetInnerHTML:!dangerouslySetInnerHTML
                 ~children ~tag ~props:args ()
           | _ -> super#expression expr
@@ -625,7 +629,13 @@ module Jsx = struct
 
   let jsx_rewrite_js =
     jsx_rewrite ~extract_dangerouslySetInnerHTML:false
-      ~f:(fun
+      ~rewrite_child:(fun e ->
+        match e.pexp_desc with
+        | Pexp_constant (Pconst_string _) ->
+            let loc = e.pexp_loc in
+            [%expr React.text [%e e]]
+        | _ -> e)
+      ~rewrite_element:(fun
           ~loc
           ~tagname
           ~dangerouslySetInnerHTML:_
@@ -645,12 +655,6 @@ module Jsx = struct
                 [%e children]]
         | `User_component component -> (
             let props =
-              (* let props = *)
-              (*   match children with *)
-              (*   | None -> props *)
-              (*   | Some children -> *)
-              (*       (Labelled "children", children) :: props *)
-              (* in *)
               pexp_apply ~loc
                 (pexp_ident ~loc (user_component_props tagname))
                 props
@@ -666,7 +670,13 @@ module Jsx = struct
 
   let jsx_rewrite_native =
     jsx_rewrite ~extract_dangerouslySetInnerHTML:true
-      ~f:(fun
+      ~rewrite_child:(fun e ->
+        match e.pexp_desc with
+        | Pexp_constant (Pconst_string _) ->
+            let loc = e.pexp_loc in
+            [%expr React_server.React.text [%e e]]
+        | _ -> e)
+      ~rewrite_element:(fun
           ~loc
           ~tagname:_
           ~dangerouslySetInnerHTML

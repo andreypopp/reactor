@@ -12,8 +12,7 @@ let%component with_children ~children () = <div />
 let%component button' ~onPress:onClick ~label () =
   <button className="pv1 ph2 br1 bg-light-gray bw1 b--gray"
           onClick=onClick>
-    (React.text label)
-    <with_children>(React.text "OK")</with_children>
+    (React.text label) <with_children>"OK"</with_children>
   </button>
 
 let%component hello ~name () =
@@ -53,6 +52,7 @@ let%component counter ~init ~title () =
     <button' onPress=pred label="Decrement" />
     <button' onPress=reset label="Reset" />
     <hello name=(Printf.sprintf "hello #%i" v) />
+    <hello name=(Printf.sprintf "hello #%i" v) />
   </div>
 
 let%component wait_and_print ~promise ?promise2 ~msg () =
@@ -89,7 +89,7 @@ let%export_component app ~(title : string) ~(inner : React.element) () =
     <React.suspense>
       <hello name="world" /> <hello name="something else" />
     </React.suspense>
-    <h2>(React.textf "Hello, %s!" title)</h2>
+    <h2>"Hello, " (React.text title) "!"</h2>
     <React.suspense><counter init=42 title="Counter" /></React.suspense>
     <div className="footer">inner inner</div>
     <ul>
@@ -162,7 +162,7 @@ let%component add_todo_form ~on_create () =
            onKeyDown=onKeyDown
            type_="text"
            value=value />
-    <button onClick=onClick>(React.text "Add")</button>
+    <button onClick=onClick>"Add"</button>
   </div>
 
 let%component todo_list' () =
@@ -214,9 +214,7 @@ let%component todo_list' () =
     <todo_section title="Completed"
                   on_completed=on_completed
                   todos=completed />
-    <button onClick=on_remove_completed>
-      (React.text "Remove completed todos")
-    </button>
+    <button onClick=on_remove_completed>"Remove completed todos"</button>
   </div>
 
 let%export_component todo_list () = <div><nav' /> <todo_list' /></div>
