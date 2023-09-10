@@ -178,6 +178,7 @@ let handle_remote_reqs t reqs =
 let rec client_to_html t = function
   | React_model.El_null -> Lwt.return (Html.text "")
   | El_text s -> Lwt.return (Html.text s)
+  | El_frag els -> client_to_html_many t els
   | El_html { tag_name; key = _; props; children = None } ->
       Lwt.return (Html.node tag_name props [])
   | El_html
@@ -234,6 +235,7 @@ and client_to_html_many t els : Html.t Lwt.t =
 let rec server_to_html t = function
   | React_model.El_null -> Lwt.return (Html.empty, Render_to_model.null)
   | El_text s -> Lwt.return (Html.text s, Render_to_model.text s)
+  | El_frag els -> server_to_html_many t els
   | El_html
       { tag_name; key; props; children = Some (Html_children children) }
     ->

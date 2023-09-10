@@ -3,9 +3,10 @@ type children = element array
 type dom_element = Dom.element
 type 'a nullable = 'a Js.nullable
 
-external unsafe_create_element : ('props -> element) -> 'props -> element
+external unsafe_create_element :
+  ('props -> element) -> 'props -> element array -> element
   = "createElement"
-[@@mel.module "react"]
+[@@mel.module "react"] [@@mel.variadic]
 
 type suspense
 
@@ -14,6 +15,10 @@ external suspense_t : suspense = "Suspense" [@@mel.module "react"]
 external suspense_create_element :
   suspense -> 'props -> element array -> element = "createElement"
 [@@mel.module "react"] [@@mel.variadic]
+
+external array : element array -> element = "%identity"
+
+let list xs = array (Array.of_list xs)
 
 let suspense ?key ?fallback:_ children =
   let props =

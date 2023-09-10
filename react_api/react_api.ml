@@ -6,6 +6,9 @@ module type REACT = sig
   type element
   type children = element array
 
+  val array : children -> element
+  val list : element list -> element
+
   val null : element
   (** [null] renders nothing *)
 

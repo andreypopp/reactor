@@ -11,6 +11,7 @@ module Html_props = React_server_html_props
 
 type element =
   | El_null : element
+  | El_frag : children -> element
   | El_suspense : {
       children : children;
       fallback : children;
@@ -49,6 +50,8 @@ and client_prop =
   | Promise : 'a Env.Promise.t * ('a -> json) -> client_prop
 
 let null = El_null
+let array els = El_frag els
+let list els = array (Array.of_list els)
 let text s = El_text s
 let textf fmt = ksprintf text fmt
 let thunk f = El_thunk f
