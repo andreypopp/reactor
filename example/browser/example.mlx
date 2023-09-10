@@ -7,10 +7,13 @@ let%component link' ~href ~label () =
   in
   <a href=href onClick=onClick>(React.text label)</a>
 
+let%component with_children ~children () = <div />
+
 let%component button' ~onPress:onClick ~label () =
   <button className="pv1 ph2 br1 bg-light-gray bw1 b--gray"
           onClick=onClick>
     (React.text label)
+    <with_children>(React.text "OK")</with_children>
   </button>
 
 let%component hello ~name () =
@@ -83,25 +86,23 @@ let%export_component app ~(title : string) ~(inner : React.element) () =
   in
   <div>
     <nav' />
-    (React.suspense
-       [| <hello name="world" />; <hello name="something else" /> |])
+    <React.suspense>
+      <hello name="world" /> <hello name="something else" />
+    </React.suspense>
     <h2>(React.textf "Hello, %s!" title)</h2>
-    (React.suspense [| <counter init=42 title="Counter" /> |])
+    <React.suspense><counter init=42 title="Counter" /></React.suspense>
     <div className="footer">inner inner</div>
     <ul>
-      (React.suspense
-         [|
-           React.suspense
-             [|
-               <wait_and_print promise=promise_inner msg="INNER SLEPT" />;
-             |];
-           React.suspense
-             [|
-               <wait_and_print promise=promise_inner msg="INNER SLEPT" />;
-             |];
-           <wait_and_print promise=promise promise2=promise2 msg="SLEPT" />;
-           <wait_and_print promise=promise promise2=promise2 msg="SLEPT" />;
-         |])
+      <React.suspense>
+        <React.suspense>
+          <wait_and_print promise=promise_inner msg="INNER SLEPT" />
+        </React.suspense>
+        <React.suspense>
+          <wait_and_print promise=promise_inner msg="INNER SLEPT" />
+        </React.suspense>
+        <wait_and_print promise=promise promise2=promise2 msg="SLEPT" />
+        <wait_and_print promise=promise promise2=promise2 msg="SLEPT" />
+      </React.suspense>
     </ul>
   </div>
 

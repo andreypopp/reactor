@@ -37,21 +37,18 @@ module UI = struct
              "This components loads some async data but will block the \
               shell until this data is ready.")
         </card>
-        (React.suspense
-           [|
-             <card title="Async Data" delay=1.>(React.text "HELLO")</card>;
-             <card title="Async Data" delay=1.>(React.text "HELLO")</card>;
-           |])
-        (React.suspense
-           [|
-             <card title="Async Data" delay=2.>(React.text "OUTER")</card>;
-             React.suspense
-               [|
-                 <card title="Inner Async Data" delay=1.>
-                   (React.text "INNER")
-                 </card>;
-               |];
-           |])
+        <React.suspense>
+          <card title="Async Data" delay=1.>(React.text "HELLO")</card>
+          <card title="Async Data" delay=1.>(React.text "HELLO")</card>
+        </React.suspense>
+        <React.suspense>
+          <card title="Async Data" delay=2.>(React.text "OUTER")</card>
+          <React.suspense>
+            <card title="Inner Async Data" delay=1.>
+              (React.text "INNER")
+            </card>
+          </React.suspense>
+        </React.suspense>
         <div>
           <h2>(React.text "Testing XSS")</h2>
           <ul>

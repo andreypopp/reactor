@@ -20,6 +20,13 @@ module React : sig
   include React_api.REACT with type 'a promise = 'a Lwt.t
   (** @inline *)
 
+  val suspense :
+    ?key:string ->
+    ?fallback:children ->
+    children:children ->
+    unit ->
+    element
+
   val textf : ('a, unit, string, element) format4 -> 'a
   (** Like [text] but allows to use printf formatting. *)
 

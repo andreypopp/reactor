@@ -130,19 +130,23 @@ module Ext_component = struct
     in
     let make_props =
       let fields =
-        List.rev_map
-          (fun prop ->
-            longident prop.Let_component.label, ident prop.label)
-          component.props
+        ListLabels.fold_left component.props ~init:[] ~f:(fun fs prop ->
+            let k = longident prop.Let_component.label in
+            match prop.Let_component.label.txt with
+            | "children" -> (k, [%expr React.null]) :: fs
+            | _ -> (k, ident prop.label) :: fs)
       in
       let init =
         let props = pexp_record ~loc fields None in
         [%expr fun () -> [%mel.obj [%e props]]]
       in
       ListLabels.fold_left component.props ~init ~f:(fun body arg ->
-          pexp_fun ~loc arg.Let_component.arg_label None
-            (ppat_var ~loc:pat.ppat_loc arg.label)
-            body)
+          match arg.Let_component.label.txt with
+          | "children" -> body
+          | _ ->
+              pexp_fun ~loc arg.Let_component.arg_label None
+                (ppat_var ~loc:pat.ppat_loc arg.label)
+                body)
     in
     let pat_props =
       ppat_var ~loc { txt = sprintf "%s__props" component.name.txt; loc }
@@ -630,22 +634,35 @@ module Jsx = struct
           ~props
           ()
         ->
-        let children = Option.value children ~default:[%expr [||]] in
         match tag with
         | `Html_component name ->
-            let props = pexp_apply ~loc [%expr React.html_props] props in
+            let children = Option.value children ~default:[%expr [||]] in
+            let props =
+              pexp_apply ~loc [%expr React_browser_html_props.props] props
+            in
             [%expr
               React.unsafe_create_html_element [%e name] [%e props]
                 [%e children]]
-        | `User_component component ->
+        | `User_component component -> (
             let props =
+              (* let props = *)
+              (*   match children with *)
+              (*   | None -> props *)
+              (*   | Some children -> *)
+              (*       (Labelled "children", children) :: props *)
+              (* in *)
               pexp_apply ~loc
                 (pexp_ident ~loc (user_component_props tagname))
                 props
             in
-            [%expr
-              React.unsafe_create_element [%e component] [%e props]
-                [%e children]])
+            match children with
+            | None ->
+                [%expr
+                  React.unsafe_create_element' [%e component] [%e props]]
+            | Some children ->
+                [%expr
+                  React.unsafe_create_element [%e component] [%e props]
+                    [%e children]]))
 
   let jsx_rewrite_native =
     jsx_rewrite ~extract_dangerouslySetInnerHTML:true

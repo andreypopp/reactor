@@ -2,32 +2,40 @@ type element
 type children = element array
 type dom_element = Dom.element
 type 'a nullable = 'a Js.nullable
+type 'props component = 'props Js.t -> element constraint 'props = < .. >
 
 external unsafe_create_element :
-  ('props -> element) -> 'props -> element array -> element
-  = "createElement"
+  < children : children ; .. > component ->
+  'props Js.t ->
+  element array ->
+  element = "createElement"
 [@@mel.module "react"] [@@mel.variadic]
+
+external unsafe_create_element' : 'props component -> 'props -> element
+  = "createElement"
+[@@mel.module "react"]
 
 type suspense
 
-external suspense_t : suspense = "Suspense" [@@mel.module "react"]
+type suspense_props =
+  < children : element array
+  ; fallback : element array option
+  ; key : string option >
 
-external suspense_create_element :
-  suspense -> 'props -> element array -> element = "createElement"
-[@@mel.module "react"] [@@mel.variadic]
+external suspense : suspense_props component = "Suspense"
+[@@mel.module "react"]
+
+external suspense__props :
+  ?key:string ->
+  ?fallback:children ->
+  children:children ->
+  unit ->
+  suspense_props Js.t = ""
+[@@mel.obj]
 
 external array : element array -> element = "%identity"
 
 let list xs = array (Array.of_list xs)
-
-let suspense ?key ?fallback:_ children =
-  let props =
-    match key with
-    | None -> Js.Json.null
-    | Some key -> (Obj.magic [%mel.obj { key }] : Js.Json.t)
-  in
-  suspense_create_element suspense_t props children
-
 let null = Obj.magic Js.null
 
 external text : string -> element = "%identity"

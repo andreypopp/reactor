@@ -57,7 +57,7 @@ let textf fmt = ksprintf text fmt
 let thunk f = El_thunk f
 let async_thunk f = El_async_thunk f
 
-let suspense ?key ?(fallback = [| null |]) children =
+let suspense ?key ?(fallback = [| null |]) ~children () =
   El_suspense { children; fallback; key }
 
 let client_thunk ?(import_name = "") import_module props thunk =
