@@ -15,11 +15,13 @@ depends: [
   "yojson"
   "containers"
   "dream"
-  "melange"
+  "melange" {>= "2"}
   "ppxlib"
   "ppx_yojson_conv"
-  "ocaml-lsp-server" {dev}
-  "ocamlformat" {dev}
+  "melange-fetch" {= "dev"}
+  "melange-webapi" {= "dev"}
+  "ocaml-lsp-server" {with-dev-setup}
+  "ocamlformat" {with-dev-setup}
   "odoc" {with-doc}
 ]
 build: [
