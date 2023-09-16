@@ -69,7 +69,11 @@
   dream
   melange
   dune-site
+  mlx
   ppx_yojson_conv
+  reason
+  (ocamlmerlin-mlx :with-dev-setup)
+  (ocamlformat-mlx :dev)
   (ocaml-lsp-server :dev)
   (ocamlformat :dev)))
 
