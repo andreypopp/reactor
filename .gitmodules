@@ -1,12 +1,9 @@
 [submodule "deps/yojson"]
 	path = deps/yojson
-	url = https://github.com/ocaml-community/yojson.git
+	url = https://github.com/andreypopp/yojson.git
 [submodule "deps/ppx_yojson_conv"]
 	path = deps/ppx_yojson_conv
-	url = https://github.com/janestreet/ppx_yojson_conv.git
+	url = https://github.com/andreypopp/ppx_yojson_conv.git
 [submodule "deps/ppx_yojson_conv_lib"]
 	path = deps/ppx_yojson_conv_lib
-	url = https://github.com/janestreet/ppx_yojson_conv_lib.git
-[submodule "deps/deps/ppx_yojson_conv"]
-	path = deps/deps/ppx_yojson_conv
-	url = https://github.com/janestreet/ppx_yojson_conv.git
+	url = https://github.com/andreypopp/ppx_yojson_conv_lib.git
