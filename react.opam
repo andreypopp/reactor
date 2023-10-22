@@ -18,8 +18,8 @@ depends: [
   "melange" {>= "2"}
   "ppxlib"
   "ppx_yojson_conv"
-  "melange-fetch" {= "dev"}
-  "melange-webapi" {= "dev"}
+  "melange-fetch"
+  "melange-webapi"
   "ocaml-lsp-server" {with-dev-setup}
   "ocamlformat" {with-dev-setup}
   "odoc" {with-doc}

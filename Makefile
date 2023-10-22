@@ -1,9 +1,6 @@
 init:
 	@opam switch create . "5.1.0" --no-install -y
 	@opam pin add "dune.3.11.0" "git+https://github.com/andreypopp/dune.git#main" --no-action -y
-	@opam pin add "melange-fetch.dev" "git+https://github.com/melange-community/melange-fetch.git" --no-action -y
-	@opam pin add "melange-webapi.dev" "git+https://github.com/melange-community/melange-webapi.git" --no-action --ignore-pin-depends -y
-	@opam pin add "yojson.dev" ./deps/yojson --no-action
 	@opam pin add "mlx.~dev" "https://github.com/andreypopp/mlx/archive/refs/heads/main.zip" --no-action -y
 	@opam pin add "ocamlmerlin-mlx.~dev" "https://github.com/andreypopp/mlx/archive/refs/heads/main.zip" --no-action -y
 	@opam pin add "ocamlformat-mlx-lib.~dev" "https://github.com/andreypopp/ocamlformat-mlx/archive/refs/heads/main.zip" --no-action -y
