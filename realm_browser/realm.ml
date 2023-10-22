@@ -17,9 +17,11 @@ module Json = struct
   type t = Js.Json.t
 
   module To_json = struct
-    let string_to_json (v : string) : t = Obj.magic v
-    let bool_to_json (v : bool) : t = Obj.magic v
-    let int_to_json (v : int) : t = Obj.magic v
+    external string_to_json : string -> t = "%identity"
+    external bool_to_json : bool -> t = "%identity"
+    external int_to_json : int -> t = "%identity"
+    external float_to_json : float -> t = "%identity"
+
     let unit_to_json () : t = Obj.magic Js.null
 
     let list_to_json v_to_json vs : t =
