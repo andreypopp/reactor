@@ -76,17 +76,18 @@ struct
     | Ts_variant cs -> S.derive_of_variant ~loc eta_derive_type_expr cs x
 
   let derive_type_decl { name; params; shape; loc } =
-    let body = derive_type_shape ~loc [%expr x] shape in
+    let expr = derive_type_shape ~loc [%expr x] shape in
     let t = ptyp_constr ~loc { loc; txt = lident name } [] in
-    let body = [%expr (fun x -> [%e body] : [%t S.t ~loc t])] in
-    let body =
-      List.fold_left params ~init:body ~f:(fun body param ->
+    let expr = [%expr (fun x -> [%e expr] : [%t S.t ~loc t])] in
+    let expr =
+      List.fold_left params ~init:expr ~f:(fun body param ->
           pexp_fun ~loc Nolabel None
             (ppat_var ~loc { loc; txt = name_of_t param })
             body)
     in
-    [%stri
-      let [%p ppat_var ~loc { loc; txt = name_of_t name }] = [%e body]]
+    value_binding ~loc
+      ~pat:(ppat_var ~loc { loc; txt = name_of_t name })
+      ~expr
 
   let expand ty =
     let repr = Repr.of_core_type ty in
@@ -97,9 +98,16 @@ struct
 
   let deriving () =
     Deriving.Generator.V2.make (deriving_args ())
-      (fun ~ctxt:_ (_recflag, type_decls) ->
+      (fun ~ctxt (rec_flag, type_decls) ->
+        let loc = Expansion_context.Deriver.derived_item_loc ctxt in
         let reprs = List.map type_decls ~f:Repr.of_type_declaration in
-        List.map reprs ~f:(fun decl -> derive_type_decl decl))
+        let bindings =
+          List.map reprs ~f:(fun decl -> derive_type_decl decl)
+        in
+        let rec_flag =
+          match bindings with [ _ ] -> Nonrecursive | _ -> rec_flag
+        in
+        [ pstr_value ~loc rec_flag bindings ])
 
   let register () =
     let _ = Deriving.add S.name ~str_type_decl:(deriving ()) in
