@@ -1,0 +1,27 @@
+(library
+ (name trepr)
+ (modules :standard \ ppx deriving_of_yojson deriving_to_yojson)
+ (preprocess
+  (pps ppxlib.metaquot))
+ (libraries containers ppxlib))
+
+(library
+ (name deriving_of_yojson)
+ (modules deriving_of_yojson)
+ (libraries trepr ppxlib containers)
+ (preprocess
+  (pps ppxlib.metaquot))
+ (kind ppx_deriver))
+
+(library
+ (name deriving_to_yojson)
+ (modules deriving_to_yojson)
+ (libraries trepr ppxlib containers)
+ (preprocess
+  (pps ppxlib.metaquot))
+ (kind ppx_deriver))
+
+(executable
+ (name ppx)
+ (modules ppx)
+ (libraries deriving_of_yojson deriving_to_yojson ppxlib))
