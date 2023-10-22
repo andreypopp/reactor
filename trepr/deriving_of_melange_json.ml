@@ -16,44 +16,33 @@ let build_tuple ~loc derive si ts e =
   pexp_tuple ~loc args
 
 let build_record ~loc derive ns ts fs =
-  with_refs ~loc "x" ns @@ fun ename ->
-  let handle_field k v =
-    let fail_case =
-      [%pat? name]
-      --> [%expr
-            Json.of_json_error
-              (Stdlib.Printf.sprintf "unknown field: %s" name)]
-    in
-    let cases =
-      List.fold_left
-        (List.rev (List.combine ns ts))
-        ~init:[ fail_case ]
-        ~f:(fun next (n, t) ->
-          pstring ~loc n
-          --> [%expr
-                [%e ename n] := Stdlib.Option.Some [%e derive ~loc t v]]
-          :: next)
-    in
-    pexp_match ~loc k cases
-  in
-  let build =
-    let fs =
-      List.map ns ~f:(fun n ->
-          ( { loc; txt = lident n },
-            [%expr
-              match Stdlib.( ! ) [%e ename n] with
-              | Stdlib.Option.Some v -> v
-              | Stdlib.Option.None ->
-                  Json.of_json_error
-                    [%e estring ~loc (sprintf "missing field %S" n)]] ))
-    in
-    pexp_record ~loc fs None
+  let rowtyp =
+    ptyp_object ~loc
+      (List.map ns ~f:(fun n ->
+           {
+             pof_loc = loc;
+             pof_attributes = [];
+             pof_desc =
+               Otag ({ loc; txt = n }, [%type: Js.Json.t Js.undefined]);
+           }))
+      Closed
   in
   [%expr
-    Array.iter
-      (fun (n', v) -> [%e handle_field [%expr n'] [%expr v]])
-      (Js.Dict.entries [%e fs]);
-    [%e build]]
+    let fs = (Obj.magic fs : [%t rowtyp] Js.t) in
+    [%e
+      let fs =
+        List.map2 ns ts ~f:(fun n t ->
+            ( { loc; txt = lident n },
+              [%expr
+                match
+                  Js.Undefined.toOption [%e fs] ## [%e estring ~loc n]
+                with
+                | Stdlib.Option.Some v -> [%e derive ~loc t [%expr v]]
+                | Stdlib.Option.None ->
+                    Json.of_json_error
+                      [%e estring ~loc (sprintf "missing field %S" n)]] ))
+      in
+      pexp_record ~loc fs None]]
 
 let derive_of_tuple ~loc derive ts x =
   let n = List.length ts in

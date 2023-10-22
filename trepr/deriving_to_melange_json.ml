@@ -6,19 +6,13 @@ open Repr
 open Deriving_helper
 
 let build_assoc ~loc derive ns es ts =
-  let expr =
-    List.fold_left
-      (List.rev (List.combine3 ns es ts))
-      ~init:[%expr (Obj.magic json : Js.Json.t)]
-      ~f:(fun prev (n, x, t) ->
+  let fs =
+    List.map (List.combine3 ns es ts) ~f:(fun (n, x, t) ->
         let this = derive ~loc t x in
-        [%expr
-          Js.Dict.set json [%e estring ~loc n] [%e this];
-          [%e prev]])
+        { loc; txt = lident n }, this)
   in
-  [%expr
-    let json = Js.Dict.empty () in
-    [%e expr]]
+  let record = pexp_record ~loc fs None in
+  [%expr (Obj.magic [%mel.obj [%e record]] : Js.Json.t)]
 
 let build_list' ~loc derive es ts =
   List.map (List.combine es ts) ~f:(fun (x, t) ->
