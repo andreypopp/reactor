@@ -2,10 +2,7 @@
  (name api_native)
  (wrapped false)
  (libraries lwt dream remote_native realm_native)
- (flags
-  :standard
-  -open
-  Realm)
+ (flags :standard -open Realm)
  (preprocess
   (per_module
    ((pps remote_ppx deriving_of_yojson deriving_to_yojson)
@@ -18,13 +15,10 @@
   (name api_browser)
   (wrapped false)
   (modes melange)
-  (flags
-   :standard
-   -open
-   Realm)
+  (flags :standard -open Realm)
   (libraries remote_browser realm_browser)
   (preprocess
-   (pps deriving_of_yojson deriving_to_yojson remote_ppx -js)))
+   (pps deriving_of_melange_json deriving_to_melange_json remote_ppx -js)))
  (rule
   (target api.ml)
   (deps ../api_spec.ml)

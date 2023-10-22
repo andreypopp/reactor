@@ -1,8 +1,0 @@
-(dirs :standard \ yojson melange ocaml-lsp)
-
-(vendored_dirs
- melange-fetch
- melange-json
- melange-webapi
- ppx_yojson_conv
- ppx_yojson_conv_lib)

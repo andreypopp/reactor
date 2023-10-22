@@ -311,7 +311,7 @@ module Ext_export_component = struct
                                 (Obj.magic (Js.Promise.resolve promise)
                                   : string Promise.t)
                               in
-                              let json = Yojson.Basic.from_string json in
+                              let json = Js.Json.parseExn json in
                               let data = [%of_json: [%t typ]] json in
                               return data)
                           in
@@ -320,7 +320,7 @@ module Ext_export_component = struct
                 | _ ->
                     [%expr
                       let json = Js.Dict.unsafeGet props [%e name] in
-                      let json = Yojson.Basic.from_string json in
+                      let json = Js.Json.parseExn json in
                       [%of_json: [%t typ]] json]
               in
               arg_label, value)

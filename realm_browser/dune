@@ -2,7 +2,6 @@
  (name realm_browser)
  (wrapped false)
  (public_name react.realm_browser)
- (libraries yojson)
  (preprocess
   (pps melange.ppx))
  (modes melange))

@@ -11,7 +11,7 @@
 (executable
  (name ppx_test)
  (modules ppx_test)
- (libraries remote_ppx deriving_of_yojson deriving_to_yojson ppxlib))
+ (libraries remote_ppx deriving_of_melange_json deriving_to_melange_json ppxlib))
 
 ; (cram
 ;  (deps ./ppx_test_runner ./ppx_test.exe ../.ocamlformat))

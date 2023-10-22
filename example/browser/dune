@@ -11,7 +11,7 @@
  (flags :standard -open Realm)
  (modes melange)
  (preprocess
-  (pps melange.ppx react_ppx deriving_of_yojson deriving_to_yojson)))
+  (pps melange.ppx react_ppx deriving_of_melange_json deriving_to_melange_json)))
 
 (subdir
  native

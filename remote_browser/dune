@@ -4,6 +4,6 @@
  (public_name remote.browser)
  (modes melange)
  (flags :standard -open Realm)
- (libraries melange-fetch yojson realm_browser)
+ (libraries melange-fetch realm_browser)
  (preprocess
   (pps melange.ppx)))

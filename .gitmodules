@@ -1,3 +1,0 @@
-[submodule "deps/yojson"]
-	path = deps/yojson
-	url = https://github.com/andreypopp/yojson.git
