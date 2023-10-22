@@ -45,7 +45,7 @@ and html_children =
 and client_props = (string * client_prop) list
 
 and client_prop =
-  | Json : string -> client_prop
+  | Json : json -> client_prop
   | Element : element -> client_prop
   | Promise : 'a Promise.t * ('a -> json) -> client_prop
 

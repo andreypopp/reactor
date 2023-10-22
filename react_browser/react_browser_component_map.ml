@@ -1,4 +1,4 @@
-type exported_component = string Js.Dict.t -> React.element
+type exported_component = Js.Json.t Js.Dict.t -> React.element
 type t = exported_component Js.Dict.t
 
 let t = Js.Dict.empty ()

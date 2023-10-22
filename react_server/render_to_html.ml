@@ -315,11 +315,10 @@ let rec server_to_html t = function
                 let async =
                   promise >|= fun value ->
                   let json = value_to_yojson value in
-                  let json = Yojson.Basic.to_string json in
-                  Emit_model.html_model (idx, C_value (`String json))
+                  Emit_model.html_model (idx, C_value json)
                 in
                 `Fork (async, sync)
-            | Json json -> Lwt.return (name, `String json))
+            | Json json -> Lwt.return (name, json))
           props
       in
       let html = client_to_html t thunk in

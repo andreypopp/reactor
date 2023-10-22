@@ -134,7 +134,7 @@ let rec to_model ctx idx el =
                         if ctx.pending = 0 then close ctx);
                     name, promise_value idx
                 | Fail exn -> raise exn)
-            | name, Json json -> name, `String json)
+            | name, Json json -> name, json)
         in
         node ~tag_name:(sprintf "$%i" idx) ~key:None ~props None
   in
