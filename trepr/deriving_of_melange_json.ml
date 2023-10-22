@@ -6,43 +6,36 @@ open Trepr.Repr
 open Trepr.Deriving_helper
 
 let build_tuple ~loc derive si ts e =
-  let args =
-    List.mapi ts ~f:(fun i t ->
-        let x =
-          [%expr Js.Array.unsafe_get [%e e] [%e eint ~loc (si + i)]]
-        in
-        derive ~loc t x)
+  pexp_tuple ~loc
+    (List.mapi ts ~f:(fun i t ->
+         derive ~loc t
+           [%expr Js.Array.unsafe_get [%e e] [%e eint ~loc (si + i)]]))
+
+let build_js_type ~loc ns =
+  let f txt =
+    let pof_desc = Otag ({ loc; txt }, [%type: Js.Json.t Js.undefined]) in
+    { pof_loc = loc; pof_attributes = []; pof_desc }
   in
-  pexp_tuple ~loc args
+  let row = ptyp_object ~loc (List.map ns ~f) Closed in
+  [%type: [%t row] Js.t]
 
 let build_record ~loc derive ns ts fs =
-  let rowtyp =
-    ptyp_object ~loc
-      (List.map ns ~f:(fun n ->
-           {
-             pof_loc = loc;
-             pof_attributes = [];
-             pof_desc =
-               Otag ({ loc; txt = n }, [%type: Js.Json.t Js.undefined]);
-           }))
-      Closed
+  let handle_field fs n t =
+    ( { loc; txt = lident n },
+      [%expr
+        match
+          Js.Undefined.toOption
+            [%e fs] ## [%e pexp_ident ~loc { loc; txt = lident n }]
+        with
+        | Stdlib.Option.Some v -> [%e derive ~loc t [%expr v]]
+        | Stdlib.Option.None ->
+            Json.of_json_error
+              [%e estring ~loc (sprintf "missing field %S" n)]] )
   in
   [%expr
-    let fs = (Obj.magic fs : [%t rowtyp] Js.t) in
+    let fs = (Obj.magic [%e fs] : [%t build_js_type ~loc ns]) in
     [%e
-      let fs =
-        List.map2 ns ts ~f:(fun n t ->
-            ( { loc; txt = lident n },
-              [%expr
-                match
-                  Js.Undefined.toOption [%e fs] ## [%e estring ~loc n]
-                with
-                | Stdlib.Option.Some v -> [%e derive ~loc t [%expr v]]
-                | Stdlib.Option.None ->
-                    Json.of_json_error
-                      [%e estring ~loc (sprintf "missing field %S" n)]] ))
-      in
-      pexp_record ~loc fs None]]
+      pexp_record ~loc (List.map2 ns ts ~f:(handle_field [%expr fs])) None]]
 
 let derive_of_tuple ~loc derive ts x =
   let n = List.length ts in
@@ -64,16 +57,24 @@ let eis_json_object ~loc x =
     && (not (Js.Array.isArray [%e x]))
     && not ((Obj.magic [%e x] : 'a Js.null) == Js.null)]
 
+let ensure_json_object ~loc x =
+  [%expr
+    if not [%e eis_json_object ~loc x] then
+      Json.of_json_error
+        [%e estring ~loc (sprintf "expected a JSON object")]]
+
+let ensure_json_array_len ~loc n len =
+  [%expr
+    if [%e len] <> [%e eint ~loc n] then
+      Json.of_json_error
+        [%e estring ~loc (sprintf "expected a JSON array of length %i" n)]]
+
 let derive_of_record ~loc derive fs x =
   let ns = List.map fs ~f:fst in
   let ts = List.map fs ~f:snd in
   [%expr
-    if [%e eis_json_object ~loc x] then
-      let fs = (Obj.magic [%e x] : Js.Json.t Js.Dict.t) in
-      [%e build_record ~loc derive ns ts [%expr fs]]
-    else
-      Json.of_json_error
-        [%e estring ~loc (sprintf "expected a JSON object")]]
+    [%e ensure_json_object ~loc x];
+    [%e build_record ~loc derive ns ts x]]
 
 let derive_of_variant ~loc derive cs x =
   let fail_case = [%expr Json.of_json_error "invalid JSON"] in
@@ -84,38 +85,27 @@ let derive_of_variant ~loc derive cs x =
     List.fold_left (List.rev cs) ~init:fail_case ~f:(fun next c ->
         match c with
         | Vc_record (name, fs) ->
+            let ns = List.map fs ~f:fst in
+            let ts = List.map fs ~f:snd in
             [%expr
-              if tag = [%e estring ~loc name] then
-                if len <> 2 then
-                  Json.of_json_error "expected a JSON array of length 2"
-                else
-                  let fs = Js.Array.unsafe_get array 1 in
-                  if not [%e eis_json_object ~loc [%expr fs]] then
-                    Json.of_json_error "expected a JSON object"
-                  else
-                    let fs = (Obj.magic fs : Js.Json.t Js.Dict.t) in
-                    [%e
-                      let ns = List.map fs ~f:fst in
-                      let ts = List.map fs ~f:snd in
-                      econstruct name
-                        (Some (build_record ~loc derive ns ts [%expr fs]))]
+              if tag = [%e estring ~loc name] then (
+                [%e ensure_json_array_len ~loc 2 [%expr len]];
+                let fs = Js.Array.unsafe_get array 1 in
+                [%e ensure_json_object ~loc [%expr fs]];
+                [%e
+                  econstruct name
+                    (Some (build_record ~loc derive ns ts [%expr fs]))])
               else [%e next]]
         | Vc_tuple (name, ts) ->
             let n = List.length ts in
-            let n1 = n + 1 in
             [%expr
-              if tag = [%e estring ~loc name] then
-                if len <> [%e eint ~loc n1] then
-                  Json.of_json_error
-                    [%e
-                      estring ~loc
-                        (sprintf "expected a JSON array of length %i" n1)]
-                else
-                  [%e
-                    if n = 0 then econstruct name None
-                    else
-                      econstruct name
-                        (Some (build_tuple ~loc derive 1 ts [%expr e]))]
+              if tag = [%e estring ~loc name] then (
+                [%e ensure_json_array_len ~loc (n + 1) [%expr len]];
+                [%e
+                  if n = 0 then econstruct name None
+                  else
+                    econstruct name
+                      (Some (build_tuple ~loc derive 1 ts [%expr e]))])
               else [%e next]])
   in
   [%expr
