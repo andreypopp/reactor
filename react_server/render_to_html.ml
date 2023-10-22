@@ -156,8 +156,8 @@ module Emit_model = struct
       "<script data-path='%s' data-input='%s' \
        data-output='%s'>window.React_of_caml_ssr.push_rpc()</script>"
       (Html.single_quote_escape path)
-      (Html.single_quote_escape (Yojson.Safe.to_string input))
-      (Html.single_quote_escape (Yojson.Safe.to_string output))
+      (Html.single_quote_escape (Yojson.Basic.to_string input))
+      (Html.single_quote_escape (Yojson.Basic.to_string output))
 
   let html_end =
     Html.unsafe_rawf "<script>window.React_of_caml_ssr.close()</script>"
@@ -315,7 +315,7 @@ let rec server_to_html t = function
                 let async =
                   promise >|= fun value ->
                   let json = value_to_yojson value in
-                  let json = Yojson.Safe.to_string json in
+                  let json = Yojson.Basic.to_string json in
                   Emit_model.html_model (idx, C_value (`String json))
                 in
                 `Fork (async, sync)

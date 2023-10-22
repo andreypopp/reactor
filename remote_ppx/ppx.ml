@@ -7,14 +7,13 @@ type target = Target_native | Target_js
 
 let mode = ref Target_native
 
-let with_deriving ?(yojson_of = false) ?(of_yojson = false)
-    type_declaration =
+let with_deriving ?(to_json = false) ?(of_json = false) type_declaration =
   let loc = type_declaration.ptype_loc in
   let payload =
-    match yojson_of, of_yojson with
-    | true, true -> [ [%stri yojson_of, of_yojson] ]
-    | true, false -> [ [%stri yojson_of] ]
-    | false, true -> [ [%stri of_yojson] ]
+    match to_json, of_json with
+    | true, true -> [ [%stri to_json, of_json] ]
+    | true, false -> [ [%stri to_json] ]
+    | false, true -> [ [%stri of_json] ]
     | false, false -> []
   in
   let attr =
@@ -120,7 +119,7 @@ end
 
 let longident_unit = Longident.parse "unit"
 
-let build_input_mod ~ctxt ?yojson_of ?of_yojson (m : Method_desc.t) =
+let build_input_mod ~ctxt ?to_json ?of_json (m : Method_desc.t) =
   let open Ast_builder.Default in
   let loc = Expansion_context.Deriver.derived_item_loc ctxt in
   let input_type =
@@ -159,7 +158,7 @@ let build_input_mod ~ctxt ?yojson_of ?of_yojson (m : Method_desc.t) =
           { decl with pld_attributes })
     in
     let type_declaration =
-      with_deriving ?yojson_of ?of_yojson
+      with_deriving ?to_json ?of_json
         (type_declaration ~loc ~name:{ txt = "t"; loc } ~manifest:None
            ~params:[] ~cstrs:[] ~private_:Public
            ~kind:(Ptype_record fields))
@@ -168,33 +167,27 @@ let build_input_mod ~ctxt ?yojson_of ?of_yojson (m : Method_desc.t) =
   in
   mod_decl_of_expr ~loc
     ~name:{ loc; txt = sprintf "Input_%s" m.name.txt }
-    ~expr:
-      (pmod_structure ~loc
-         [%str
-           (* open Ppx_yojson_conv_lib.Yojson_conv.Primitives *)
-           [%%i input_type]])
+    ~expr:(pmod_structure ~loc [%str [%%i input_type]])
 
 let build_output_mod ~ctxt deriving_dir (m : Method_desc.t) =
   let open Ast_builder.Default in
   let loc = Expansion_context.Deriver.derived_item_loc ctxt in
   let deriving_dir =
     match deriving_dir with
-    | `yojson_of -> pexp_ident ~loc (longidentf ~loc "yojson_of")
-    | `of_yojson -> pexp_ident ~loc (longidentf ~loc "of_yojson")
+    | `to_json -> pexp_ident ~loc (longidentf ~loc "to_json")
+    | `of_json -> pexp_ident ~loc (longidentf ~loc "of_json")
   in
   mod_decl_of_expr ~loc
     ~name:{ loc; txt = sprintf "Output_%s" m.name.txt }
     ~expr:
       (pmod_structure ~loc
-         [%str
-           (* open Ppx_yojson_conv_lib.Yojson_conv.Primitives *)
-           type t = [%t m.typ] [@@deriving [%e deriving_dir]]])
+         [%str type t = [%t m.typ] [@@deriving [%e deriving_dir]]])
 
 let input_conv ~loc deriving_dir m =
   let deriving_dir =
     match deriving_dir with
-    | `yojson_of -> "yojson_of_t"
-    | `of_yojson -> "t_of_yojson"
+    | `to_json -> "to_json"
+    | `of_json -> "of_json"
   in
   Ast_builder.Default.(
     pexp_ident ~loc
@@ -203,8 +196,8 @@ let input_conv ~loc deriving_dir m =
 let output_conv ~loc deriving_dir m =
   let deriving_dir =
     match deriving_dir with
-    | `yojson_of -> "yojson_of_t"
-    | `of_yojson -> "t_of_yojson"
+    | `to_json -> "to_json"
+    | `of_json -> "of_json"
   in
   Ast_builder.Default.(
     pexp_ident ~loc
@@ -265,8 +258,8 @@ module Remote_browser = struct
       let [%p ppat_var ~loc m.name] =
         let query_def =
           [%e define]
-            ~output_of_yojson:[%e output_conv `of_yojson ~loc m]
-            ~yojson_of_input:[%e input_conv `yojson_of ~loc m]
+            ~output_of_yojson:[%e output_conv `of_json ~loc m]
+            ~yojson_of_input:[%e input_conv `to_json ~loc m]
             ~path:
               [%e
                 estringf ~loc "%s/%s"
@@ -282,8 +275,8 @@ module Remote_browser = struct
       List.flat_map methods ~f:(function
         | Ok m ->
             [
-              build_input_mod ~ctxt ~yojson_of:true m;
-              build_output_mod `of_yojson ~ctxt m;
+              build_input_mod ~ctxt ~to_json:true m;
+              build_output_mod `of_json ~ctxt m;
               build_remote_call ~ctxt ~path m;
             ]
         | Error str -> [ str ])
@@ -301,10 +294,10 @@ module Remote_native = struct
 
   let respond_error ~loc ?(payload = [%expr []]) ~status msg =
     [%expr
-      let err : Yojson.Safe.t =
+      let err : Yojson.Basic.t =
         `Assoc (("error", `String [%e estring ~loc msg]) :: [%e payload])
       in
-      Dream.respond ~status:[%e status] (Yojson.Safe.to_string err)]
+      Dream.respond ~status:[%e status] (Yojson.Basic.to_string err)]
 
   let build_query ~loc ~path ~mod_name (m : Method_desc.t) =
     let define, make =
@@ -353,8 +346,8 @@ module Remote_native = struct
       let [%p ppat_var ~loc m.name] =
         let query_def =
           [%e define]
-            ~yojson_of_output:[%e output_conv `yojson_of ~loc m]
-            ~yojson_of_input:[%e input_conv `yojson_of ~loc m]
+            ~yojson_of_output:[%e output_conv `to_json ~loc m]
+            ~yojson_of_input:[%e input_conv `to_json ~loc m]
             ~path:
               [%e
                 estringf ~loc "%s/%s"
@@ -390,30 +383,27 @@ module Remote_native = struct
       [%expr
         let open Lwt.Infix in
         [%e json_data] >>= fun json_data ->
-        match Yojson.Safe.from_string json_data with
+        match Yojson.Basic.from_string json_data with
         | exception Yojson.Json_error _ ->
             [%e
               respond_error ~loc ~status:[%expr `Bad_Request]
                 "invalid JSON"]
         | json -> (
-            match [%e input_conv `of_yojson ~loc m] json with
-            | exception
-                Ppx_yojson_conv_lib.Yojson_conv.Of_yojson_error (exn, json)
-              ->
-                print_endline (Printexc.to_string exn);
+            match [%e input_conv `of_json ~loc m] json with
+            | exception Json.Of_json_error msg ->
+                print_endline msg;
                 [%e
                   respond_error ~loc ~status:[%expr `Bad_Request]
-                    ~payload:[%expr [ "json", json ]]
-                    "invalid JSON payload"]
+                    ~payload:[%expr []] "invalid JSON payload"]
             | input ->
                 [%e call_into_impl] >>= fun output ->
-                let json = [%e output_conv `yojson_of ~loc m] output in
-                let data = Yojson.Safe.to_string json in
+                let json = [%e output_conv `to_json ~loc m] output in
+                let data = Yojson.Basic.to_string json in
                 Dream.respond ~status:`OK data)]
     in
     [%str
-      [%%i build_input_mod ~ctxt ~yojson_of:true ~of_yojson:true m]
-      [%%i build_output_mod `yojson_of ~ctxt m]
+      [%%i build_input_mod ~ctxt ~to_json:true ~of_json:true m]
+      [%%i build_output_mod `to_json ~ctxt m]
       [%%i build_query ~loc ~path ~mod_name m]
 
       let [%p

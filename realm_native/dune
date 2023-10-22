@@ -2,5 +2,5 @@
  (name realm_native)
  (wrapped false)
  (public_name react.realm_native)
- (libraries lwt lwt.unix)
+ (libraries lwt lwt.unix yojson)
  (modes native))

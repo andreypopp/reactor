@@ -1,7 +1,7 @@
 open ContainersLabels
 open Lwt.Infix
 
-type json = Yojson.Safe.t
+type json = Yojson.Basic.t
 
 type 'output query =
   | Query : {
@@ -101,7 +101,7 @@ let run_query
             cache
       in
       let input_json = yojson_of_input input in
-      let key = path, Yojson.Safe.to_string input_json in
+      let key = path, Yojson.Basic.to_string input_json in
       match Hashtbl.find_opt cache key with
       | Some promise -> promise
       | None ->

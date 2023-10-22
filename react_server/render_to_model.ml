@@ -40,13 +40,13 @@ let chunk_to_string = function
   | idx, C_ref ref ->
       let buf = Buffer.create 256 in
       Buffer.add_string buf (sprintf "%x:I" idx);
-      Yojson.Safe.write_json buf ref;
+      Yojson.Basic.write_json buf ref;
       Buffer.add_char buf '\n';
       Buffer.contents buf
   | idx, C_value model ->
       let buf = Buffer.create (4 * 1024) in
       Buffer.add_string buf (sprintf "%x:" idx);
-      Yojson.Safe.write_json buf model;
+      Yojson.Basic.write_json buf model;
       Buffer.add_char buf '\n';
       Buffer.contents buf
 
@@ -117,7 +117,8 @@ let rec to_model ctx idx el =
                     let idx = use_idx ctx in
                     let json = value_to_yojson value in
                     push ctx
-                      (idx, C_value (`String (Yojson.Safe.to_string json)));
+                      ( idx,
+                        C_value (`String (Yojson.Basic.to_string json)) );
                     name, promise_value idx
                 | Sleep ->
                     let idx = use_idx ctx in
@@ -128,8 +129,8 @@ let rec to_model ctx idx el =
                         ctx.pending <- ctx.pending - 1;
                         push ctx
                           ( idx,
-                            C_value (`String (Yojson.Safe.to_string json))
-                          );
+                            C_value
+                              (`String (Yojson.Basic.to_string json)) );
                         if ctx.pending = 0 then close ctx);
                     name, promise_value idx
                 | Fail exn -> raise exn)

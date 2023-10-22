@@ -1,4 +1,4 @@
-type json = Yojson.Safe.t
+type json = Yojson.Basic.t
 type ('a, 'b) query_endpoint
 type ('a, 'b) mutation_endpoint
 

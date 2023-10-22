@@ -84,7 +84,7 @@ let () =
   let links = [ "/static/bundle.css" ] in
   let scripts = [ "/static/bundle.js" ] in
   let render ui = React_dream.render ~links ~scripts ui in
-  Dream.run
+  Dream.run ~interface:"0.0.0.0"
   @@ Dream.logger
   @@ Dream.router
        ([

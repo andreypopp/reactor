@@ -11,7 +11,7 @@
  (flags :standard -open Realm)
  (modes melange)
  (preprocess
-  (pps melange.ppx react_ppx ppx_yojson_conv)))
+  (pps melange.ppx react_ppx deriving_of_yojson deriving_to_yojson)))
 
 (subdir
  native
@@ -21,13 +21,12 @@
   (modes native)
   (libraries
    react.browser_server
-   ppx_yojson_conv_lib
    remote_native
    realm_native
    api_native)
   (flags :standard -open Realm)
   (preprocess
-   (pps react_ppx -native ppx_yojson_conv)))
+   (pps react_ppx -native deriving_of_yojson deriving_to_yojson)))
  (copy_files#
   (files ../**[!.pp][!.mlx].ml))
  (copy_files#

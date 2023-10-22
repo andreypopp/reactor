@@ -1,6 +1,6 @@
 open! Import
 
-type json = Yojson.Safe.t
+type json = Yojson.Basic.t
 
 module React = React_model
 

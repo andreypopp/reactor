@@ -5,12 +5,10 @@
  (flags
   :standard
   -open
-  Ppx_yojson_conv_lib.Yojson_conv.Primitives
-  -open
   Realm)
  (preprocess
   (per_module
-   ((pps remote_ppx ppx_yojson_conv)
+   ((pps remote_ppx deriving_of_yojson deriving_to_yojson)
     api_spec)))
  (modes native))
 
@@ -23,12 +21,10 @@
   (flags
    :standard
    -open
-   Ppx_yojson_conv_lib.Yojson_conv.Primitives
-   -open
    Realm)
   (libraries remote_browser realm_browser)
   (preprocess
-   (pps ppx_yojson_conv remote_ppx -js)))
+   (pps deriving_of_yojson deriving_to_yojson remote_ppx -js)))
  (rule
   (target api.ml)
   (deps ../api_spec.ml)

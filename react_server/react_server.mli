@@ -4,7 +4,7 @@
 
 (** {1 Common definitions} *)
 
-type json = Yojson.Safe.t
+type json = Yojson.Basic.t
 (** JSON data type used to communicate between Server Components and Client
     Components. *)
 

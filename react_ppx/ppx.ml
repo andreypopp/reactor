@@ -266,8 +266,8 @@ module Ext_export_component = struct
                       ([%e prop], [%yojson_of: [%t typ]])]
               | _ ->
                   [%expr
-                    let json = [%yojson_of: [%t typ]] [%e prop] in
-                    let json = Yojson.Safe.to_string json in
+                    let json = [%to_json: [%t typ]] [%e prop] in
+                    let json = Yojson.Basic.to_string json in
                     React_server.React.Json json]
             in
             [%expr ([%e name], [%e value]) :: [%e xs]])
@@ -311,8 +311,8 @@ module Ext_export_component = struct
                                 (Obj.magic (Js.Promise.resolve promise)
                                   : string Promise.t)
                               in
-                              let json = Yojson.Safe.from_string json in
-                              let data = [%of_yojson: [%t typ]] json in
+                              let json = Yojson.Basic.from_string json in
+                              let data = [%of_json: [%t typ]] json in
                               return data)
                           in
                           Js.Dict.set promise' "__promise" promise;
@@ -320,8 +320,8 @@ module Ext_export_component = struct
                 | _ ->
                     [%expr
                       let json = Js.Dict.unsafeGet props [%e name] in
-                      let json = Yojson.Safe.from_string json in
-                      [%of_yojson: [%t typ]] json]
+                      let json = Yojson.Basic.from_string json in
+                      [%of_json: [%t typ]] json]
               in
               arg_label, value)
         component.props
@@ -355,8 +355,7 @@ module Ext_export_component = struct
           fun () ->
             React_server.React.client_thunk
               [%e component_id ~ctxt component.name.txt]
-              (let open Ppx_yojson_conv_lib.Yojson_conv.Primitives in
-               [%e props_to_model ~ctxt component.props])
+              [%e props_to_model ~ctxt component.props]
               (React_server.React.thunk (fun () -> [%e component.body]))]
       in
       ListLabels.fold_left component.props ~init:body
@@ -388,7 +387,6 @@ module Ext_export_component = struct
         [%%i js_component]
 
         let () =
-          let open Ppx_yojson_conv_lib.Yojson_conv.Primitives in
           React_browser.Component_map.register
             [%e component_id ~ctxt component.name.txt] (fun props ->
               [%e call_from_server ~ctxt component])

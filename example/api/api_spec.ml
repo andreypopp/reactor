@@ -1,7 +1,8 @@
 type world = { lab : string; opt : int option; name : string }
-[@@deriving yojson]
+[@@deriving of_json, to_json]
 
-type greeting = Greeting_formal | Greeting_informal [@@deriving yojson]
+type greeting = Greeting_formal | Greeting_informal
+[@@deriving of_json, to_json]
 
 module type Hello = sig
   val hello : name:string -> string Promise.t [@@query]
@@ -13,7 +14,7 @@ end
 [@@deriving remote { path = "/hello" }]
 
 type todo = { id : int; text : string; completed : bool }
-[@@deriving yojson]
+[@@deriving of_json, to_json]
 
 module type Todo = sig
   val list : unit -> todo list Promise.t [@@query]

@@ -51,7 +51,7 @@ end = struct
     match A.T with B.T -> Some Eq | _ -> None
 end
 
-type json = Yojson.Safe.t
+type json = Yojson.Basic.t
 
 type 'a req = {
   path : string;
@@ -72,7 +72,7 @@ let define_query ~yojson_of_input ~output_of_yojson ~path =
       {
         key;
         path;
-        input = lazy (Yojson.Safe.to_string (yojson_of_input input));
+        input = lazy (Yojson.Basic.to_string (yojson_of_input input));
         output_of_yojson;
       }
 
@@ -83,7 +83,7 @@ let define_mutation ~yojson_of_input ~output_of_yojson ~path =
       {
         key;
         path;
-        input = lazy (Yojson.Safe.to_string (yojson_of_input input));
+        input = lazy (Yojson.Basic.to_string (yojson_of_input input));
         output_of_yojson;
       }
 
@@ -108,7 +108,7 @@ end = struct
   let cached_data req json =
     let data =
       let* json = json in
-      let json = Yojson.Safe.from_string json in
+      let json = Yojson.Basic.from_string json in
       return (req.output_of_yojson json)
     in
     data, Cached_data (req.key, data)
@@ -202,6 +202,6 @@ let run_mutation (Mutation req) =
     Response.text response
   in
   let* data = promise in
-  return (req.output_of_yojson (Yojson.Safe.from_string data))
+  return (req.output_of_yojson (Yojson.Basic.from_string data))
 
 let invalidate (Query req) = Cache.invalidate req
