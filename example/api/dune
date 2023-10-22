@@ -18,7 +18,7 @@
   (flags :standard -open Realm)
   (libraries remote_browser realm_browser)
   (preprocess
-   (pps deriving_of_melange_json deriving_to_melange_json remote_ppx -js)))
+   (pps melange.ppx deriving_of_melange_json deriving_to_melange_json remote_ppx -js)))
  (rule
   (target api.ml)
   (deps ../api_spec.ml)
