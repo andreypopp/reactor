@@ -8,7 +8,7 @@ let build_assoc ~loc derive fs es =
   let fs =
     List.map2 fs es ~f:(fun (n, t) x ->
         let this = derive ~loc t x in
-        { loc; txt = lident n }, this)
+        to_lident n, this)
   in
   let record = pexp_record ~loc fs None in
   [%expr (Obj.magic [%mel.obj [%e record]] : Js.Json.t)]
@@ -30,8 +30,8 @@ let derive_of_record ~loc derive fs x =
   pexp_match ~loc x [ p --> build_assoc ~loc derive fs es ]
 
 let derive_of_variant ~loc derive cs x =
-  let ctor_pat name pat =
-    ppat_construct ~loc { loc; txt = lident name } pat
+  let ctor_pat (n : label loc) pat =
+    ppat_construct ~loc:n.loc (to_lident n) pat
   in
   pexp_match ~loc x
     (List.map cs ~f:(function
@@ -41,7 +41,7 @@ let derive_of_variant ~loc derive cs x =
           --> [%expr
                 (Obj.magic
                    [|
-                     string_to_json [%e estring ~loc n];
+                     string_to_json [%e estring ~loc:n.loc n.txt];
                      [%e build_assoc ~loc derive fs es];
                    |]
                   : Js.Json.t)]
@@ -51,7 +51,9 @@ let derive_of_variant ~loc derive cs x =
           ctor_pat n (if arity = 0 then None else Some p)
           -->
           let es = build_list' ~loc derive es ts in
-          let es = [%expr string_to_json [%e estring ~loc n]] :: es in
+          let es =
+            [%expr string_to_json [%e estring ~loc:n.loc n.txt]] :: es
+          in
           [%expr (Obj.magic [%e pexp_array ~loc es] : Js.Json.t)]))
 
 include Ppx_deriving_schema.Deriving1 (struct
@@ -61,4 +63,3 @@ include Ppx_deriving_schema.Deriving1 (struct
   let derive_of_record = derive_of_record
   let derive_of_variant = derive_of_variant
 end)
-

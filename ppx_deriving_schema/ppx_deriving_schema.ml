@@ -5,43 +5,43 @@ open ContainersLabels
 
 module Repr = struct
   type type_decl = {
-    name : label;
-    params : label list;
+    name : label loc;
+    params : label loc list;
     shape : type_decl_shape;
     loc : location;
   }
 
   and type_decl_shape =
-    | Ts_record of (label * type_expr) list
+    | Ts_record of (label loc * type_expr) list
     | Ts_variant of variant_case list
     | Ts_expr of type_expr
 
   and type_expr =
-    | Te_opaque of Longident.t * type_expr list
-    | Te_var of label
+    | Te_opaque of Longident.t loc * type_expr list
+    | Te_var of label loc
     | Te_tuple of type_expr list
     | Te_polyvariant of polyvariant_case
 
   and variant_case =
-    | Vc_tuple of label * type_expr list
-    | Vc_record of label * (label * type_expr) list
+    | Vc_tuple of label loc * type_expr list
+    | Vc_record of label loc * (label loc * type_expr) list
 
   and polyvariant_case =
-    | Pvc_construct of label * type_expr list
-    | Pvc_inherit of Longident.t
+    | Pvc_construct of label loc * type_expr list
+    | Pvc_inherit of Longident.t loc
 
   let not_supported what = failwith (sprintf "%s are not supported" what)
 
   let rec of_core_type (typ : Parsetree.core_type) : type_expr =
     match typ.ptyp_desc with
     | Ptyp_tuple ts -> Te_tuple (List.map ts ~f:(fun t -> of_core_type t))
-    | Ptyp_constr ({ txt = id; _ }, ts) ->
+    | Ptyp_constr (id, ts) ->
         Te_opaque (id, List.map ts ~f:(fun t -> of_core_type t))
     | Ptyp_variant (_fields, Closed, None) -> failwith "TODO"
     | Ptyp_variant _ -> not_supported "non closed polyvariants"
     | Ptyp_arrow _ -> not_supported "function types"
     | Ptyp_any -> not_supported "type placeholders"
-    | Ptyp_var label -> Te_var label
+    | Ptyp_var label -> Te_var { txt = label; loc = typ.ptyp_loc }
     | Ptyp_object _ -> not_supported "object types"
     | Ptyp_class _ -> not_supported "class types"
     | Ptyp_poly _ -> not_supported "polymorphic type expressions"
@@ -59,20 +59,18 @@ module Repr = struct
             List.map ctors ~f:(fun ctor ->
                 match ctor.pcd_args with
                 | Pcstr_tuple ts ->
-                    Vc_tuple
-                      (ctor.pcd_name.txt, List.map ts ~f:of_core_type)
+                    Vc_tuple (ctor.pcd_name, List.map ts ~f:of_core_type)
                 | Pcstr_record fs ->
                     let fs =
                       List.map fs ~f:(fun f ->
-                          f.pld_name.txt, of_core_type f.pld_type)
+                          f.pld_name, of_core_type f.pld_type)
                     in
-                    Vc_record (ctor.pcd_name.txt, fs))
+                    Vc_record (ctor.pcd_name, fs))
           in
           Ts_variant cs
       | Ptype_record fs, _ ->
           let fs =
-            List.map fs ~f:(fun f ->
-                f.pld_name.txt, of_core_type f.pld_type)
+            List.map fs ~f:(fun f -> f.pld_name, of_core_type f.pld_type)
           in
           Ts_record fs
       | Ptype_open, _ -> not_supported "open types"
@@ -80,13 +78,15 @@ module Repr = struct
     let params =
       List.map td.ptype_params ~f:(fun (t, _) ->
           match t.ptyp_desc with
-          | Ptyp_var name -> name
+          | Ptyp_var name -> { txt = name; loc = t.ptyp_loc }
           | _ -> failwith "type variable is not a variable")
     in
-    { name = td.ptype_name.txt; shape; params; loc = td.ptype_loc }
+    { name = td.ptype_name; shape; params; loc = td.ptype_loc }
 end
 
 module Deriving_helper = struct
+  let to_lident id = { loc = id.loc; txt = lident id.txt }
+
   let gen_bindings ~loc prefix n =
     List.split
       (List.init n ~f:(fun i ->
@@ -111,22 +111,24 @@ module Deriving_helper = struct
   let gen_pat_record ~loc prefix fs =
     let xs =
       List.map fs ~f:(fun (n, _t) ->
-          let id = sprintf "%s_%s" prefix n in
-          let patt = ppat_var ~loc { loc; txt = id } in
-          let expr = pexp_ident ~loc { loc; txt = lident id } in
-          ({ loc; txt = lident n }, patt), expr)
+          let id = sprintf "%s_%s" prefix n.txt in
+          let patt = ppat_var ~loc { loc = n.loc; txt = id } in
+          let expr = pexp_ident ~loc { loc = n.loc; txt = lident id } in
+          (to_lident n, patt), expr)
     in
     (* TODO: is there unzip/uncombine somewhere? *)
     ppat_record ~loc (List.map xs ~f:fst) Closed, List.map xs ~f:snd
 
   let with_refs ~loc prefix fs inner =
-    let gen_name name = sprintf "%s_%s" prefix name in
-    let gen_expr name =
-      pexp_ident ~loc { loc; txt = lident (gen_name name) }
+    let gen_name n = sprintf "%s_%s" prefix n in
+    let gen_expr n =
+      pexp_ident ~loc:n.loc { loc = n.loc; txt = lident (gen_name n.txt) }
     in
     List.fold_left (List.rev fs) ~init:(inner gen_expr)
       ~f:(fun next (n, _t) ->
-        let patt = ppat_var ~loc { loc; txt = gen_name n } in
+        let patt =
+          ppat_var ~loc:n.loc { loc = n.loc; txt = gen_name n.txt }
+        in
         [%expr
           let [%p patt] = ref Stdlib.Option.None in
           [%e next]])
@@ -166,7 +168,7 @@ module Deriving1 (S : sig
   val derive_of_record :
     loc:location ->
     (loc:location -> type_expr -> expression -> expression) ->
-    (label * type_expr) list ->
+    (label loc * type_expr) list ->
     expression ->
     expression
 
@@ -184,8 +186,11 @@ struct
     | "t" -> S.name
     | t -> Printf.sprintf "%s_%s" t S.name
 
-  let ederiver ~loc lid =
-    pexp_ident ~loc { loc; txt = name_of_longident name_of_t lid }
+  let name_loc_of_t id = { id with txt = name_of_t id.txt }
+
+  let ederiver (lid : Longident.t loc) =
+    pexp_ident ~loc:lid.loc
+      { loc = lid.loc; txt = name_of_longident name_of_t lid.txt }
 
   type deriver =
     | As_fun of (expression -> expression)
@@ -204,9 +209,9 @@ struct
   let rec derive_type_expr ~loc = function
     | Te_tuple ts ->
         As_fun (fun x -> S.derive_of_tuple ~loc eta_derive_type_expr ts x)
-    | Te_var id -> As_id (ederiver ~loc (lident id))
+    | Te_var id -> As_id (ederiver (to_lident id))
     | Te_opaque (id, args) ->
-        let f = ederiver ~loc id in
+        let f = ederiver id in
         let args =
           List.fold_left (List.rev args) ~init:[] ~f:(fun args a ->
               let a = eta ~loc (derive_type_expr ~loc a) in
@@ -225,17 +230,15 @@ struct
 
   let derive_type_decl { name; params; shape; loc } =
     let expr = derive_type_shape ~loc [%expr x] shape in
-    let t = ptyp_constr ~loc { loc; txt = lident name } [] in
+    let t = ptyp_constr ~loc (to_lident name) [] in
     let expr = [%expr (fun x -> [%e expr] : [%t S.t ~loc t])] in
     let expr =
       List.fold_left params ~init:expr ~f:(fun body param ->
           pexp_fun ~loc Nolabel None
-            (ppat_var ~loc { loc; txt = name_of_t param })
+            (ppat_var ~loc (name_loc_of_t param))
             body)
     in
-    value_binding ~loc
-      ~pat:(ppat_var ~loc { loc; txt = name_of_t name })
-      ~expr
+    value_binding ~loc ~pat:(ppat_var ~loc (name_loc_of_t name)) ~expr
 
   let expand ty =
     let repr = Repr.of_core_type ty in

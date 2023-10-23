@@ -9,9 +9,9 @@ let build_assoc ~loc derive fs es =
     List.fold_left
       (List.rev (List.combine fs es))
       ~init:[%expr []]
-      ~f:(fun prev ((n, t), x) ->
+      ~f:(fun prev (((n : label loc), t), x) ->
         let this = derive ~loc t x in
-        [%expr ([%e estring ~loc n], [%e this]) :: [%e prev]])
+        [%expr ([%e estring ~loc:n.loc n.txt], [%e this]) :: [%e prev]])
   in
   [%expr `Assoc [%e expr]]
 
@@ -37,9 +37,7 @@ let derive_of_record ~loc derive fs x =
   pexp_match ~loc x [ p --> build_assoc ~loc derive fs es ]
 
 let derive_of_variant ~loc derive cs x =
-  let ctor_pat name pat =
-    ppat_construct ~loc { loc; txt = lident name } pat
-  in
+  let ctor_pat name pat = ppat_construct ~loc (to_lident name) pat in
   pexp_match ~loc x
     (List.map cs ~f:(function
       | Vc_record (n, fs) ->
@@ -48,7 +46,7 @@ let derive_of_variant ~loc derive cs x =
           --> [%expr
                 `List
                   [
-                    `String [%e estring ~loc n];
+                    `String [%e estring ~loc:n.loc n.txt];
                     [%e build_assoc ~loc derive fs es];
                   ]]
       | Vc_tuple (n, ts) ->
@@ -57,7 +55,7 @@ let derive_of_variant ~loc derive cs x =
           ctor_pat n (if arity = 0 then None else Some p)
           --> [%expr
                 `List
-                  (`String [%e estring ~loc n]
+                  (`String [%e estring ~loc:n.loc n.txt]
                   :: [%e build_list' ~loc derive es ts])]))
 
 include Ppx_deriving_schema.Deriving1 (struct

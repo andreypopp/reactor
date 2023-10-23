@@ -12,8 +12,8 @@ let build_tuple ~loc derive si ts e =
            [%expr Js.Array.unsafe_get [%e e] [%e eint ~loc (si + i)]]))
 
 let build_js_type ~loc fs =
-  let f (txt, _) =
-    let pof_desc = Otag ({ loc; txt }, [%type: Js.Json.t Js.undefined]) in
+  let f (id, _) =
+    let pof_desc = Otag (id, [%type: Js.Json.t Js.undefined]) in
     { pof_loc = loc; pof_attributes = []; pof_desc }
   in
   let row = ptyp_object ~loc (List.map fs ~f) Closed in
@@ -21,16 +21,16 @@ let build_js_type ~loc fs =
 
 let build_record ~loc derive fs x =
   let handle_field fs (n, t) =
-    ( { loc; txt = lident n },
+    ( to_lident n,
       [%expr
         match
           Js.Undefined.toOption
-            [%e fs] ## [%e pexp_ident ~loc { loc; txt = lident n }]
+            [%e fs] ## [%e pexp_ident ~loc:n.loc (to_lident n)]
         with
         | Stdlib.Option.Some v -> [%e derive ~loc t [%expr v]]
         | Stdlib.Option.None ->
             Json.of_json_error
-              [%e estring ~loc (sprintf "missing field %S" n)]] )
+              [%e estring ~loc (sprintf "missing field %S" n.txt)]] )
   in
   [%expr
     let fs = (Obj.magic [%e x] : [%t build_js_type ~loc fs]) in
@@ -76,30 +76,30 @@ let derive_of_record ~loc derive fs x =
 let derive_of_variant ~loc derive cs x =
   let fail_case = [%expr Json.of_json_error "invalid JSON"] in
   let cases =
-    let econstruct name arg =
-      pexp_construct ~loc { loc; txt = lident name } arg
+    let econstruct (n : label loc) arg =
+      pexp_construct ~loc:n.loc (to_lident n) arg
     in
     List.fold_left (List.rev cs) ~init:fail_case ~f:(fun next c ->
         match c with
-        | Vc_record (name, fs) ->
+        | Vc_record (n, fs) ->
             [%expr
-              if tag = [%e estring ~loc name] then (
+              if tag = [%e estring ~loc:n.loc n.txt] then (
                 [%e ensure_json_array_len ~loc 2 [%expr len]];
                 let fs = Js.Array.unsafe_get array 1 in
                 [%e ensure_json_object ~loc [%expr fs]];
                 [%e
-                  econstruct name
+                  econstruct n
                     (Some (build_record ~loc derive fs [%expr fs]))])
               else [%e next]]
-        | Vc_tuple (name, ts) ->
-            let n = List.length ts in
+        | Vc_tuple (n, ts) ->
+            let arity = List.length ts in
             [%expr
-              if tag = [%e estring ~loc name] then (
-                [%e ensure_json_array_len ~loc (n + 1) [%expr len]];
+              if tag = [%e estring ~loc:n.loc n.txt] then (
+                [%e ensure_json_array_len ~loc (arity + 1) [%expr len]];
                 [%e
-                  if n = 0 then econstruct name None
+                  if arity = 0 then econstruct n None
                   else
-                    econstruct name
+                    econstruct n
                       (Some (build_tuple ~loc derive 1 ts [%expr e]))])
               else [%e next]])
   in
