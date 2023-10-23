@@ -45,10 +45,9 @@ and derive_step ~loc = function
 let derive_type_shape ~loc x y = function
   | Ts_expr t -> derive_type_expr ~loc x y t
   | Ts_record fs ->
-      let names = List.map fs ~f:fst in
       let ts = List.map fs ~f:snd in
-      let xpatt, xexprs = gen_pat_record ~loc "x" names in
-      let ypatt, yexprs = gen_pat_record ~loc "y" names in
+      let xpatt, xexprs = gen_pat_record ~loc "x" fs in
+      let ypatt, yexprs = gen_pat_record ~loc "y" fs in
       pexp_match ~loc
         [%expr [%e x], [%e y]]
         [
@@ -63,10 +62,9 @@ let derive_type_shape ~loc x y = function
         List.map cs ~f:(function
           | Vc_record (name, fs) ->
               let ctor_pat pat = ctor_pat name (Some pat) in
-              let names = List.map fs ~f:fst in
               let ts = List.map fs ~f:snd in
-              let xpatt, xexprs = gen_pat_record ~loc "x" names in
-              let ypatt, yexprs = gen_pat_record ~loc "y" names in
+              let xpatt, xexprs = gen_pat_record ~loc "x" fs in
+              let ypatt, yexprs = gen_pat_record ~loc "y" fs in
               ppat_tuple ~loc [ ctor_pat xpatt; ctor_pat ypatt ]
               --> derive_step ~loc (List.combine3 xexprs yexprs ts)
           | Vc_tuple (name, ts) ->

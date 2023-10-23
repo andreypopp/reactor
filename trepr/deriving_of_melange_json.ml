@@ -11,16 +11,16 @@ let build_tuple ~loc derive si ts e =
          derive ~loc t
            [%expr Js.Array.unsafe_get [%e e] [%e eint ~loc (si + i)]]))
 
-let build_js_type ~loc ns =
-  let f txt =
+let build_js_type ~loc fs =
+  let f (txt, _) =
     let pof_desc = Otag ({ loc; txt }, [%type: Js.Json.t Js.undefined]) in
     { pof_loc = loc; pof_attributes = []; pof_desc }
   in
-  let row = ptyp_object ~loc (List.map ns ~f) Closed in
+  let row = ptyp_object ~loc (List.map fs ~f) Closed in
   [%type: [%t row] Js.t]
 
-let build_record ~loc derive ns ts fs =
-  let handle_field fs n t =
+let build_record ~loc derive fs x =
+  let handle_field fs (n, t) =
     ( { loc; txt = lident n },
       [%expr
         match
@@ -33,9 +33,8 @@ let build_record ~loc derive ns ts fs =
               [%e estring ~loc (sprintf "missing field %S" n)]] )
   in
   [%expr
-    let fs = (Obj.magic [%e fs] : [%t build_js_type ~loc ns]) in
-    [%e
-      pexp_record ~loc (List.map2 ns ts ~f:(handle_field [%expr fs])) None]]
+    let fs = (Obj.magic [%e x] : [%t build_js_type ~loc fs]) in
+    [%e pexp_record ~loc (List.map fs ~f:(handle_field [%expr fs])) None]]
 
 let derive_of_tuple ~loc derive ts x =
   let n = List.length ts in
@@ -70,11 +69,9 @@ let ensure_json_array_len ~loc n len =
         [%e estring ~loc (sprintf "expected a JSON array of length %i" n)]]
 
 let derive_of_record ~loc derive fs x =
-  let ns = List.map fs ~f:fst in
-  let ts = List.map fs ~f:snd in
   [%expr
     [%e ensure_json_object ~loc x];
-    [%e build_record ~loc derive ns ts x]]
+    [%e build_record ~loc derive fs x]]
 
 let derive_of_variant ~loc derive cs x =
   let fail_case = [%expr Json.of_json_error "invalid JSON"] in
@@ -85,8 +82,6 @@ let derive_of_variant ~loc derive cs x =
     List.fold_left (List.rev cs) ~init:fail_case ~f:(fun next c ->
         match c with
         | Vc_record (name, fs) ->
-            let ns = List.map fs ~f:fst in
-            let ts = List.map fs ~f:snd in
             [%expr
               if tag = [%e estring ~loc name] then (
                 [%e ensure_json_array_len ~loc 2 [%expr len]];
@@ -94,7 +89,7 @@ let derive_of_variant ~loc derive cs x =
                 [%e ensure_json_object ~loc [%expr fs]];
                 [%e
                   econstruct name
-                    (Some (build_record ~loc derive ns ts [%expr fs]))])
+                    (Some (build_record ~loc derive fs [%expr fs]))])
               else [%e next]]
         | Vc_tuple (name, ts) ->
             let n = List.length ts in

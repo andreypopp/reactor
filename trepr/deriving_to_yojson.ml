@@ -5,12 +5,12 @@ open Trepr
 open Repr
 open Deriving_helper
 
-let build_assoc ~loc derive ns es ts =
+let build_assoc ~loc derive fs es =
   let expr =
     List.fold_left
-      (List.rev (List.combine3 ns es ts))
+      (List.rev (List.combine fs es))
       ~init:[%expr []]
-      ~f:(fun prev (n, x, t) ->
+      ~f:(fun prev ((n, t), x) ->
         let this = derive ~loc t x in
         [%expr ([%e estring ~loc n], [%e this]) :: [%e prev]])
   in
@@ -34,10 +34,8 @@ let derive_of_tuple ~loc derive ts x =
   pexp_match ~loc x [ p --> build_list ~loc derive es ts ]
 
 let derive_of_record ~loc derive fs x =
-  let ns = List.map fs ~f:fst in
-  let ts = List.map fs ~f:snd in
-  let p, es = gen_pat_record ~loc "x" ns in
-  pexp_match ~loc x [ p --> build_assoc ~loc derive ns es ts ]
+  let p, es = gen_pat_record ~loc "x" fs in
+  pexp_match ~loc x [ p --> build_assoc ~loc derive fs es ]
 
 let derive_of_variant ~loc derive cs x =
   let ctor_pat name pat =
@@ -46,15 +44,13 @@ let derive_of_variant ~loc derive cs x =
   pexp_match ~loc x
     (List.map cs ~f:(function
       | Vc_record (n, fs) ->
-          let ns = List.map fs ~f:fst in
-          let ts = List.map fs ~f:snd in
-          let p, es = gen_pat_record ~loc "x" ns in
+          let p, es = gen_pat_record ~loc "x" fs in
           ctor_pat n (Some p)
           --> [%expr
                 `List
                   [
                     `String [%e estring ~loc n];
-                    [%e build_assoc ~loc derive ns es ts];
+                    [%e build_assoc ~loc derive fs es];
                   ]]
       | Vc_tuple (n, ts) ->
           let arity = List.length ts in

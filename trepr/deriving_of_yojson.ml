@@ -16,8 +16,8 @@ let build_tuple ~loc derive es ts =
   in
   pexp_tuple ~loc args
 
-let build_record ~loc derive ns ts fs =
-  with_refs ~loc "x" ns @@ fun ename ->
+let build_record ~loc derive fs x =
+  with_refs ~loc "x" fs @@ fun ename ->
   let handle_field k v =
     let fail_case =
       [%pat? name]
@@ -26,9 +26,7 @@ let build_record ~loc derive ns ts fs =
               (Stdlib.Printf.sprintf "unknown field: %s" name)]
     in
     let cases =
-      List.fold_left
-        (List.rev (List.combine ns ts))
-        ~init:[ fail_case ]
+      List.fold_left (List.rev fs) ~init:[ fail_case ]
         ~f:(fun next (n, t) ->
           pstring ~loc n
           --> [%expr
@@ -38,8 +36,8 @@ let build_record ~loc derive ns ts fs =
     pexp_match ~loc k cases
   in
   let build =
-    let fs =
-      List.map ns ~f:(fun n ->
+    let fields =
+      List.map fs ~f:(fun (n, _) ->
           ( { loc; txt = lident n },
             [%expr
               match Stdlib.( ! ) [%e ename n] with
@@ -48,7 +46,7 @@ let build_record ~loc derive ns ts fs =
                   Json.of_json_error
                     [%e estring ~loc (sprintf "missing field %S" n)]] ))
     in
-    pexp_record ~loc fs None
+    pexp_record ~loc fields None
   in
   [%expr
     let rec iter = function
@@ -57,7 +55,7 @@ let build_record ~loc derive ns ts fs =
           [%e handle_field [%expr n'] [%expr v]];
           iter fs
     in
-    iter [%e fs];
+    iter [%e x];
     [%e build]]
 
 let derive_of_tuple ~loc derive ts x =
@@ -76,11 +74,9 @@ let derive_of_tuple ~loc derive ts x =
     ]
 
 let derive_of_record ~loc derive fs x =
-  let ns = List.map fs ~f:fst in
-  let ts = List.map fs ~f:snd in
   pexp_match ~loc x
     [
-      [%pat? `Assoc fs] --> build_record ~loc derive ns ts [%expr fs];
+      [%pat? `Assoc fs] --> build_record ~loc derive fs [%expr fs];
       [%pat? _]
       --> [%expr
             Json.of_json_error
@@ -99,11 +95,9 @@ let derive_of_variant ~loc derive cs x =
         let case =
           match c with
           | Vc_record (name, fs) ->
-              let ns = List.map fs ~f:fst in
-              let ts = List.map fs ~f:snd in
               [%pat? `List [ `String [%p pstring ~loc name]; `Assoc fs ]]
               --> econstruct name
-                    (Some (build_record ~loc derive ns ts [%expr fs]))
+                    (Some (build_record ~loc derive fs [%expr fs]))
           | Vc_tuple (name, ts) ->
               let n = List.length ts in
               if n = 0 then

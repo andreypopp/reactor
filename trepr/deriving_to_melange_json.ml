@@ -5,23 +5,21 @@ open Trepr
 open Repr
 open Deriving_helper
 
-let build_assoc ~loc derive ns es ts =
+let build_assoc ~loc derive fs es =
   let fs =
-    List.map (List.combine3 ns es ts) ~f:(fun (n, x, t) ->
+    List.map2 fs es ~f:(fun (n, t) x ->
         let this = derive ~loc t x in
         { loc; txt = lident n }, this)
   in
   let record = pexp_record ~loc fs None in
   [%expr (Obj.magic [%mel.obj [%e record]] : Js.Json.t)]
 
-let build_list' ~loc derive es ts =
-  List.map (List.combine es ts) ~f:(fun (x, t) ->
-      let this = derive ~loc t x in
-      [%expr [%e this]])
+let build_list' ~loc derive es ts = List.map2 ts es ~f:(derive ~loc)
 
 let build_list ~loc derive es ts =
-  let es = build_list' ~loc derive es ts in
-  [%expr (Obj.magic [%e pexp_array ~loc es] : Js.Json.t)]
+  [%expr
+    (Obj.magic [%e pexp_array ~loc (build_list' ~loc derive es ts)]
+      : Js.Json.t)]
 
 let derive_of_tuple ~loc derive ts x =
   let n = List.length ts in
@@ -29,10 +27,8 @@ let derive_of_tuple ~loc derive ts x =
   pexp_match ~loc x [ p --> build_list ~loc derive es ts ]
 
 let derive_of_record ~loc derive fs x =
-  let ns = List.map fs ~f:fst in
-  let ts = List.map fs ~f:snd in
-  let p, es = gen_pat_record ~loc "x" ns in
-  pexp_match ~loc x [ p --> build_assoc ~loc derive ns es ts ]
+  let p, es = gen_pat_record ~loc "x" fs in
+  pexp_match ~loc x [ p --> build_assoc ~loc derive fs es ]
 
 let derive_of_variant ~loc derive cs x =
   let ctor_pat name pat =
@@ -41,15 +37,13 @@ let derive_of_variant ~loc derive cs x =
   pexp_match ~loc x
     (List.map cs ~f:(function
       | Vc_record (n, fs) ->
-          let ns = List.map fs ~f:fst in
-          let ts = List.map fs ~f:snd in
-          let p, es = gen_pat_record ~loc "x" ns in
+          let p, es = gen_pat_record ~loc "x" fs in
           ctor_pat n (Some p)
           --> [%expr
                 (Obj.magic
                    [|
                      string_to_json [%e estring ~loc n];
-                     [%e build_assoc ~loc derive ns es ts];
+                     [%e build_assoc ~loc derive fs es];
                    |]
                   : Js.Json.t)]
       | Vc_tuple (n, ts) ->

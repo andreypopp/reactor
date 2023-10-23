@@ -24,25 +24,25 @@ let gen_pat_list ~loc prefix n =
   in
   patt, exprs
 
-let gen_pat_record ~loc prefix ns =
+let gen_pat_record ~loc prefix fs =
   let xs =
-    List.map ns ~f:(fun name ->
-        let id = sprintf "%s_%s" prefix name in
+    List.map fs ~f:(fun (n, _t) ->
+        let id = sprintf "%s_%s" prefix n in
         let patt = ppat_var ~loc { loc; txt = id } in
         let expr = pexp_ident ~loc { loc; txt = lident id } in
-        ({ loc; txt = lident name }, patt), expr)
+        ({ loc; txt = lident n }, patt), expr)
   in
   (* TODO: is there unzip/uncombine somewhere? *)
   ppat_record ~loc (List.map xs ~f:fst) Closed, List.map xs ~f:snd
 
-let with_refs ~loc prefix names inner =
+let with_refs ~loc prefix fs inner =
   let gen_name name = sprintf "%s_%s" prefix name in
   let gen_expr name =
     pexp_ident ~loc { loc; txt = lident (gen_name name) }
   in
-  List.fold_left (List.rev names) ~init:(inner gen_expr)
-    ~f:(fun next name ->
-      let patt = ppat_var ~loc { loc; txt = gen_name name } in
+  List.fold_left (List.rev fs) ~init:(inner gen_expr)
+    ~f:(fun next (n, _t) ->
+      let patt = ppat_var ~loc { loc; txt = gen_name n } in
       [%expr
         let [%p patt] = ref Stdlib.Option.None in
         [%e next]])
