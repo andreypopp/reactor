@@ -5,6 +5,20 @@ open Ast_builder.Default
 open Ppx_deriving_schema.Repr
 open Ppx_deriving_schema.Deriving_helper
 
+let with_refs ~loc prefix fs inner =
+  let gen_name n = sprintf "%s_%s" prefix n in
+  let gen_expr (n : label loc) =
+    pexp_ident ~loc:n.loc { loc = n.loc; txt = lident (gen_name n.txt) }
+  in
+  List.fold_left (List.rev fs) ~init:(inner gen_expr)
+    ~f:(fun next ((n : label loc), _t) ->
+      let patt =
+        ppat_var ~loc:n.loc { loc = n.loc; txt = gen_name n.txt }
+      in
+      [%expr
+        let [%p patt] = ref Stdlib.Option.None in
+        [%e next]])
+
 let build_tuple ~loc derive es ts =
   let args =
     List.fold_left

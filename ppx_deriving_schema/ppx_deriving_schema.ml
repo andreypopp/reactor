@@ -119,37 +119,7 @@ module Deriving_helper = struct
     (* TODO: is there unzip/uncombine somewhere? *)
     ppat_record ~loc (List.map xs ~f:fst) Closed, List.map xs ~f:snd
 
-  let with_refs ~loc prefix fs inner =
-    let gen_name n = sprintf "%s_%s" prefix n in
-    let gen_expr n =
-      pexp_ident ~loc:n.loc { loc = n.loc; txt = lident (gen_name n.txt) }
-    in
-    List.fold_left (List.rev fs) ~init:(inner gen_expr)
-      ~f:(fun next (n, _t) ->
-        let patt =
-          ppat_var ~loc:n.loc { loc = n.loc; txt = gen_name n.txt }
-        in
-        [%expr
-          let [%p patt] = ref Stdlib.Option.None in
-          [%e next]])
-
-  let name_of_longident name_of_t (lid : Longident.t) =
-    match lid with
-    | Lident lab -> Longident.Lident (name_of_t lab)
-    | Ldot (lid, lab) -> Longident.Ldot (lid, name_of_t lab)
-    | Lapply (_, _) -> failwith "TODO"
-
   let ( --> ) pc_lhs pc_rhs = { pc_lhs; pc_rhs; pc_guard = None }
-
-  module List = struct
-    include List
-
-    let rec combine3 xs ys zs =
-      match xs, ys, zs with
-      | x :: xs, y :: ys, z :: zs -> (x, y, z) :: combine3 xs ys zs
-      | [], [], [] -> []
-      | _ -> raise (Invalid_argument "list of different lengths")
-  end
 end
 
 open Repr
@@ -187,6 +157,12 @@ struct
     | t -> Printf.sprintf "%s_%s" t S.name
 
   let name_loc_of_t id = { id with txt = name_of_t id.txt }
+
+  let name_of_longident name_of_t (lid : Longident.t) =
+    match lid with
+    | Lident lab -> Longident.Lident (name_of_t lab)
+    | Ldot (lid, lab) -> Longident.Ldot (lid, name_of_t lab)
+    | Lapply (_, _) -> failwith "TODO"
 
   let ederiver (lid : Longident.t loc) =
     pexp_ident ~loc:lid.loc
