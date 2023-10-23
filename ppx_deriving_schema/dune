@@ -1,0 +1,5 @@
+(library
+ (name ppx_deriving_schema)
+ (preprocess
+  (pps ppxlib.metaquot))
+ (libraries containers ppxlib))

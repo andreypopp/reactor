@@ -11,7 +11,7 @@
   dune-site)
  (flags :standard -alert ++browser_only)
  (preprocess
-  (pps react_ppx -native deriving_of_yojson deriving_to_yojson)))
+  (pps react_ppx -native ppx_deriving_yojson)))
 
 (generate_sites_module
  (module static)

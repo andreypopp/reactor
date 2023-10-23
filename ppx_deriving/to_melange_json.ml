@@ -1,9 +1,8 @@
 open ContainersLabels
 open Ppxlib
 open Ast_builder.Default
-open Trepr
-open Repr
-open Deriving_helper
+open Ppx_deriving_schema.Repr
+open Ppx_deriving_schema.Deriving_helper
 
 let build_assoc ~loc derive fs es =
   let fs =
@@ -55,7 +54,7 @@ let derive_of_variant ~loc derive cs x =
           let es = [%expr string_to_json [%e estring ~loc n]] :: es in
           [%expr (Obj.magic [%e pexp_array ~loc es] : Js.Json.t)]))
 
-include Trepr.Deriving1 (struct
+include Ppx_deriving_schema.Deriving1 (struct
   let name = "to_json"
   let t ~loc t = [%type: [%t t] -> Js.Json.t]
   let derive_of_tuple = derive_of_tuple
@@ -63,4 +62,3 @@ include Trepr.Deriving1 (struct
   let derive_of_variant = derive_of_variant
 end)
 
-let () = register ()

@@ -1,0 +1,25 @@
+(library
+ (name ppx_deriving_yojson)
+ (modules ppx_deriving_yojson to_yojson of_yojson)
+ (libraries ppx_deriving_schema ppxlib containers)
+ (preprocess
+  (pps ppxlib.metaquot))
+ (kind ppx_deriver))
+
+(library
+ (name ppx_deriving_melange_json)
+ (modules ppx_deriving_melange_json to_melange_json of_melange_json)
+ (libraries ppx_deriving_schema ppxlib containers)
+ (preprocess
+  (pps ppxlib.metaquot))
+ (kind ppx_deriver))
+
+(executable
+ (name ppx_deriving_yojson_test)
+ (modules ppx_deriving_yojson_test)
+ (libraries ppx_deriving_yojson ppxlib))
+
+(executable
+ (name ppx_deriving_melange_json_test)
+ (modules ppx_deriving_melange_json_test)
+ (libraries ppx_deriving_melange_json ppxlib))

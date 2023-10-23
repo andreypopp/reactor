@@ -2,8 +2,8 @@ open Printf
 open ContainersLabels
 open Ppxlib
 open Ast_builder.Default
-open Trepr.Repr
-open Trepr.Deriving_helper
+open Ppx_deriving_schema.Repr
+open Ppx_deriving_schema.Deriving_helper
 
 let build_tuple ~loc derive si ts e =
   pexp_tuple ~loc
@@ -118,12 +118,10 @@ let derive_of_variant ~loc derive cs x =
       else Json.of_json_error "expected a non empty JSON array"
     else Json.of_json_error "expected a non empty JSON array"]
 
-include Trepr.Deriving1 (struct
+include Ppx_deriving_schema.Deriving1 (struct
   let name = "of_json"
   let t ~loc t = [%type: Js.Json.t -> [%t t]]
   let derive_of_tuple = derive_of_tuple
   let derive_of_record = derive_of_record
   let derive_of_variant = derive_of_variant
 end)
-
-let () = register ()

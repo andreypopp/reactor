@@ -1,9 +1,8 @@
 open ContainersLabels
 open Ppxlib
 open Ast_builder.Default
-open Trepr
-open Repr
-open Deriving_helper
+open Ppx_deriving_schema.Repr
+open Ppx_deriving_schema.Deriving_helper
 
 let build_assoc ~loc derive fs es =
   let expr =
@@ -61,12 +60,10 @@ let derive_of_variant ~loc derive cs x =
                   (`String [%e estring ~loc n]
                   :: [%e build_list' ~loc derive es ts])]))
 
-include Trepr.Deriving1 (struct
+include Ppx_deriving_schema.Deriving1 (struct
   let name = "to_json"
   let t ~loc t = [%type: [%t t] -> Yojson.Basic.t]
   let derive_of_tuple = derive_of_tuple
   let derive_of_record = derive_of_record
   let derive_of_variant = derive_of_variant
 end)
-
-let () = register ()
