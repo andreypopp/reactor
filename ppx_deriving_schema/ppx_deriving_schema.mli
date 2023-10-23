@@ -17,7 +17,7 @@ module Repr : sig
     | Te_opaque of longident loc * type_expr list
     | Te_var of label loc
     | Te_tuple of type_expr list
-    | Te_polyvariant of polyvariant_case
+    | Te_polyvariant of polyvariant_case list
 
   and variant_case =
     | Vc_tuple of label loc * type_expr list
@@ -25,7 +25,7 @@ module Repr : sig
 
   and polyvariant_case =
     | Pvc_construct of label loc * type_expr list
-    | Pvc_inherit of longident loc
+    | Pvc_inherit of Longident.t loc * type_expr list
 
   val of_core_type : core_type -> type_expr
   val of_type_declaration : type_declaration -> type_decl

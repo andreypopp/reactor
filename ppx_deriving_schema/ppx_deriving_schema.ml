@@ -20,7 +20,7 @@ module Repr = struct
     | Te_opaque of Longident.t loc * type_expr list
     | Te_var of label loc
     | Te_tuple of type_expr list
-    | Te_polyvariant of polyvariant_case
+    | Te_polyvariant of polyvariant_case list
 
   and variant_case =
     | Vc_tuple of label loc * type_expr list
@@ -28,16 +28,29 @@ module Repr = struct
 
   and polyvariant_case =
     | Pvc_construct of label loc * type_expr list
-    | Pvc_inherit of Longident.t loc
+    | Pvc_inherit of Longident.t loc * type_expr list
 
-  let not_supported what = failwith (sprintf "%s are not supported" what)
+  exception Not_supported of string
+
+  let not_supported what =
+    raise (Not_supported (sprintf "%s are not supported" what))
 
   let rec of_core_type (typ : Parsetree.core_type) : type_expr =
     match typ.ptyp_desc with
-    | Ptyp_tuple ts -> Te_tuple (List.map ts ~f:(fun t -> of_core_type t))
+    | Ptyp_tuple ts -> Te_tuple (List.map ts ~f:of_core_type)
     | Ptyp_constr (id, ts) ->
         Te_opaque (id, List.map ts ~f:(fun t -> of_core_type t))
-    | Ptyp_variant (_fields, Closed, None) -> failwith "TODO"
+    | Ptyp_variant (fields, Closed, None) ->
+        let cs =
+          List.map fields ~f:(fun field ->
+              match field.prf_desc with
+              | Rtag (id, _, ts) ->
+                  Pvc_construct (id, List.map ts ~f:of_core_type)
+              | Rinherit { ptyp_desc = Ptyp_constr (id, ts); _ } ->
+                  Pvc_inherit (id, List.map ts ~f:of_core_type)
+              | Rinherit _ -> not_supported "this polyvariant inherit")
+        in
+        Te_polyvariant cs
     | Ptyp_variant _ -> not_supported "non closed polyvariants"
     | Ptyp_arrow _ -> not_supported "function types"
     | Ptyp_any -> not_supported "type placeholders"
@@ -162,7 +175,7 @@ struct
     match lid with
     | Lident lab -> Longident.Lident (name_of_t lab)
     | Ldot (lid, lab) -> Longident.Ldot (lid, name_of_t lab)
-    | Lapply (_, _) -> failwith "TODO"
+    | Lapply (_, _) -> failwith "unable to get name of Lapply"
 
   let ederiver (lid : Longident.t loc) =
     pexp_ident ~loc:lid.loc
@@ -227,14 +240,17 @@ struct
     Deriving.Generator.V2.make (deriving_args ())
       (fun ~ctxt (rec_flag, type_decls) ->
         let loc = Expansion_context.Deriver.derived_item_loc ctxt in
-        let reprs = List.map type_decls ~f:Repr.of_type_declaration in
-        let bindings =
-          List.map reprs ~f:(fun decl -> derive_type_decl decl)
-        in
-        let rec_flag =
-          match bindings with [ _ ] -> Nonrecursive | _ -> rec_flag
-        in
-        [ pstr_value ~loc rec_flag bindings ])
+        match List.map type_decls ~f:Repr.of_type_declaration with
+        | exception Not_supported msg ->
+            [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
+        | reprs ->
+            let bindings =
+              List.map reprs ~f:(fun decl -> derive_type_decl decl)
+            in
+            let rec_flag =
+              match bindings with [ _ ] -> Nonrecursive | _ -> rec_flag
+            in
+            [ pstr_value ~loc rec_flag bindings ])
 
   let register () =
     let _ = Deriving.add S.name ~str_type_decl:(deriving ()) in
