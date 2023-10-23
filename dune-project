@@ -17,6 +17,23 @@
 
 (package
  (name react_example)
+ (depends
+  (ocaml
+   (>= 5.1))
+  (melange
+   (>= 2))
+  dune
+  remote
+  realm
+  dream
+  lwt
+  melange-webapi
+  dune-site
+  mlx
+  ocamlmerlin-mlx
+  ocamlformat-mlx
+  ocaml-lsp-server
+  yojson)
  (sites
   (share static)))
 

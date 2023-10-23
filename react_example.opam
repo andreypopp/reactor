@@ -6,7 +6,20 @@ license: "LICENSE"
 homepage: "https://github.com/andreypopp/react_of_ocaml"
 bug-reports: "https://github.com/andreypopp/react_of_ocaml/issues"
 depends: [
+  "ocaml" {>= "5.1"}
+  "melange" {>= "2"}
   "dune" {>= "3.11"}
+  "remote"
+  "realm"
+  "dream"
+  "lwt"
+  "melange-webapi"
+  "dune-site"
+  "mlx"
+  "ocamlmerlin-mlx"
+  "ocamlformat-mlx"
+  "ocaml-lsp-server"
+  "yojson"
   "odoc" {with-doc}
 ]
 build: [

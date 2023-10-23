@@ -10,7 +10,7 @@ depends: [
   "dune" {>= "3.11"}
   "lwt"
   "dream"
-  "reeact"
+  "react"
   "odoc" {with-doc}
 ]
 build: [

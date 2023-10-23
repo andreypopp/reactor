@@ -16,4 +16,16 @@
 (license LICENSE)
 
 (package
- (name react))
+ (name react)
+ (depends
+  (ocaml
+   (>= 5.1))
+  (melange
+   (>= 2))
+  dune
+  remote
+  realm
+  containers
+  lwt
+  ppxlib
+  yojson))
