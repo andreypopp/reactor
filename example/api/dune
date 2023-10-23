@@ -1,11 +1,11 @@
 (library
  (name api_native)
  (wrapped false)
- (libraries lwt dream remote_native realm_native)
+ (libraries lwt dream remote.native realm.native)
  (flags :standard -open Realm)
  (preprocess
   (per_module
-   ((pps remote_ppx ppx_deriving_yojson)
+   ((pps remote.ppx ppx_deriving_yojson)
     api_spec)))
  (modes native))
 
@@ -16,9 +16,9 @@
   (wrapped false)
   (modes melange)
   (flags :standard -open Realm)
-  (libraries remote_browser realm_browser)
+  (libraries remote.browser realm.browser)
   (preprocess
-   (pps melange.ppx ppx_deriving_melange_json remote_ppx -js)))
+   (pps melange.ppx ppx_deriving_melange_json remote.ppx -js)))
  (rule
   (target api.ml)
   (deps ../api_spec.ml)

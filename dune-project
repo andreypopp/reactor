@@ -4,9 +4,7 @@
 
 (using dune_site 0.1)
 
-(name react)
-
-(generate_opam_files false)
+(generate_opam_files true)
 
 (source
  (github andreypopp/react_of_ocaml))
@@ -16,11 +14,6 @@
 (maintainers "Andrey Popp")
 
 (license LICENSE)
-
-(documentation https://url/to/documentation)
-
-(package 
-  (name remote))
 
 (package
  (name react))
@@ -35,6 +28,7 @@
  (implementation
   (extension mlx)
   (merlin_reader mlx)
-  (format (run ocamlformat-mlx %{input-file}))
+  (format
+   (run ocamlformat-mlx %{input-file}))
   (preprocess
    (run mlx-pp %{input-file}))))

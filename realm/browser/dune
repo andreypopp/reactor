@@ -1,7 +1,7 @@
 (library
+ (public_name realm.browser)
  (name realm_browser)
  (wrapped false)
- (public_name react.realm_browser)
  (preprocess
   (pps melange.ppx))
  (modes melange))

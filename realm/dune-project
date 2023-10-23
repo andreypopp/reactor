@@ -1,0 +1,25 @@
+(lang dune 3.11)
+
+(using melange 0.1)
+
+(generate_opam_files true)
+
+(source
+ (github andreypopp/react_of_ocaml))
+
+(authors "Andrey Popp")
+
+(maintainers "Andrey Popp")
+
+(license LICENSE)
+
+(package
+ (name realm)
+ (depends
+  (ocaml
+   (>= 5.1))
+  (melange
+   (>= 2))
+  dune
+  lwt
+  yojson))

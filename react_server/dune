@@ -10,7 +10,7 @@
   lwt
   lwt.unix
   remote.native
-  realm_native))
+  realm.native))
 
 (library
  (name react_browser_server)
@@ -18,4 +18,4 @@
  (wrapped false)
  (flags :standard -open Realm)
  (modules react)
- (libraries react_server realm_native))
+ (libraries react_server realm.native))

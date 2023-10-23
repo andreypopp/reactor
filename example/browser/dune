@@ -5,8 +5,8 @@
   melange.dom
   react_browser
   api_browser
-  remote_browser
-  realm_browser
+  remote.browser
+  realm.browser
   melange-webapi)
  (flags :standard -open Realm)
  (modes melange)
@@ -19,7 +19,7 @@
   (name example_native)
   (wrapped false)
   (modes native)
-  (libraries react.browser_server remote_native realm_native api_native)
+  (libraries react.browser_server remote.native realm.native api_native)
   (flags :standard -open Realm)
   (preprocess
    (pps react_ppx -native ppx_deriving_yojson)))

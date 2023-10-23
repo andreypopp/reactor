@@ -4,6 +4,6 @@
  (wrapped false)
  (flags :standard -open Realm)
  (modes melange)
- (libraries melange.dom react_api realm_browser)
+ (libraries melange.dom react_api realm.browser)
  (preprocess
   (pps melange.ppx)))
