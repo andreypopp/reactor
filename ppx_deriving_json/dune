@@ -1,4 +1,5 @@
 (library
+ (public_name ppx_deriving_json.native)
  (name ppx_deriving_yojson)
  (modules ppx_deriving_yojson to_yojson of_yojson)
  (libraries ppx_deriving_schema ppxlib containers)
@@ -7,6 +8,7 @@
  (kind ppx_deriver))
 
 (library
+ (public_name ppx_deriving_json.browser)
  (name ppx_deriving_melange_json)
  (modules ppx_deriving_melange_json to_melange_json of_melange_json)
  (libraries ppx_deriving_schema ppxlib containers)

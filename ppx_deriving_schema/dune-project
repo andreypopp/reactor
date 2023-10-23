@@ -1,0 +1,21 @@
+(lang dune 3.11)
+
+(generate_opam_files true)
+
+(source
+ (github andreypopp/react_of_ocaml))
+
+(authors "Andrey Popp")
+
+(maintainers "Andrey Popp")
+
+(license LICENSE)
+
+(package
+ (name ppx_deriving_schema)
+ (depends
+  (ocaml
+   (>= 5.1))
+  dune
+  ppxlib
+  containers))

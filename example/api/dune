@@ -5,7 +5,7 @@
  (flags :standard -open Realm)
  (preprocess
   (per_module
-   ((pps remote.ppx ppx_deriving_yojson)
+   ((pps remote.ppx ppx_deriving_json.native)
     api_spec)))
  (modes native))
 
@@ -18,7 +18,7 @@
   (flags :standard -open Realm)
   (libraries remote.browser realm.browser)
   (preprocess
-   (pps melange.ppx ppx_deriving_melange_json remote.ppx -js)))
+   (pps melange.ppx ppx_deriving_json.browser remote.ppx -js)))
  (rule
   (target api.ml)
   (deps ../api_spec.ml)
