@@ -1,4 +1,4 @@
 (library
  (name react_dream)
- (public_name react.dream)
- (libraries react_server lwt dream))
+ (public_name react_dream)
+ (libraries react.server lwt dream))

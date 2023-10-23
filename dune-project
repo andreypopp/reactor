@@ -16,9 +16,6 @@
 (license LICENSE)
 
 (package
- (name react))
-
-(package
  (name react_example)
  (sites
   (share static)))

@@ -3,7 +3,7 @@
  (wrapped false)
  (libraries
   melange.dom
-  react_browser
+  react.browser
   api_browser
   remote.browser
   realm.browser
@@ -11,7 +11,7 @@
  (flags :standard -open Realm)
  (modes melange)
  (preprocess
-  (pps melange.ppx react_ppx ppx_deriving_json.browser)))
+  (pps melange.ppx react.ppx ppx_deriving_json.browser)))
 
 (subdir
  native
@@ -22,7 +22,7 @@
   (libraries react.browser_server remote.native realm.native api_native)
   (flags :standard -open Realm)
   (preprocess
-   (pps react_ppx -native ppx_deriving_json.native)))
+   (pps react.ppx -native ppx_deriving_json.native)))
  (copy_files#
   (files ../**[!.pp][!.mlx].ml))
  (copy_files#
@@ -43,14 +43,12 @@
    %{target}
    (progn
     (run echo "import './output/example/browser/example.js';")
-    (run
-     echo
-     "import '%{lib-private:react_browser:react_browser_runtime.js}';")))))
+    (run echo "import '%{lib:react.browser:../react_browser_runtime.js}';")))))
 
 (rule
  (target ./bundle.js)
  (deps
-  %{lib-private:react_browser:react_browser_runtime.js}
+  %{lib:react.browser:../react_browser_runtime.js}
   (alias browser_js))
  (action
   (run

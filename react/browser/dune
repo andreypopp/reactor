@@ -1,9 +1,14 @@
 (library
- (name react_browser)
  (public_name react.browser)
+ (name react_browser)
  (wrapped false)
  (flags :standard -open Realm)
  (modes melange)
  (libraries melange.dom react_api realm.browser)
  (preprocess
   (pps melange.ppx)))
+
+(install
+ (files react_browser_runtime.js)
+ (section lib)
+ (package react))

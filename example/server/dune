@@ -4,14 +4,14 @@
  (package react_example)
  (libraries
   api_native
-  react_server
+  react.server
   react_dream
   dream
   example_native
   dune-site)
  (flags :standard -alert ++browser_only)
  (preprocess
-  (pps react_ppx -native ppx_deriving_json.native)))
+  (pps react.ppx -native ppx_deriving_json.native)))
 
 (generate_sites_module
  (module static)
