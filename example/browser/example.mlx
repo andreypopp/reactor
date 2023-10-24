@@ -5,13 +5,12 @@ let%component link' ~href ~label () =
     React_browser.Event.preventDefault ev;
     React_browser.navigate href
   in
-  <a href=href onClick=onClick>(React.text label)</a>
+  <a href onClick>(React.text label)</a>
 
 let%component with_children ~children () = <div />
 
 let%component button' ~onPress:onClick ~label () =
-  <button className="pv1 ph2 br1 bg-light-gray bw1 b--gray"
-          onClick=onClick>
+  <button className="pv1 ph2 br1 bg-light-gray bw1 b--gray" onClick>
     (React.text label) <with_children>"OK"</with_children>
   </button>
 
@@ -36,7 +35,7 @@ let%component hello ~name () =
          return ())
         : unit Promise.t)
   in
-  <div onClick=onClick>(React.text msg)</div>
+  <div onClick>(React.text msg)</div>
 
 let%component counter ~init ~title () =
   let v, setv = React.use_state (Fun.const init) in
@@ -100,8 +99,8 @@ let%export_component app ~(title : string) ~(inner : React.element) () =
         <React.suspense>
           <wait_and_print promise=promise_inner msg="INNER SLEPT" />
         </React.suspense>
-        <wait_and_print promise=promise promise2=promise2 msg="SLEPT" />
-        <wait_and_print promise=promise promise2=promise2 msg="SLEPT" />
+        <wait_and_print promise promise2 msg="SLEPT" />
+        <wait_and_print promise promise2 msg="SLEPT" />
       </React.suspense>
     </ul>
   </div>
@@ -115,7 +114,7 @@ let%component todo_item ~on_completed ~todo () =
       <input className="scale3"
              type_="checkbox"
              checked=todo.Api.completed
-             onChange=onChange />
+             onChange />
       <span className="pl2">(React.text todo.Api.text)</span>
     </label>
   </li>
@@ -125,7 +124,7 @@ let%component todo_section ~title ~on_completed ~todos () =
     List.map
       (fun todo ->
         let key = Int.to_string todo.Api.id in
-        <todo_item key=key on_completed=on_completed todo=todo />)
+        <todo_item key on_completed todo />)
       todos
   in
   <div className="pb2">
@@ -157,12 +156,8 @@ let%component add_todo_form ~on_create () =
   in
   let%browser_only onClick _ev = create () in
   <div>
-    <input ref=set_input
-           onChange=onChange
-           onKeyDown=onKeyDown
-           type_="text"
-           value=value />
-    <button onClick=onClick>"Add"</button>
+    <input ref=set_input onChange onKeyDown type_="text" value />
+    <button onClick>"Add"</button>
   </div>
 
 let%component todo_list' () =
@@ -207,13 +202,9 @@ let%component todo_list' () =
         return ())
   in
   <div>
-    <add_todo_form on_create=on_create />
-    <todo_section title="To be done"
-                  on_completed=on_completed
-                  todos=to_be_done />
-    <todo_section title="Completed"
-                  on_completed=on_completed
-                  todos=completed />
+    <add_todo_form on_create />
+    <todo_section title="To be done" on_completed todos=to_be_done />
+    <todo_section title="Completed" on_completed todos=completed />
     <button onClick=on_remove_completed>"Remove completed todos"</button>
   </div>
 
