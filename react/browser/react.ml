@@ -11,8 +11,8 @@ external unsafe_create_element :
   element = "createElement"
 [@@mel.module "react"] [@@mel.variadic]
 
-external unsafe_create_element' : 'props component -> 'props -> element
-  = "createElement"
+external unsafe_create_element' :
+  'props component -> 'props Js.t -> element = "createElement"
 [@@mel.module "react"]
 
 type suspense
@@ -26,11 +26,7 @@ external suspense : suspense_props component = "Suspense"
 [@@mel.module "react"]
 
 external suspense__props :
-  ?key:string ->
-  ?fallback:children ->
-  children:children ->
-  unit ->
-  suspense_props Js.t = ""
+  ?key:string -> ?fallback:children -> unit -> suspense_props Js.t = ""
 [@@mel.obj]
 
 external array : element array -> element = "%identity"

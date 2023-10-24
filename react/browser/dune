@@ -9,6 +9,7 @@
   (pps melange.ppx)))
 
 (install
- (files (react_browser_runtime.js as browser/react_browser_runtime.js))
+ (files
+  (react_browser_runtime.js as browser/react_browser_runtime.js))
  (section lib)
  (package react))
