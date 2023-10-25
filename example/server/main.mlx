@@ -8,20 +8,20 @@ module UI = struct
   let%async_component card ~delay ~title ~children () =
     Lwt_unix.sleep delay >|= fun () ->
     <div className="ba pa2">
-      <h3 className="ma0 pa0 pb2">(React.text title)</h3>
+      <h3 className="ma0 pa0 pb2">(React.string title)</h3>
       <div className="pb2">(React.array children)</div>
       <div className="f7 bt pa1">
         "I've been sleeping for "
-        (React.textf "%0.1f sec" delay)
+        (React.stringf "%0.1f sec" delay)
         " before appearing"
       </div>
     </div>
 
   let%component page ~title ~children () =
     <html className="h-100">
-      <head><title>(React.text title)</title></head>
+      <head><title>(React.string title)</title></head>
       <body className="pa4 sans-serif dark-gray bg-washed-yellow h-100">
-        <h1><span>(React.text title)</span></h1>
+        <h1><span>(React.string title)</span></h1>
         <div>(React.array children)</div>
       </body>
     </html>
@@ -30,27 +30,27 @@ module UI = struct
     <page title="React of OCaml">
       <div className="flex flex-column g2 measure-wide">
         <Example.app title="Hello from Client Component"
-                     inner=(React.text
+                     inner=(React.string
                               "As you can see, this one is SSR'ed as \
                                well.") />
         <card title="Initial Data" delay=0.>
           "This components loads some async data but will block the \
            shell until this data is ready."
         </card>
-        <React.suspense>
-          <card title="Async Data" delay=1.>(React.text "HELLO")</card>
-          <card title="Async Data" delay=1.>(React.text "HELLO")</card>
-        </React.suspense>
-        <React.suspense>
-          <card title="Async Data" delay=2.>(React.text "OUTER")</card>
-          <React.suspense>
+        <React.Suspense>
+          <card title="Async Data" delay=1.>(React.string "HELLO")</card>
+          <card title="Async Data" delay=1.>(React.string "HELLO")</card>
+        </React.Suspense>
+        <React.Suspense>
+          <card title="Async Data" delay=2.>(React.string "OUTER")</card>
+          <React.Suspense>
             <card title="Inner Async Data" delay=1.>
-              (React.text "INNER")
+              (React.string "INNER")
             </card>
-          </React.suspense>
-        </React.suspense>
+          </React.Suspense>
+        </React.Suspense>
         <div>
-          <h2>(React.text "Testing XSS")</h2>
+          <h2>(React.string "Testing XSS")</h2>
           <ul>
             <li>"</script><script>console.log(1)</script>"</li>
             <li>"\u{2028}<script>console.log(1)</script>"</li>
@@ -62,7 +62,7 @@ module UI = struct
   let about _req =
     <page title="About">
       <div className="flex flex-column g2 measure-wide">
-        <p>(React.text "Just an about page")</p>
+        <p>(React.string "Just an about page")</p>
         <Example.about num=1 mode=About_light />
       </div>
     </page>

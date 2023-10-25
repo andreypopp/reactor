@@ -12,38 +12,18 @@ module type REACT = sig
   val null : element
   (** [null] renders nothing *)
 
-  val text : string -> element
-  (** [text s] renders string [s]. *)
+  val string : string -> element
+  (** [string s] renders string [s]. *)
 
-  val textf : ('a, unit, string, element) format4 -> 'a
-  val use_state : (unit -> 'a) -> 'a * (('a -> 'a) -> unit)
-  val use_effect0 : (unit -> unit -> unit) -> unit
-  val use_effect1 : 'a -> (unit -> unit -> unit) -> unit
-  val use_effect2 : 'a -> 'b -> (unit -> unit -> unit) -> unit
-  val use_effect0' : (unit -> unit) -> unit
-  val use_effect1' : 'a -> (unit -> unit) -> unit
-  val use_effect2' : 'a -> 'b -> (unit -> unit) -> unit
-  val use_layout_effect0 : (unit -> unit -> unit) -> unit
-  val use_layout_effect1 : 'a -> (unit -> unit -> unit) -> unit
-  val use_layout_effect2 : 'a -> 'b -> (unit -> unit -> unit) -> unit
-  val use_layout_effect0' : (unit -> unit) -> unit
-  val use_layout_effect1' : 'a -> (unit -> unit) -> unit
-  val use_layout_effect2' : 'a -> 'b -> (unit -> unit) -> unit
-  val use_memo0 : (unit -> 'v) -> 'v
-  val use_memo1 : 'a -> (unit -> 'v) -> 'v
-  val use_memo2 : 'a -> 'b -> (unit -> 'v) -> 'v
-  val use_callback0 : ('v -> 'w) -> 'v -> 'w
-  val use_callback1 : 'a -> ('v -> 'w) -> 'v -> 'w
-  val use_callback2 : 'a -> 'b -> ('v -> 'w) -> 'v -> 'w
-  val start_transition : (unit -> unit) -> unit
+  val stringf : ('a, unit, string, element) format4 -> 'a
+  val useState : (unit -> 'state) -> 'state * (('state -> 'state) -> unit)
+  val useEffect : (unit -> (unit -> unit) option) -> unit
+  val useEffect1 : (unit -> (unit -> unit) option) -> 'a array -> unit
+  val startTransition : (unit -> unit) -> unit
 
-  type 'a ref
+  type 'value ref = { mutable current : 'value }
 
-  val deref : 'a ref -> 'a option
-  val use_ref : unit -> 'a ref * ('a option -> unit)
-
-  val use_dom_ref :
-    unit -> dom_element ref * (dom_element nullable -> unit)
+  val useRef : 'value -> 'value ref
 
   type 'a promise
 

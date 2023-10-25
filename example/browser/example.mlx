@@ -2,24 +2,27 @@
 
 let%component link' ~href ~label () =
   let%browser_only onClick ev =
-    React_browser.Event.preventDefault ev;
-    React_browser.navigate href
+    ReactEvent.Mouse.preventDefault ev;
+    React_browser.Router.navigate href
   in
-  <a href onClick>(React.text label)</a>
+  <a href onClick>(React.string label)</a>
 
 let%component with_children ~children () = <div />
 
 let%component button' ~onPress:onClick ~label () =
   <button className="pv1 ph2 br1 bg-light-gray bw1 b--gray" onClick>
-    (React.text label) <with_children>"OK"</with_children>
+    (React.string label) <with_children>"OK"</with_children>
   </button>
 
 let%component hello ~name () =
-  let q, setq = React.use_state (fun () -> Api.Hello.hello ~name) in
+  let q, setq = React.useState (fun () -> Api.Hello.hello ~name) in
   let () =
-    React.use_effect1' name @@ fun () ->
-    React.start_transition @@ fun () ->
-    setq (fun _ -> Api.Hello.hello ~name)
+    React.useEffect1
+      (fun () ->
+        React.startTransition (fun () ->
+        setq (fun _ -> Api.Hello.hello ~name));
+        None)
+      [| name |]
   in
   let msg = React.use (Remote.run_query q) in
   let%browser_only onClick _ev =
@@ -30,23 +33,27 @@ let%component hello ~name () =
            @@ Api.Hello.update_greeting ~greeting:Api.Greeting_informal
          in
          Remote.invalidate (Api.Hello.hello ~name);
-         ( React.start_transition @@ fun () ->
-           setq (fun _ -> Api.Hello.hello ~name) );
+         React.startTransition (fun () ->
+         setq (fun _ -> Api.Hello.hello ~name));
          return ())
         : unit Promise.t)
   in
-  <div onClick>(React.text msg)</div>
+  <div onClick>(React.string msg)</div>
 
 let%component counter ~init ~title () =
-  let v, setv = React.use_state (Fun.const init) in
-  let succ _ev = React.start_transition @@ fun () -> setv Int.succ in
-  let pred _ev = React.start_transition @@ fun () -> setv Int.pred in
+  let v, setv = React.useState (Fun.const init) in
+  let succ _ev =
+    React.startTransition @@ fun () -> setv Int.succ
+  in
+  let pred _ev =
+    React.startTransition @@ fun () -> setv Int.pred
+  in
   let reset _ev =
-    React.start_transition @@ fun () -> setv (Fun.const 0)
+    React.startTransition @@ fun () -> setv (Fun.const 0)
   in
   <div className="pa4">
-    <h2>(React.text title)</h2>
-    <p>(React.textf "clicked %i times" v)</p>
+    <h2>(React.string title)</h2>
+    <p>(React.string ("clicked " ^ string_of_int v ^ " times"))</p>
     <button' onPress=succ label="Increment" />
     <button' onPress=pred label="Decrement" />
     <button' onPress=reset label="Reset" />
@@ -57,7 +64,7 @@ let%component counter ~init ~title () =
 let%component wait_and_print ~promise ?promise2 ~msg () =
   let () = React.use promise in
   let () = Option.map React.use promise2 |> Option.value ~default:() in
-  <li>(React.text msg)</li>
+  <li>(React.string msg)</li>
 
 let%component nav' () =
   <ul>
@@ -81,27 +88,27 @@ let%export_component app ~(title : string) ~(inner : React.element) () =
   let promise2 = Promise.sleep 2.0 in
   let promise_inner = Promise.sleep 0.5 in
   let%browser_only () =
-    React.use_effect0' (fun () -> Js.log "HELLO, I'M READY")
+    React.useEffect1 (fun () -> Js.log "HELLO, I'M READY"; None) [||]
   in
   <div>
     <nav' />
-    <React.suspense>
+    <React.Suspense>
       <hello name="world" /> <hello name="something else" />
-    </React.suspense>
-    <h2>"Hello, " (React.text title) "!"</h2>
-    <React.suspense><counter init=42 title="Counter" /></React.suspense>
+    </React.Suspense>
+    <h2>"Hello, " (React.string title) "!"</h2>
+    <React.Suspense><counter init=42 title="Counter" /></React.Suspense>
     <div className="footer">inner inner</div>
     <ul>
-      <React.suspense>
-        <React.suspense>
+      <React.Suspense>
+        <React.Suspense>
           <wait_and_print promise=promise_inner msg="INNER SLEPT" />
-        </React.suspense>
-        <React.suspense>
+        </React.Suspense>
+        <React.Suspense>
           <wait_and_print promise=promise_inner msg="INNER SLEPT" />
-        </React.suspense>
+        </React.Suspense>
         <wait_and_print promise promise2 msg="SLEPT" />
         <wait_and_print promise promise2 msg="SLEPT" />
-      </React.suspense>
+      </React.Suspense>
     </ul>
   </div>
 
@@ -115,7 +122,7 @@ let%component todo_item ~on_completed ~todo () =
              type_="checkbox"
              checked=todo.Api.completed
              onChange />
-      <span className="pl2">(React.text todo.Api.text)</span>
+      <span className="pl2">(React.string todo.Api.text)</span>
     </label>
   </li>
 
@@ -128,17 +135,17 @@ let%component todo_section ~title ~on_completed ~todos () =
       todos
   in
   <div className="pb2">
-    <h5 className="ma0 pv2">(React.text title)</h5>
+    <h5 className="ma0 pv2">(React.string title)</h5>
     <ul className="ma0 pv0 ph2 flex flex-column g1">
-      (React.list todos)
+      (React.array (Array.of_list todos))
     </ul>
   </div>
 
 let%component add_todo_form ~on_create () =
-  let value, set_value = React.use_state (fun () -> "") in
-  let input, set_input = React.use_dom_ref () in
+  let value, set_value = React.useState (fun () -> "") in
+  let input, set_input = ReactDOM.useDomRef () in
   let%browser_only onChange ev =
-    let value = React_browser.Event.(target ev |> Target.value_exn) in
+    let value = ReactEvent.Form.(target ev)##value in
     set_value (fun _ -> value)
   in
   let%browser_only create () =
@@ -146,11 +153,13 @@ let%component add_todo_form ~on_create () =
       Promise.(
         let* () = on_create value in
         set_value (fun _ -> "");
-        Option.iter Webapi.Dom.HtmlElement.focus (React.deref input);
+        let el = Js.Null_undefined.toOption input.current in
+        let el = Option.bind el Webapi.Dom.HtmlElement.ofElement in
+        Option.iter Webapi.Dom.HtmlElement.focus el;
         return ())
   in
   let%browser_only onKeyDown ev =
-    match React_browser.Event.Keyboard.key ev with
+    match ReactEvent.Keyboard.key ev with
     | "Enter" -> create ()
     | _ -> ()
   in
@@ -161,10 +170,10 @@ let%component add_todo_form ~on_create () =
   </div>
 
 let%component todo_list' () =
-  let todos, set_todos = React.use_state Api.Todo.list in
+  let todos, set_todos = React.useState Api.Todo.list in
   let todos = React.use (Remote.run_query todos) in
   let%browser_only refetch () =
-    React.start_transition @@ fun () ->
+    React.startTransition @@ fun () ->
     let%browser_only () = Remote.invalidate (Api.Todo.list ()) in
     set_todos (fun _ -> Api.Todo.list ())
   in

@@ -8,7 +8,7 @@
   remote.browser
   realm.browser
   melange-webapi)
- (flags :standard -open Realm)
+ (flags :standard -open Realm -open React_browser)
  (modes melange)
  (preprocess
   (pps melange.ppx react.ppx ppx_deriving_json.browser)))

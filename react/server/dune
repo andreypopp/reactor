@@ -1,7 +1,7 @@
 (library
  (name react_server)
  (public_name react.server)
- (modules :standard \ react)
+ (modules :standard \ react reactDOM)
  (flags :standard -open Realm)
  (libraries
   react_api
@@ -17,5 +17,5 @@
  (public_name react.browser_server)
  (wrapped false)
  (flags :standard -open Realm)
- (modules react)
+ (modules react reactDOM)
  (libraries react_server realm.native))

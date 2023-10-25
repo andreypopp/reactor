@@ -52,13 +52,15 @@ and client_prop =
 let null = El_null
 let array els = El_frag els
 let list els = array (Array.of_list els)
-let text s = El_text s
-let textf fmt = ksprintf text fmt
+let string s = El_text s
+let stringf fmt = ksprintf string fmt
 let thunk f = El_thunk f
 let async_thunk f = El_async_thunk f
 
-let suspense ?key ?(fallback = [| null |]) ~children () =
-  El_suspense { children; fallback; key }
+module Suspense = struct
+  let make ?key ?(fallback = [| null |]) ~children () =
+    El_suspense { children; fallback; key }
+end
 
 let client_thunk ?(import_name = "") import_module props thunk =
   El_client_thunk { import_module; import_name; props; thunk }
@@ -68,19 +70,9 @@ let unsafe_create_html_element ?key tag_name props children =
 
 exception Browser_only
 
-let use_state init = init (), fun _update -> raise Browser_only
-let use_effect0 _thunk = raise Browser_only
-let use_effect1 _a _thunk = raise Browser_only
-let use_effect2 _a _b _thunk = raise Browser_only
-let use_effect0' _thunk = raise Browser_only
-let use_effect1' _a _thunk = raise Browser_only
-let use_effect2' _a _b _thunk = raise Browser_only
-let use_layout_effect0 _thunk = raise Browser_only
-let use_layout_effect1 _a _thunk = raise Browser_only
-let use_layout_effect2 _a _b _thunk = raise Browser_only
-let use_layout_effect0' _thunk = raise Browser_only
-let use_layout_effect1' _a _thunk = raise Browser_only
-let use_layout_effect2' _a _b _thunk = raise Browser_only
+let useState init = init (), fun _update -> raise Browser_only
+let useEffect _thunk = raise Browser_only
+let useEffect1 _thunk _deps = raise Browser_only
 let use_memo0 f = f ()
 let use_memo1 _a f = f ()
 let use_memo2 _a _b f = f ()
@@ -90,20 +82,10 @@ let use_callback2 _a _b f = f
 
 type dom_element
 type 'a nullable
-type nonrec 'a ref = 'a option ref
+type 'a ref = { mutable current : 'a }
 
-let use_ref () =
-  let ref = ref None in
-  let set v = ref := v in
-  ref, set
-
-let use_dom_ref () =
-  let ref = ref None in
-  let set _ = raise Browser_only in
-  ref, set
-
-let deref ref = ref.contents
-let start_transition _thunk = raise Browser_only
+let useRef value = { current = value }
+let startTransition _thunk = raise Browser_only
 
 type 'a promise = 'a Lwt.t
 
