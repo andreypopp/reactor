@@ -12,6 +12,20 @@ let pexp_errorf ~loc fmt =
       pexp_extension ~loc (Location.error_extensionf ~loc "%s" msg))
     fmt
 
+let merlin_hide =
+  {
+    attr_name = { txt = "merlin.hide"; loc = Location.none };
+    attr_payload = PStr [];
+    attr_loc = Location.none;
+  }
+
+let mel_obj =
+  {
+    attr_name = { txt = "mel.obj"; loc = Location.none };
+    attr_payload = PStr [];
+    attr_loc = Location.none;
+  }
+
 exception Error of expression
 
 let raise_errorf ~loc fmt =
@@ -106,6 +120,33 @@ module Let_component = struct
       | false -> raise_errorf ~loc "missing () argument"
     in
     { name; props; body }
+
+  let is_key_prop prop = String.equal prop.label.txt "key"
+
+  (* 'prop_name *)
+  let prop_var prop = ptyp_var ~loc:prop.label.loc prop.label.txt
+
+  (* < .. > Js.t *)
+  let props_js_type component =
+    let loc = component.name.loc in
+    let fs =
+      List.filter_map
+        (fun (prop : prop) ->
+          if is_key_prop prop then None
+          else
+            let t =
+              match prop.typ with None -> prop_var prop | Some t -> t
+            in
+            let t =
+              match prop.arg_label with
+              | Optional _ -> [%type: [%t t] option]
+              | _ -> t
+            in
+            let pof_desc = Otag (prop.label, t) in
+            Some { pof_loc = loc; pof_attributes = []; pof_desc })
+        component.props
+    in
+    [%type: [%t ptyp_object ~loc fs Closed] Js.t]
 end
 
 module Ext_component = struct
@@ -129,30 +170,29 @@ module Ext_component = struct
       pexp_apply ~loc (ident component.name) args
     in
     let make_props =
-      let fields =
-        ListLabels.fold_left component.props ~init:[] ~f:(fun fs prop ->
-            let k = longident prop.Let_component.label in
-            match prop.Let_component.label.txt with
-            | "children" -> (k, [%expr React.null]) :: fs
-            | _ -> (k, ident prop.label) :: fs)
+      let v =
+        let type_ =
+          List.fold_left
+            (fun prev (prop : Let_component.prop) ->
+              ptyp_arrow ~loc prop.arg_label
+                (Let_component.prop_var prop)
+                prev)
+            [%type: unit -> [%t Let_component.props_js_type component]]
+            component.props
+        in
+        value_description ~loc
+          ~name:{ loc; txt = sprintf "%sProps" component.name.txt }
+          ~type_ ~prim:[ "" ]
       in
-      let init =
-        let props = pexp_record ~loc fields None in
-        [%expr fun () -> [%mel.obj [%e props]]]
-      in
-      ListLabels.fold_left component.props ~init ~f:(fun body arg ->
-          pexp_fun ~loc arg.Let_component.arg_label None
-            (ppat_var ~loc:pat.ppat_loc arg.label)
-            body)
-    in
-    let pat_props =
-      ppat_var ~loc { txt = sprintf "%sProps" component.name.txt; loc }
+      let v = { v with pval_attributes = [ merlin_hide; mel_obj ] } in
+      pstr_primitive ~loc v
     in
     [%stri
       include struct
         let [%p pat] = [%e expr]
         let [%p pat] = fun props -> [%e make_elem]
-        let [%p pat_props] = [%e make_props]
+
+        [%%i make_props]
       end]
 
   let expand_native ctor ~ctxt:_ ~loc component pat _expr =
@@ -644,41 +684,66 @@ module Jsx = struct
           ~props
           ()
         ->
-        match tag with
-        | `Html_component name -> (
-            let make_props props =
-              pexp_apply ~loc [%expr ReactDOM.domProps] props
-            in
-            match children with
-            | None | Some [] ->
-                [%expr ReactDOM.jsx [%e name] [%e make_props props]]
-            | Some [ children ] ->
-                let props = (Labelled "children", children) :: props in
-                [%expr ReactDOM.jsx [%e name] [%e make_props props]]
-            | Some children ->
-                let children =
-                  [%expr React.array [%e pexp_array ~loc children]]
-                in
-                let props = (Labelled "children", children) :: props in
-                [%expr ReactDOM.jsxs [%e name] [%e make_props props]])
-        | `User_component component -> (
-            let make_props props =
+        let props, key_prop =
+          List.partition_map
+            (fun ((label, _expr) as prop) ->
+              match label with
+              | Labelled "key" | Optional "key" -> Right prop
+              | _ -> Left prop)
+            props
+        in
+        let key_prop =
+          match key_prop with
+          | [] -> None
+          | [ key_prop ] -> Some key_prop
+          | _ -> failwith "multiple key props"
+        in
+        let make_props =
+          match tag with
+          | `Html_component _ -> pexp_apply ~loc [%expr ReactDOM.domProps]
+          | `User_component _ ->
               pexp_apply ~loc
                 (pexp_ident ~loc (user_component_props tagname))
-                props
+        in
+        let name, jsx, jsxs, jsxKeyed, jsxsKeyed =
+          match tag with
+          | `Html_component name ->
+              ( name,
+                [%expr ReactDOM.jsx],
+                [%expr ReactDOM.jsxs],
+                [%expr ReactDOM.jsxKeyed],
+                [%expr ReactDOM.jsxsKeyed] )
+          | `User_component name ->
+              ( name,
+                [%expr React.jsx],
+                [%expr React.jsxs],
+                [%expr React.jsxKeyed],
+                [%expr React.jsxsKeyed] )
+        in
+        let make jsx jsxKeyed props =
+          match key_prop with
+          | None -> [%expr [%e jsx] [%e name] [%e make_props props]]
+          | Some (Labelled _, key) ->
+              [%expr
+                [%e jsxKeyed] [%e name] [%e make_props props]
+                  ~key:[%e key] ()]
+          | Some (Optional _, key) ->
+              [%expr
+                [%e jsxKeyed] [%e name] [%e make_props props]
+                  ?key:[%e key] ()]
+          | Some (Nolabel, _) -> failwith "invalid AST"
+        in
+        match children with
+        | None | Some [] -> make jsx jsxKeyed props
+        | Some [ children ] ->
+            let props = (Labelled "children", children) :: props in
+            make jsx jsxKeyed props
+        | Some children ->
+            let children =
+              [%expr React.array [%e pexp_array ~loc children]]
             in
-            match children with
-            | None | Some [] ->
-                [%expr React.jsx [%e component] [%e make_props props]]
-            | Some [ children ] ->
-                let props = (Labelled "children", children) :: props in
-                [%expr React.jsx [%e component] [%e make_props props]]
-            | Some children ->
-                let children =
-                  [%expr React.array [%e pexp_array ~loc children]]
-                in
-                let props = (Labelled "children", children) :: props in
-                [%expr React.jsx [%e component] [%e make_props props]]))
+            let props = (Labelled "children", children) :: props in
+            make jsxs jsxsKeyed props)
 
   let jsx_rewrite_native =
     jsx_rewrite ~extract_dangerouslySetInnerHTML:true
