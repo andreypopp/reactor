@@ -20,7 +20,7 @@ let%component hello ~name () =
     React.useEffect1
       (fun () ->
         React.startTransition (fun () ->
-        setq (fun _ -> Api.Hello.hello ~name));
+            setq (fun _ -> Api.Hello.hello ~name));
         None)
       [| name |]
   in
@@ -34,7 +34,7 @@ let%component hello ~name () =
          in
          Remote.invalidate (Api.Hello.hello ~name);
          React.startTransition (fun () ->
-         setq (fun _ -> Api.Hello.hello ~name));
+             setq (fun _ -> Api.Hello.hello ~name));
          return ())
         : unit Promise.t)
   in
@@ -42,15 +42,9 @@ let%component hello ~name () =
 
 let%component counter ~init ~title () =
   let v, setv = React.useState (Fun.const init) in
-  let succ _ev =
-    React.startTransition @@ fun () -> setv Int.succ
-  in
-  let pred _ev =
-    React.startTransition @@ fun () -> setv Int.pred
-  in
-  let reset _ev =
-    React.startTransition @@ fun () -> setv (Fun.const 0)
-  in
+  let succ _ev = React.startTransition @@ fun () -> setv Int.succ in
+  let pred _ev = React.startTransition @@ fun () -> setv Int.pred in
+  let reset _ev = React.startTransition @@ fun () -> setv (Fun.const 0) in
   <div className="pa4">
     <h2>(React.string title)</h2>
     <p>(React.string ("clicked " ^ string_of_int v ^ " times"))</p>
@@ -60,6 +54,13 @@ let%component counter ~init ~title () =
     <hello name=(Printf.sprintf "hello #%i" v) />
     <hello name=(Printf.sprintf "hello #%i" v) />
   </div>
+
+module Wait_and_print = struct
+  let%component make ~promise ?promise2 ~msg () =
+    let () = React.use promise in
+    let () = Option.map React.use promise2 |> Option.value ~default:() in
+    <li>(React.string msg)</li>
+end
 
 let%component wait_and_print ~promise ?promise2 ~msg () =
   let () = React.use promise in
@@ -88,7 +89,11 @@ let%export_component app ~(title : string) ~(inner : React.element) () =
   let promise2 = Promise.sleep 2.0 in
   let promise_inner = Promise.sleep 0.5 in
   let%browser_only () =
-    React.useEffect1 (fun () -> Js.log "HELLO, I'M READY"; None) [||]
+    React.useEffect1
+      (fun () ->
+        Js.log "HELLO, I'M READY";
+        None)
+      [||]
   in
   <div>
     <nav' />
@@ -101,7 +106,7 @@ let%export_component app ~(title : string) ~(inner : React.element) () =
     <ul>
       <React.Suspense>
         <React.Suspense>
-          <wait_and_print promise=promise_inner msg="INNER SLEPT" />
+          <Wait_and_print promise=promise_inner msg="INNER SLEPT" />
         </React.Suspense>
         <React.Suspense>
           <wait_and_print promise=promise_inner msg="INNER SLEPT" />
@@ -159,9 +164,7 @@ let%component add_todo_form ~on_create () =
         return ())
   in
   let%browser_only onKeyDown ev =
-    match ReactEvent.Keyboard.key ev with
-    | "Enter" -> create ()
-    | _ -> ()
+    match ReactEvent.Keyboard.key ev with "Enter" -> create () | _ -> ()
   in
   let%browser_only onClick _ev = create () in
   <div>

@@ -8,7 +8,10 @@ let pexp_list ~loc xs =
 
 include Ppx_deriving_schema.Deriving_to (struct
   let name = "to_json"
-  let t_to = let loc = Location.none in [%type: Yojson.Basic.t]
+
+  let t_to =
+    let loc = Location.none in
+    [%type: Yojson.Basic.t]
 
   let derive_of_tuple ~loc derive ts es =
     let es = List.map2 ts es ~f:(derive ~loc) in

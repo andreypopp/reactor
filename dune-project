@@ -22,7 +22,7 @@
    (>= 5.1))
   (melange
    (>= 2))
-  dune
+  (dune (= "3.11.0+merlin-reader"))
   remote
   realm
   dream
@@ -31,6 +31,7 @@
   dune-site
   mlx
   ocamlmerlin-mlx
+  ocamlformat
   ocamlformat-mlx
   ocaml-lsp-server
   yojson)

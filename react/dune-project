@@ -23,6 +23,7 @@
   (melange
    (>= 2))
   dune
+  reason-react
   remote
   realm
   containers

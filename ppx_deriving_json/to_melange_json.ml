@@ -7,7 +7,10 @@ let as_json ~loc x = [%expr (Obj.magic [%e x] : Js.Json.t)]
 
 include Ppx_deriving_schema.Deriving_to (struct
   let name = "to_json"
-  let t_to = let loc = Location.none in [%type: Js.Json.t]
+
+  let t_to =
+    let loc = Location.none in
+    [%type: Js.Json.t]
 
   let derive_of_tuple ~loc derive ts es =
     as_json ~loc (pexp_array ~loc (List.map2 ts es ~f:(derive ~loc)))
