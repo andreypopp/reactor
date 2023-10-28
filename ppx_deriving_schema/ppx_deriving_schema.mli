@@ -70,7 +70,7 @@ class virtual derive_to : object
     expression
   (** define how to encode a single variant case with a record argument *)
 
-  method derive_type_expr :
+  method derive_of_type_expr :
     loc:location -> Repr.type_expr -> expression -> expression
   (** get an expression to encode a type expression, use this for recursive
       calls *)
@@ -126,7 +126,7 @@ class virtual deriving_of : object
     expression
   (** define how to encode a single variant case with a record argument *)
 
-  method derive_type_expr :
+  method derive_of_type_expr :
     loc:location -> Repr.type_expr -> expression -> expression
   (** get an expression to encode a type expression, use this for recursive
       calls *)
@@ -177,7 +177,7 @@ class virtual deriving_of_cases : object
     case
   (** define how to encode a single variant case with a record argument *)
 
-  method derive_type_expr :
+  method derive_of_type_expr :
     loc:location -> Repr.type_expr -> expression -> expression
   (** get an expression to encode a type expression, use this for recursive
       calls *)
@@ -221,7 +221,7 @@ class virtual deriving1 : object
     expression ->
     expression
 
-  method derive_type_expr :
+  method derive_of_type_expr :
     loc:location -> Repr.type_expr -> expression -> expression
 
   method derive_type_decl : Repr.type_decl -> value_binding list

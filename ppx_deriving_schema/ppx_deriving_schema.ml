@@ -206,7 +206,7 @@ class virtual deriving1 =
       let f = ederiver name n in
       let args =
         List.fold_left (List.rev ts) ~init:[] ~f:(fun args a ->
-            let a = as_fun ~loc (self#derive_type_expr' ~loc a) in
+            let a = as_fun ~loc (self#derive_of_type_expr' ~loc a) in
             (Nolabel, a) :: args)
       in
       As_val (pexp_apply ~loc f args)
@@ -214,7 +214,7 @@ class virtual deriving1 =
     method derive_type_ref ~loc name n ts x =
       as_val ~loc (self#derive_type_ref' ~loc name n ts) x
 
-    method private derive_type_expr' ~loc =
+    method private derive_of_type_expr' ~loc =
       function
       | _, Te_tuple ts -> As_fun (fun x -> self#derive_of_tuple ~loc ts x)
       | _, Te_var id -> As_val (ederiver self#name (to_lident id))
@@ -222,12 +222,12 @@ class virtual deriving1 =
       | t, Te_polyvariant cs ->
           As_fun (fun x -> self#derive_of_polyvariant ~loc cs t x)
 
-    method derive_type_expr ~loc repr x =
-      as_val ~loc (self#derive_type_expr' ~loc repr) x
+    method derive_of_type_expr ~loc repr x =
+      as_val ~loc (self#derive_of_type_expr' ~loc repr) x
 
     method private derive_type_shape ~loc x =
       function
-      | Ts_expr t -> as_val ~loc (self#derive_type_expr' ~loc t) x
+      | Ts_expr t -> as_val ~loc (self#derive_of_type_expr' ~loc t) x
       | Ts_record fs -> self#derive_of_record ~loc fs x
       | Ts_variant cs -> self#derive_of_variant ~loc cs x
 
@@ -252,7 +252,7 @@ class virtual deriving1 =
       fun ~loc:_ ~path:_ ty ->
         let repr = Repr.of_core_type ty in
         let loc = ty.ptyp_loc in
-        as_fun ~loc (self#derive_type_expr' ~loc repr)
+        as_fun ~loc (self#derive_of_type_expr' ~loc repr)
 
     method generator
         : ctxt:Expansion_context.Deriver.t ->
@@ -427,7 +427,7 @@ class virtual deriving_of =
         [@@ocaml.warning "-7"]
       end
 
-    method derive_type_expr = self#deriving#derive_type_expr
+    method derive_of_type_expr = self#deriving#derive_of_type_expr
     method generator = self#deriving#generator
     method extension = self#deriving#extension
   end
@@ -600,7 +600,7 @@ class virtual deriving_of_cases =
         [@@ocaml.warning "-7"]
       end
 
-    method derive_type_expr = self#deriving#derive_type_expr
+    method derive_of_type_expr = self#deriving#derive_of_type_expr
     method generator = self#deriving#generator
     method extension = self#deriving#extension
   end
@@ -676,13 +676,13 @@ class virtual derive_to =
                   --> self#derive_of_variant_case ~loc n ts es
               | Pvc_inherit (n, ts) ->
                   [%pat? [%p ppat_type ~loc n] as x]
-                  --> deriving#derive_type_expr ~loc (te_opaque n ts)
+                  --> deriving#derive_of_type_expr ~loc (te_opaque n ts)
                         [%expr x])
           in
           pexp_match ~loc x cases
       end
 
-    method derive_type_expr = self#deriving#derive_type_expr
+    method derive_of_type_expr = self#deriving#derive_of_type_expr
     method generator = self#deriving#generator
     method extension = self#deriving#extension
   end

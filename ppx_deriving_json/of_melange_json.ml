@@ -78,7 +78,7 @@ let of_json =
              = [%e eint ~loc n]
         then
           let es = (Obj.magic [%e x] : Js.Json.t array) in
-          [%e build_tuple ~loc self#derive_type_expr 0 ts [%expr es]]
+          [%e build_tuple ~loc self#derive_of_type_expr 0 ts [%expr es]]
         else
           Json.of_json_error
             [%e
@@ -88,7 +88,7 @@ let of_json =
     method derive_of_record ~loc fs x =
       [%expr
         [%e ensure_json_object ~loc x];
-        [%e build_record ~loc self#derive_type_expr fs x]]
+        [%e build_record ~loc self#derive_of_type_expr fs x]]
 
     method derive_of_variant_parse ~loc cases x =
       [%expr
@@ -117,7 +117,7 @@ let of_json =
             else
               make
                 (Some
-                   (build_tuple ~loc self#derive_type_expr 1 ts
+                   (build_tuple ~loc self#derive_of_type_expr 1 ts
                       [%expr array]))])
         else [%e next]]
 
@@ -131,6 +131,6 @@ let of_json =
           [%e
             make
               (Some
-                 (build_record ~loc self#derive_type_expr fs [%expr fs]))])
+                 (build_record ~loc self#derive_of_type_expr fs [%expr fs]))])
         else [%e next]]
   end

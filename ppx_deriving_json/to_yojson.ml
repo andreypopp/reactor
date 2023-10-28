@@ -13,7 +13,7 @@ let to_json =
     method t_to ~loc = [%type: Yojson.Basic.t]
 
     method derive_of_tuple ~loc ts es =
-      let es = List.map2 ts es ~f:(self#derive_type_expr ~loc) in
+      let es = List.map2 ts es ~f:(self#derive_of_type_expr ~loc) in
       [%expr `List [%e pexp_list ~loc es]]
 
     method derive_of_record ~loc fs es =
@@ -21,7 +21,7 @@ let to_json =
         List.map2 fs es ~f:(fun (n, t) x ->
             [%expr
               [%e estring ~loc:n.loc n.txt],
-                [%e self#derive_type_expr ~loc t x]])
+                [%e self#derive_of_type_expr ~loc t x]])
       in
       [%expr `Assoc [%e pexp_list ~loc es]]
 
@@ -31,7 +31,7 @@ let to_json =
           (`String [%e estring ~loc:n.loc n.txt]
           :: [%e
                pexp_list ~loc
-                 (List.map2 ts es ~f:(self#derive_type_expr ~loc))])]
+                 (List.map2 ts es ~f:(self#derive_of_type_expr ~loc))])]
 
     method derive_of_variant_case_record ~loc n fs es =
       [%expr
