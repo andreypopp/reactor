@@ -56,6 +56,52 @@ module Deriving1 : functor
        Repr.variant_case list ->
        expression ->
        expression
+
+     val derive_of_polyvariant :
+       loc:location ->
+       (loc:location -> Repr.type_expr -> expression -> expression) ->
+       Repr.polyvariant_case list ->
+       expression ->
+       expression
+   end)
+  -> sig
+  val register : unit -> unit
+end
+
+module Deriving_to : functor
+  (_ : sig
+     val name : label
+     val t_to : core_type
+
+     val derive_of_tuple :
+       loc:location ->
+       (loc:location -> Repr.type_expr -> expression -> expression) ->
+       Repr.type_expr list ->
+       expression list ->
+       expression
+
+     val derive_of_record :
+       loc:location ->
+       (loc:location -> Repr.type_expr -> expression -> expression) ->
+       (label loc * Repr.type_expr) list ->
+       expression list ->
+       expression
+
+     val derive_of_variant_case :
+       loc:location ->
+       (loc:location -> Repr.type_expr -> expression -> expression) ->
+       label loc ->
+       Repr.type_expr list ->
+       expression list ->
+       expression
+
+     val derive_of_variant_case_record :
+       loc:location ->
+       (loc:location -> Repr.type_expr -> expression -> expression) ->
+       label loc ->
+       (label loc * Repr.type_expr) list ->
+       expression list ->
+       expression
    end)
   -> sig
   val register : unit -> unit

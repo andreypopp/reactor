@@ -136,4 +136,5 @@ include Ppx_deriving_schema.Deriving1 (struct
   let derive_of_tuple = derive_of_tuple
   let derive_of_record = derive_of_record
   let derive_of_variant = derive_of_variant
+  let derive_of_polyvariant ~loc:_ _ = failwith "TODO"
 end)
