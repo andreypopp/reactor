@@ -313,7 +313,10 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
                   let x =
                     self#derive_type_ref ~loc self#binding_name n ts x
                   in
-                  [%expr ([%e x] :> [%t t] option)])
+                  [%expr
+                    match [%e x] with
+                    | Some x -> (Some x :> [%t t] option)
+                    | None -> [%e next]])
         in
         derive_of_variant ~loc self#derive_of_type_expr cases x
     end
