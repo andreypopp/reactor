@@ -2,7 +2,6 @@ open Printf
 open ContainersLabels
 open Ppxlib
 open Ast_builder.Default
-open Ppx_deriving_schema.Repr
 open Ppx_deriving_schema.Deriving_helper
 
 let with_refs ~loc prefix fs inner =
@@ -74,67 +73,54 @@ let build_record ~loc derive fs x =
     iter [%e x];
     [%e build]]
 
-let derive_of_tuple ~loc derive ts x =
-  let n = List.length ts in
-  let xpatt, xexprs = gen_pat_list ~loc "x" n in
-  let xpatt = [%pat? `List [%p xpatt]] in
-  pexp_match ~loc x
-    [
-      xpatt --> build_tuple ~loc derive xexprs ts;
-      [%pat? _]
-      --> [%expr
-            Json.of_json_error
-              [%e
-                estring ~loc
-                  (sprintf "expected a JSON array of length %i" n)]];
-    ]
+let of_json =
+  object (self)
+    inherit Ppx_deriving_schema.deriving_of_cases
+    method name = "of_json"
+    method of_t ~loc = [%type: Yojson.Basic.t]
+    method error ~loc = [%expr Json.of_json_error "invalid JSON"]
 
-let derive_of_record ~loc derive fs x =
-  pexp_match ~loc x
-    [
-      [%pat? `Assoc fs] --> build_record ~loc derive fs [%expr fs];
-      [%pat? _]
-      --> [%expr
-            Json.of_json_error
-              [%e estring ~loc (sprintf "expected a JSON object")]];
-    ]
+    method derive_of_tuple ~loc ts x =
+      let n = List.length ts in
+      let xpatt, xexprs = gen_pat_list ~loc "x" n in
+      let xpatt = [%pat? `List [%p xpatt]] in
+      pexp_match ~loc x
+        [
+          xpatt --> build_tuple ~loc self#derive_type_expr xexprs ts;
+          [%pat? _]
+          --> [%expr
+                Json.of_json_error
+                  [%e
+                    estring ~loc
+                      (sprintf "expected a JSON array of length %i" n)]];
+        ]
 
-let derive_of_variant ~loc derive cs x =
-  let fail_case =
-    [%pat? _] --> [%expr Json.of_json_error "invalid JSON"]
-  in
-  let cases =
-    let econstruct n arg = pexp_construct ~loc (to_lident n) arg in
-    List.fold_left (List.rev cs) ~init:[ fail_case ] ~f:(fun next c ->
-        let case =
-          match c with
-          | Vc_record (n, fs) ->
-              [%pat?
-                `List [ `String [%p pstring ~loc:n.loc n.txt]; `Assoc fs ]]
-              --> econstruct n
-                    (Some (build_record ~loc derive fs [%expr fs]))
-          | Vc_tuple (n, ts) ->
-              let arity = List.length ts in
-              if arity = 0 then
-                [%pat? `List [ `String [%p pstring ~loc:n.loc n.txt] ]]
-                --> econstruct n None
-              else
-                let xpatt, xexprs = gen_pat_list ~loc "x" arity in
-                [%pat?
-                  `List
-                    (`String [%p pstring ~loc:n.loc n.txt] :: [%p xpatt])]
-                --> econstruct n
-                      (Some (build_tuple ~loc derive xexprs ts))
-        in
-        case :: next)
-  in
-  pexp_match ~loc x cases
+    method derive_of_record ~loc fs x =
+      pexp_match ~loc x
+        [
+          [%pat? `Assoc fs]
+          --> build_record ~loc self#derive_type_expr fs [%expr fs];
+          [%pat? _]
+          --> [%expr
+                Json.of_json_error
+                  [%e estring ~loc (sprintf "expected a JSON object")]];
+        ]
 
-include Ppx_deriving_schema.Deriving1 (struct
-  let name = "of_json"
-  let t ~loc t = [%type: Yojson.Basic.t -> [%t t]]
-  let derive_of_tuple = derive_of_tuple
-  let derive_of_record = derive_of_record
-  let derive_of_variant = derive_of_variant
-  let derive_of_polyvariant ~loc:_ _ = failwith "TODO"
-end)
+    method derive_of_variant_parse ~loc x next = pexp_match ~loc x next
+
+    method derive_of_variant_case ~loc make n ts =
+      let arity = List.length ts in
+      if arity = 0 then
+        [%pat? `List [ `String [%p pstring ~loc:n.loc n.txt] ]]
+        --> make None
+      else
+        let xpatt, xexprs = gen_pat_list ~loc "x" arity in
+        [%pat?
+          `List (`String [%p pstring ~loc:n.loc n.txt] :: [%p xpatt])]
+        --> make (Some (build_tuple ~loc self#derive_type_expr xexprs ts))
+
+    method derive_of_variant_case_record ~loc make n fs =
+      [%pat? `List [ `String [%p pstring ~loc:n.loc n.txt]; `Assoc fs ]]
+      --> make
+            (Some (build_record ~loc self#derive_type_expr fs [%expr fs]))
+  end

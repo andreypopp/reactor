@@ -4,6 +4,10 @@ type world = { lab : string; opt : int option; name : string }
 type greeting = Greeting_formal | Greeting_informal
 [@@deriving of_json, to_json]
 
+type 'a c = [ `C of 'a ] [@@deriving of_json]
+type b = [ `B of int | int c ] [@@deriving of_json]
+type a = [ `A of string | b | int c ] [@@deriving of_json]
+
 module type Hello = sig
   val hello : name:string -> string Promise.t [@@query]
   val update_greeting : greeting:greeting -> unit Promise.t [@@mutation]

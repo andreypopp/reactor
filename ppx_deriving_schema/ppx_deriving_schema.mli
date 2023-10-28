@@ -1,5 +1,6 @@
 open Ppxlib
 
+(** Simplified type expression / declaration representation. *)
 module Repr : sig
   type type_decl = {
     name : label loc;
@@ -13,7 +14,9 @@ module Repr : sig
     | Ts_variant of variant_case list
     | Ts_expr of type_expr
 
-  and type_expr =
+  and type_expr = core_type * type_expr'
+
+  and type_expr' =
     | Te_opaque of longident loc * type_expr list
     | Te_var of label loc
     | Te_tuple of type_expr list
@@ -29,83 +32,226 @@ module Repr : sig
 
   val of_core_type : core_type -> type_expr
   val of_type_declaration : type_declaration -> type_decl
+  val te_opaque : longident loc -> type_expr list -> type_expr
 end
 
-module Deriving1 : functor
-  (_ : sig
-     val name : string
-     val t : loc:location -> core_type -> core_type
+(** define an encoder/serializer-like deriver *)
+class virtual derive_to : object
+  method virtual name : string
+  (** name of the deriver *)
 
-     val derive_of_tuple :
-       loc:location ->
-       (loc:location -> Repr.type_expr -> expression -> expression) ->
-       Repr.type_expr list ->
-       expression ->
-       expression
+  method virtual t_to : loc:location -> core_type
+  (** type the deriver encodes the type to *)
 
-     val derive_of_record :
-       loc:location ->
-       (loc:location -> Repr.type_expr -> expression -> expression) ->
-       (label loc * Repr.type_expr) list ->
-       expression ->
-       expression
+  method virtual derive_of_tuple :
+    loc:location -> Repr.type_expr list -> expression list -> expression
+  (** define how to encode a tuple *)
 
-     val derive_of_variant :
-       loc:location ->
-       (loc:location -> Repr.type_expr -> expression -> expression) ->
-       Repr.variant_case list ->
-       expression ->
-       expression
+  method virtual derive_of_record :
+    loc:location ->
+    (label loc * Repr.type_expr) list ->
+    expression list ->
+    expression
+  (** define how to encode a record *)
 
-     val derive_of_polyvariant :
-       loc:location ->
-       (loc:location -> Repr.type_expr -> expression -> expression) ->
-       Repr.polyvariant_case list ->
-       expression ->
-       expression
-   end)
-  -> sig
-  val register : unit -> unit
+  method virtual derive_of_variant_case :
+    loc:location ->
+    label loc ->
+    Repr.type_expr list ->
+    expression list ->
+    expression
+  (** define how to encode a single variant case with a tuple argument *)
+
+  method virtual derive_of_variant_case_record :
+    loc:location ->
+    label loc ->
+    (label loc * Repr.type_expr) list ->
+    expression list ->
+    expression
+  (** define how to encode a single variant case with a record argument *)
+
+  method derive_type_expr :
+    loc:location -> Repr.type_expr -> expression -> expression
+  (** get an expression to encode a type expression, use this for recursive
+      calls *)
+
+  method extension : loc:location -> path:label -> core_type -> expression
+
+  method generator :
+    ctxt:Expansion_context.Deriver.t ->
+    rec_flag * type_declaration list ->
+    structure
 end
 
-module Deriving_to : functor
-  (_ : sig
-     val name : label
-     val t_to : core_type
+(** define a decoder/deserializer-like deriver *)
+class virtual deriving_of : object
+  method virtual name : string
+  (** name of the deriver *)
 
-     val derive_of_tuple :
-       loc:location ->
-       (loc:location -> Repr.type_expr -> expression -> expression) ->
-       Repr.type_expr list ->
-       expression list ->
-       expression
+  method virtual of_t : loc:location -> core_type
+  (** type the deriver decodes the type from *)
 
-     val derive_of_record :
-       loc:location ->
-       (loc:location -> Repr.type_expr -> expression -> expression) ->
-       (label loc * Repr.type_expr) list ->
-       expression list ->
-       expression
+  method virtual error : loc:location -> expression
+  (** an expression which represent a decoder error *)
 
-     val derive_of_variant_case :
-       loc:location ->
-       (loc:location -> Repr.type_expr -> expression -> expression) ->
-       label loc ->
-       Repr.type_expr list ->
-       expression list ->
-       expression
+  method virtual derive_of_tuple :
+    loc:location -> Repr.type_expr list -> expression -> expression
+  (** define how to decode a tuple *)
 
-     val derive_of_variant_case_record :
-       loc:location ->
-       (loc:location -> Repr.type_expr -> expression -> expression) ->
-       label loc ->
-       (label loc * Repr.type_expr) list ->
-       expression list ->
-       expression
-   end)
-  -> sig
-  val register : unit -> unit
+  method virtual derive_of_record :
+    loc:location ->
+    (label loc * Repr.type_expr) list ->
+    expression ->
+    expression
+  (** define how to decode a record *)
+
+  method virtual derive_of_variant_parse :
+    loc:location -> expression -> expression -> expression
+
+  method virtual derive_of_variant_case :
+    loc:location ->
+    (expression option -> expression) ->
+    label loc ->
+    Repr.type_expr list ->
+    expression ->
+    expression
+  (** define how to encode a single variant case with a tuple argument *)
+
+  method virtual derive_of_variant_case_record :
+    loc:location ->
+    (expression option -> expression) ->
+    label loc ->
+    (label loc * Repr.type_expr) list ->
+    expression ->
+    expression
+  (** define how to encode a single variant case with a record argument *)
+
+  method derive_type_expr :
+    loc:location -> Repr.type_expr -> expression -> expression
+  (** get an expression to encode a type expression, use this for recursive
+      calls *)
+
+  method extension : loc:location -> path:label -> core_type -> expression
+
+  method generator :
+    ctxt:Expansion_context.Deriver.t ->
+    rec_flag * type_declaration list ->
+    structure
 end
+
+(** define a decoder/deserializer-like deriver (via pattern matching) *)
+class virtual deriving_of_cases : object
+  method virtual name : string
+  (** name of the deriver *)
+
+  method virtual of_t : loc:location -> core_type
+  (** type the deriver decodes the type from *)
+
+  method virtual error : loc:location -> expression
+  (** an expression which represent a decoder error *)
+
+  method virtual derive_of_tuple :
+    loc:location -> Repr.type_expr list -> expression -> expression
+  (** define how to decode a tuple *)
+
+  method virtual derive_of_record :
+    loc:location ->
+    (label loc * Repr.type_expr) list ->
+    expression ->
+    expression
+  (** define how to decode a record *)
+
+  method virtual derive_of_variant_case :
+    loc:location ->
+    (expression option -> expression) ->
+    label loc ->
+    Repr.type_expr list ->
+    case
+  (** define how to encode a single variant case with a tuple argument *)
+
+  method virtual derive_of_variant_case_record :
+    loc:location ->
+    (expression option -> expression) ->
+    label loc ->
+    (label loc * Repr.type_expr) list ->
+    case
+  (** define how to encode a single variant case with a record argument *)
+
+  method derive_type_expr :
+    loc:location -> Repr.type_expr -> expression -> expression
+  (** get an expression to encode a type expression, use this for recursive
+      calls *)
+
+  method extension : loc:location -> path:label -> core_type -> expression
+
+  method generator :
+    ctxt:Expansion_context.Deriver.t ->
+    rec_flag * type_declaration list ->
+    structure
+end
+
+(** define a generic deriver *)
+class virtual deriving1 : object
+  method virtual name : string
+  (** name of the deriver *)
+
+  method binding_name : string
+  (** name of the binding produced by the deriver (defaults to [name] but can
+      be overriden to customize "shallow" derivers) *)
+
+  method virtual t : loc:location -> core_type -> core_type
+  (** produce a type expression for the deriver *)
+
+  method virtual derive_of_tuple :
+    loc:location -> Repr.type_expr list -> expression -> expression
+
+  method virtual derive_of_record :
+    loc:location ->
+    (label loc * Repr.type_expr) list ->
+    expression ->
+    expression
+
+  method virtual derive_of_variant :
+    loc:location -> Repr.variant_case list -> expression -> expression
+
+  method virtual derive_of_polyvariant :
+    loc:location ->
+    Repr.polyvariant_case list ->
+    core_type ->
+    expression ->
+    expression
+
+  method derive_type_expr :
+    loc:location -> Repr.type_expr -> expression -> expression
+
+  method derive_type_decl : Repr.type_decl -> value_binding list
+
+  method derive_type_ref :
+    loc:location ->
+    label ->
+    longident loc ->
+    Repr.type_expr list ->
+    expression ->
+    expression
+
+  method extension : loc:location -> path:label -> core_type -> expression
+
+  method generator :
+    ctxt:Expansion_context.Deriver.t ->
+    rec_flag * type_declaration list ->
+    structure
+end
+
+val register :
+  ?deps:Deriving.t list ->
+  < extension : loc:location -> path:label -> core_type -> expression
+  ; generator :
+      ctxt:Expansion_context.Deriver.t ->
+      rec_flag * type_declaration list ->
+      Ppxlib__Import.structure
+  ; name : label
+  ; .. > ->
+  Deriving.t
 
 module Deriving_helper : sig
   val gen_pat_tuple :
