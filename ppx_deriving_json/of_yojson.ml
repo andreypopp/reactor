@@ -73,56 +73,47 @@ let build_record ~loc derive fs x =
     iter [%e x];
     [%e build]]
 
+let derive_of_tuple ~loc derive ts x =
+  let n = List.length ts in
+  let xpatt, xexprs = gen_pat_list ~loc "x" n in
+  let xpatt = [%pat? `List [%p xpatt]] in
+  pexp_match ~loc x
+    [
+      xpatt --> build_tuple ~loc derive xexprs ts;
+      [%pat? _]
+      --> [%expr
+            Json.of_json_error
+              [%e
+                estring ~loc
+                  (sprintf "expected a JSON array of length %i" n)]];
+    ]
+
+let derive_of_record ~loc derive fs x =
+  pexp_match ~loc x
+    [
+      [%pat? `Assoc fs] --> build_record ~loc derive fs [%expr fs];
+      [%pat? _]
+      --> [%expr
+            Json.of_json_error
+              [%e estring ~loc (sprintf "expected a JSON object")]];
+    ]
+
+let derive_of_variant_case ~loc derive make n ts =
+  let arity = List.length ts in
+  if arity = 0 then
+    [%pat? `List [ `String [%p pstring ~loc:n.loc n.txt] ]] --> make None
+  else
+    let xpatt, xexprs = gen_pat_list ~loc "x" arity in
+    [%pat? `List (`String [%p pstring ~loc:n.loc n.txt] :: [%p xpatt])]
+    --> make (Some (build_tuple ~loc derive xexprs ts))
+
+let derive_of_variant_case_record ~loc derive make n fs =
+  [%pat? `List [ `String [%p pstring ~loc:n.loc n.txt]; `Assoc fs ]]
+  --> make (Some (build_record ~loc derive fs [%expr fs]))
+
 let of_json =
-  object (self)
-    inherit Ppx_deriving_schema.deriving_of_cases
-    method name = "of_json"
-    method of_t ~loc = [%type: Yojson.Basic.t]
-    method error ~loc = [%expr Json.of_json_error "invalid JSON"]
-
-    method derive_of_tuple ~loc ts x =
-      let n = List.length ts in
-      let xpatt, xexprs = gen_pat_list ~loc "x" n in
-      let xpatt = [%pat? `List [%p xpatt]] in
-      pexp_match ~loc x
-        [
-          xpatt --> build_tuple ~loc self#derive_of_type_expr xexprs ts;
-          [%pat? _]
-          --> [%expr
-                Json.of_json_error
-                  [%e
-                    estring ~loc
-                      (sprintf "expected a JSON array of length %i" n)]];
-        ]
-
-    method derive_of_record ~loc fs x =
-      pexp_match ~loc x
-        [
-          [%pat? `Assoc fs]
-          --> build_record ~loc self#derive_of_type_expr fs [%expr fs];
-          [%pat? _]
-          --> [%expr
-                Json.of_json_error
-                  [%e estring ~loc (sprintf "expected a JSON object")]];
-        ]
-
-    method derive_of_variant_parse ~loc x next = pexp_match ~loc x next
-
-    method derive_of_variant_case ~loc make n ts =
-      let arity = List.length ts in
-      if arity = 0 then
-        [%pat? `List [ `String [%p pstring ~loc:n.loc n.txt] ]]
-        --> make None
-      else
-        let xpatt, xexprs = gen_pat_list ~loc "x" arity in
-        [%pat?
-          `List (`String [%p pstring ~loc:n.loc n.txt] :: [%p xpatt])]
-        --> make
-              (Some (build_tuple ~loc self#derive_of_type_expr xexprs ts))
-
-    method derive_of_variant_case_record ~loc make n fs =
-      [%pat? `List [ `String [%p pstring ~loc:n.loc n.txt]; `Assoc fs ]]
-      --> make
-            (Some
-               (build_record ~loc self#derive_of_type_expr fs [%expr fs]))
-  end
+  Ppx_deriving_schema.deriving_of_match () ~name:"of_json"
+    ~of_t:(fun ~loc -> [%type: Yojson.Basic.t])
+    ~error:(fun ~loc -> [%expr Json.of_json_error "invalid JSON"])
+    ~derive_of_tuple ~derive_of_record ~derive_of_variant_case
+    ~derive_of_variant_case_record

@@ -62,75 +62,64 @@ let evariant_some (n : label loc) arg =
   let loc = n.loc in
   [%expr Some [%e evariant n arg]]
 
-let of_json =
-  object (self)
-    inherit Ppx_deriving_schema.deriving_of
-    method name = "of_json"
-    method error ~loc = [%expr Json.of_json_error "invalid JSON"]
-    method of_t ~loc = [%type: Js.Json.t]
+let derive_of_tuple ~loc derive ts x =
+  let n = List.length ts in
+  [%expr
+    if
+      Js.Array.isArray [%e x]
+      && Js.Array.length (Obj.magic [%e x] : Js.Json.t array)
+         = [%e eint ~loc n]
+    then
+      let es = (Obj.magic [%e x] : Js.Json.t array) in
+      [%e build_tuple ~loc derive 0 ts [%expr es]]
+    else
+      Json.of_json_error
+        [%e estring ~loc (sprintf "expected a JSON array of length %i" n)]]
 
-    method derive_of_tuple ~loc ts x =
-      let n = List.length ts in
-      [%expr
-        if
-          Js.Array.isArray [%e x]
-          && Js.Array.length (Obj.magic [%e x] : Js.Json.t array)
-             = [%e eint ~loc n]
-        then
-          let es = (Obj.magic [%e x] : Js.Json.t array) in
-          [%e build_tuple ~loc self#derive_of_type_expr 0 ts [%expr es]]
+let derive_of_record ~loc derive fs x =
+  [%expr
+    [%e ensure_json_object ~loc x];
+    [%e build_record ~loc derive fs x]]
+
+let derive_of_variant ~loc _derive cases x =
+  [%expr
+    if Js.Array.isArray [%e x] then
+      let array = (Obj.magic [%e x] : Js.Json.t array) in
+      let len = Js.Array.length array in
+      if len > 0 then
+        let tag = Js.Array.unsafe_get array 0 in
+        if Js.typeof tag = "string" then
+          let tag = (Obj.magic tag : string) in
+          [%e cases]
         else
           Json.of_json_error
-            [%e
-              estring ~loc
-                (sprintf "expected a JSON array of length %i" n)]]
+            "expected a non empty JSON array with element being a string"
+      else Json.of_json_error "expected a non empty JSON array"
+    else Json.of_json_error "expected a non empty JSON array"]
 
-    method derive_of_record ~loc fs x =
-      [%expr
-        [%e ensure_json_object ~loc x];
-        [%e build_record ~loc self#derive_of_type_expr fs x]]
+let derive_of_variant_case ~loc derive make (n : label loc) ts next =
+  let arity = List.length ts in
+  [%expr
+    if tag = [%e estring ~loc:n.loc n.txt] then (
+      [%e ensure_json_array_len ~loc (arity + 1) [%expr len]];
+      [%e
+        if arity = 0 then econstruct n None
+        else make (Some (build_tuple ~loc derive 1 ts [%expr array]))])
+    else [%e next]]
 
-    method derive_of_variant_parse ~loc cases x =
-      [%expr
-        if Js.Array.isArray [%e x] then
-          let array = (Obj.magic [%e x] : Js.Json.t array) in
-          let len = Js.Array.length array in
-          if len > 0 then
-            let tag = Js.Array.unsafe_get array 0 in
-            if Js.typeof tag = "string" then
-              let tag = (Obj.magic tag : string) in
-              [%e cases]
-            else
-              Json.of_json_error
-                "expected a non empty JSON array with element being a \
-                 string"
-          else Json.of_json_error "expected a non empty JSON array"
-        else Json.of_json_error "expected a non empty JSON array"]
+let derive_of_variant_case_record ~loc derive make (n : label loc) fs next
+    =
+  [%expr
+    if tag = [%e estring ~loc:n.loc n.txt] then (
+      [%e ensure_json_array_len ~loc 2 [%expr len]];
+      let fs = Js.Array.unsafe_get array 1 in
+      [%e ensure_json_object ~loc [%expr fs]];
+      [%e make (Some (build_record ~loc derive fs [%expr fs]))])
+    else [%e next]]
 
-    method derive_of_variant_case ~loc make (n : label loc) ts next =
-      let arity = List.length ts in
-      [%expr
-        if tag = [%e estring ~loc:n.loc n.txt] then (
-          [%e ensure_json_array_len ~loc (arity + 1) [%expr len]];
-          [%e
-            if arity = 0 then econstruct n None
-            else
-              make
-                (Some
-                   (build_tuple ~loc self#derive_of_type_expr 1 ts
-                      [%expr array]))])
-        else [%e next]]
-
-    method derive_of_variant_case_record ~loc make (n : label loc) fs next
-        =
-      [%expr
-        if tag = [%e estring ~loc:n.loc n.txt] then (
-          [%e ensure_json_array_len ~loc 2 [%expr len]];
-          let fs = Js.Array.unsafe_get array 1 in
-          [%e ensure_json_object ~loc [%expr fs]];
-          [%e
-            make
-              (Some
-                 (build_record ~loc self#derive_of_type_expr fs [%expr fs]))])
-        else [%e next]]
-  end
+let of_json =
+  Ppx_deriving_schema.deriving_of () ~name:"of_json"
+    ~error:(fun ~loc -> [%expr Json.of_json_error "invalid JSON"])
+    ~of_t:(fun ~loc -> [%type: Js.Json.t])
+    ~derive_of_tuple ~derive_of_record ~derive_of_variant
+    ~derive_of_variant_case ~derive_of_variant_case_record
