@@ -3,9 +3,7 @@ Producing HTML elements, no props:
   > div ~children:[] () [@JSX]
   > EOF
   (* BROWSER *)
-  React.unsafe_create_html_element "div"
-    (React_browser_html_props.props ())
-    [||]
+  ReactDOM.jsx "div" (ReactDOM.domProps ())
   
   (* NATIVE *)
   React_server.React.unsafe_create_html_element "div" [] None
@@ -15,9 +13,7 @@ Producing HTML elements, with props:
   > div ~className:"a" () [@JSX]
   > EOF
   (* BROWSER *)
-  React.unsafe_create_html_element "div"
-    (React_browser_html_props.props ~className:"a" ())
-    [||]
+  ReactDOM.jsx "div" (ReactDOM.domProps ~className:"a" ())
   
   (* NATIVE *)
   React_server.React.unsafe_create_html_element "div"
@@ -29,14 +25,11 @@ Producing HTML elements, with children:
   > div ~children:[a; div ~children:[] () [@JSX]] () [@JSX]
   > EOF
   (* BROWSER *)
-  React.unsafe_create_html_element "div"
-    (React_browser_html_props.props ())
-    [|
-      a;
-      React.unsafe_create_html_element "div"
-        (React_browser_html_props.props ())
-        [||];
-    |]
+  ReactDOM.jsxs "div"
+    (ReactDOM.domProps
+       ~children:
+         (React.array [| a; ReactDOM.jsx "div" (ReactDOM.domProps ()) |])
+       ())
   
   (* NATIVE *)
   React_server.React.unsafe_create_html_element "div" []
@@ -51,14 +44,10 @@ Producing HTML elements, with props with nested elements:
   > div ~not_children:(div ~children:[] () [@JSX]) () [@JSX]
   > EOF
   (* BROWSER *)
-  React.unsafe_create_html_element "div"
-    (React_browser_html_props.props
-       ~not_children:
-         (React.unsafe_create_html_element "div"
-            (React_browser_html_props.props ())
-            [||])
+  ReactDOM.jsx "div"
+    (ReactDOM.domProps
+       ~not_children:(ReactDOM.jsx "div" (ReactDOM.domProps ()))
        ())
-    [||]
   
   (* NATIVE *)
   React_server.React.unsafe_create_html_element "div"
@@ -73,7 +62,7 @@ Producing component elements, no props:
   > some_thing ~children:[] () [@JSX]
   > EOF
   (* BROWSER *)
-  React.unsafe_create_element' some_thing (some_thing__props ())
+  React.jsx some_thing (some_thingProps ())
   
   (* NATIVE *)
   some_thing ()
@@ -83,8 +72,7 @@ Producing component elements, with props:
   > some_thing ~className:"a" () [@JSX]
   > EOF
   (* BROWSER *)
-  React.unsafe_create_element' some_thing
-    (some_thing__props ~className:"a" ())
+  React.jsx some_thing (some_thingProps ~className:"a" ())
   
   (* NATIVE *)
   some_thing ~className:"a" ()
@@ -94,13 +82,11 @@ Producing component elements, with children:
   > some_thing ~children:[a; div ~children:[] () [@JSX]] () [@JSX]
   > EOF
   (* BROWSER *)
-  React.unsafe_create_element some_thing (some_thing__props ())
-    [|
-      a;
-      React.unsafe_create_html_element "div"
-        (React_browser_html_props.props ())
-        [||];
-    |]
+  React.jsxs some_thing
+    (some_thingProps
+       ~children:
+         (React.array [| a; ReactDOM.jsx "div" (ReactDOM.domProps ()) |])
+       ())
   
   (* NATIVE *)
   some_thing
@@ -113,7 +99,7 @@ Producing component with (within module) elements, no props:
   > Some.component ~children:[] () [@JSX]
   > EOF
   (* BROWSER *)
-  React.unsafe_create_element' Some.component (Some.component__props ())
+  React.jsx Some.component (Some.componentProps ())
   
   (* NATIVE *)
   Some.component ()

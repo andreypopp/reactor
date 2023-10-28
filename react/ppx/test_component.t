@@ -9,7 +9,9 @@ using the same syntax for both browser and native environments:
   include struct
     let no_props () = BODY
     let no_props props = no_props ()
-    let no_props__props ?key () = [%mel.obj { key }]
+  
+    external no_propsProps : ?key:'key -> unit -> < > Js.t = ""
+    [@@merlin.hide] [@@mel.obj]
   end
   
   (* NATIVE *)
@@ -25,7 +27,13 @@ using the same syntax for both browser and native environments:
   include struct
     let name ~children () = BODY
     let name props = name ~children:props##children ()
-    let name__props ?key () = [%mel.obj { key; children = React.null }]
+  
+    external nameProps :
+      ?key:'key ->
+      children:'children ->
+      unit ->
+      < children : 'children > Js.t = ""
+    [@@merlin.hide] [@@mel.obj]
   end
   
   (* NATIVE *)
@@ -47,8 +55,17 @@ Labeled/optional arguments are supported:
       name ~label:props##label ?optional:props##optional
         ?with_default:props##with_default ()
   
-    let name__props ?key ~label ?optional ?with_default () =
-      [%mel.obj { key; label; optional; with_default }]
+    external nameProps :
+      ?key:'key ->
+      label:'label ->
+      ?optional:'optional ->
+      ?with_default:'with_default ->
+      unit ->
+      < with_default : 'with_default option
+      ; optional : 'optional option
+      ; label : 'label >
+      Js.t = ""
+    [@@merlin.hide] [@@mel.obj]
   end
   
   (* NATIVE *)
@@ -69,8 +86,13 @@ Labeled/optional arguments support aliasing label to another:
     let name props =
       name ~labeled:props##labeled ?optional:props##optional ()
   
-    let name__props ?key ~labeled ?optional () =
-      [%mel.obj { key; labeled; optional }]
+    external nameProps :
+      ?key:'key ->
+      labeled:'labeled ->
+      ?optional:'optional ->
+      unit ->
+      < optional : 'optional option ; labeled : 'labeled > Js.t = ""
+    [@@merlin.hide] [@@mel.obj]
   end
   
   (* NATIVE *)
@@ -91,8 +113,13 @@ Labeled/optional arguments support destructuring pattern matching:
     let name props =
       name ~labeled:props##labeled ?optional:props##optional ()
   
-    let name__props ?key ~labeled ?optional () =
-      [%mel.obj { key; labeled; optional }]
+    external nameProps :
+      ?key:'key ->
+      labeled:'labeled ->
+      ?optional:'optional ->
+      unit ->
+      < optional : 'optional option ; labeled : 'labeled > Js.t = ""
+    [@@merlin.hide] [@@mel.obj]
   end
   
   (* NATIVE *)
@@ -110,7 +137,10 @@ Patterns with type constraint:
   include struct
     let name ~(label : label_type) () = BODY
     let name props = name ~label:props##label ()
-    let name__props ?key ~label () = [%mel.obj { key; label }]
+  
+    external nameProps :
+      ?key:'key -> label:'label -> unit -> < label : label_type > Js.t = ""
+    [@@merlin.hide] [@@mel.obj]
   end
   
   (* NATIVE *)

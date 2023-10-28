@@ -14,4 +14,4 @@
  (libraries react_ppx ppxlib))
 
 (cram
- (deps ./ppx_test_runner ./ppx_test.exe ../.ocamlformat))
+ (deps ./ppx_test_runner ./ppx_test.exe ../../.ocamlformat))
