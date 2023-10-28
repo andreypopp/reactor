@@ -117,10 +117,12 @@ let of_json =
         let xpatt, xexprs = gen_pat_list ~loc "x" arity in
         [%pat?
           `List (`String [%p pstring ~loc:n.loc n.txt] :: [%p xpatt])]
-        --> make (Some (build_tuple ~loc self#derive_of_type_expr xexprs ts))
+        --> make
+              (Some (build_tuple ~loc self#derive_of_type_expr xexprs ts))
 
     method derive_of_variant_case_record ~loc make n fs =
       [%pat? `List [ `String [%p pstring ~loc:n.loc n.txt]; `Assoc fs ]]
       --> make
-            (Some (build_record ~loc self#derive_of_type_expr fs [%expr fs]))
+            (Some
+               (build_record ~loc self#derive_of_type_expr fs [%expr fs]))
   end

@@ -605,7 +605,7 @@ class virtual deriving_of_cases =
     method extension = self#deriving#extension
   end
 
-class virtual derive_to =
+class virtual deriving_to =
   object (self)
     method virtual name : string
     method virtual t_to : loc:location -> core_type

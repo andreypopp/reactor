@@ -7,7 +7,7 @@ let as_json ~loc x = [%expr (Obj.magic [%e x] : Js.Json.t)]
 
 let to_json =
   object (self)
-    inherit Ppx_deriving_schema.derive_to
+    inherit Ppx_deriving_schema.deriving_to
     method name = "to_json"
     method t_to ~loc = [%type: Js.Json.t]
 

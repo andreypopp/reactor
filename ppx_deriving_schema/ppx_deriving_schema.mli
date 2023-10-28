@@ -36,7 +36,7 @@ module Repr : sig
 end
 
 (** define an encoder/serializer-like deriver *)
-class virtual derive_to : object
+class virtual deriving_to : object
   method virtual name : string
   (** name of the deriver *)
 

@@ -8,7 +8,7 @@ let pexp_list ~loc xs =
 
 let to_json =
   object (self)
-    inherit Ppx_deriving_schema.derive_to
+    inherit Ppx_deriving_schema.deriving_to
     method name = "to_json"
     method t_to ~loc = [%type: Yojson.Basic.t]
 
