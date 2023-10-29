@@ -272,7 +272,7 @@ class virtual deriving1 =
               match bindings with [ _ ] -> Nonrecursive | _ -> rec_flag
             in
             [%str
-              [@@@ocaml.warning "-39"]
+              [@@@ocaml.warning "-39-11"]
 
               [%%i pstr_value ~loc rec_flag bindings]]
   end
