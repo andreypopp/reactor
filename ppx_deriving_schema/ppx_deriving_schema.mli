@@ -150,6 +150,9 @@ val deriving_of_match :
   deriving
 (** Define an decoder-like deriving via pattern matching. *)
 
+val combined : name:label -> deriving -> deriving -> deriving
+(** created a combined deriver *)
+
 val register : ?deps:Deriving.t list -> deriving -> Deriving.t
 (** Register a deriving. *)
 
