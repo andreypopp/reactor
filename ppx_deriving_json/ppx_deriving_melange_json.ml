@@ -56,15 +56,6 @@ module Of_json = struct
           [%e
             estring ~loc (sprintf "expected a JSON array of length %i" n)]]
 
-  let econstruct (n : label loc) arg =
-    pexp_construct ~loc:n.loc (to_lident n) arg
-
-  let evariant (n : label loc) arg = pexp_variant ~loc:n.loc n.txt arg
-
-  let evariant_some (n : label loc) arg =
-    let loc = n.loc in
-    [%expr Some [%e evariant n arg]]
-
   let derive_of_tuple ~loc derive ts x =
     let n = List.length ts in
     [%expr
@@ -108,7 +99,7 @@ module Of_json = struct
       if tag = [%e estring ~loc:n.loc n.txt] then (
         [%e ensure_json_array_len ~loc (arity + 1) [%expr len]];
         [%e
-          if arity = 0 then econstruct n None
+          if arity = 0 then make None
           else make (Some (build_tuple ~loc derive 1 ts [%expr array]))])
       else [%e next]]
 
