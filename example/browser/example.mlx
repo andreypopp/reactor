@@ -74,7 +74,7 @@ let%component nav' () =
     <li><link' href="/about" label="About" /></li>
   </ul>
 
-type about_mode = About_light | About_dark [@@deriving to_json, of_json]
+type about_mode = About_light | About_dark [@@deriving json]
 
 let%export_component about ~(mode : about_mode) ~(num : int) () =
   let%browser_only () =

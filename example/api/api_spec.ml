@@ -1,12 +1,10 @@
 type world = { lab : string; opt : int option; name : string }
-[@@deriving of_json, to_json]
+[@@deriving json]
 
-type greeting = Greeting_formal | Greeting_informal
-[@@deriving of_json, to_json]
-
-type 'a c = [ `C of 'a ] [@@deriving of_json]
-type b = [ `B of int | int c ] [@@deriving of_json]
-type a = [ `A of string | b | int c ] [@@deriving of_json]
+type greeting = Greeting_formal | Greeting_informal [@@deriving json]
+type 'a c = [ `C of 'a ] [@@deriving json]
+type b = [ `B of int | int c ] [@@deriving json]
+type a = [ `A of string | b | int c ] [@@deriving json]
 
 module type Hello = sig
   val hello : name:string -> string Promise.t [@@query]
@@ -18,7 +16,7 @@ end
 [@@deriving remote { path = "/hello" }]
 
 type todo = { id : int; text : string; completed : bool }
-[@@deriving of_json, to_json]
+[@@deriving json]
 
 module type Todo = sig
   val list : unit -> todo list Promise.t [@@query]
