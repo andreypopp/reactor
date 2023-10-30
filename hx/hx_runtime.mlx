@@ -1,0 +1,125 @@
+[@@@warning "-26-27"]
+
+type trigger = On_click | On_submit | On_timer of int [@@deriving json]
+
+let%browser_only fetch ?params method_ path =
+  let headers =
+    Fetch.HeadersInit.makeWithArray
+      [| "Accept", "application/react.component" |]
+  in
+  let url = Webapi.Url.make ("http://example.com" ^ path) in
+  let () =
+    match params with
+    | None -> ()
+    | Some params ->
+        let url_params = Webapi.Url.searchParams url in
+        List.iter
+          (fun (k, v) ->
+            let v =
+              match Js.Json.classify v with
+              | JSONString v -> v
+              | JSONNumber v ->
+                  if Float.equal (Js.Math.round v) v then
+                    string_of_int (Int.of_float v)
+                  else string_of_float v
+              | _ -> Js.Json.stringify v
+            in
+            Webapi.Url.URLSearchParams.append k v url_params)
+          params
+  in
+  ReactServerDOM.createFromFetch
+  @@ Fetch.fetchWithRequest
+  @@ Fetch.Request.makeWithInit
+       (Webapi.Url.pathname url ^ Webapi.Url.search url)
+  @@ Fetch.RequestInit.make ~headers ~method_ ()
+
+module Form = struct
+  let%export_component make ~(id : string) ~(children : React.element) ()
+      =
+    let children, set_children =
+      React.useState (fun () -> Promise.return children)
+    in
+    let ref, set_ref = ReactDOM.useDomRef () in
+    React.useEffect1
+      (fun%browser_only () ->
+        let el = ref.current |> Js.Nullable.toOption |> Option.get in
+        let el = Webapi.Dom.HtmlFormElement.ofElement el |> Option.get in
+        Hx_targets.set id
+          { set = set_children; target = Target_form_element el };
+        Some (fun () -> Hx_targets.unset id))
+      [| id |];
+    <form ref=set_ref>(React.use children)</form>
+end
+
+module Target = struct
+  let%export_component make ~(id : string) ~(children : React.element) ()
+      =
+    let children, set_children =
+      React.useState (fun () -> Promise.return children)
+    in
+    React.useEffect1
+      (fun%browser_only () ->
+        Hx_targets.set id { set = set_children; target = Target_element };
+        Some (fun () -> Hx_targets.unset id))
+      [| id |];
+    React.use children
+end
+
+module Request = struct
+  let%export_component make ?(params : (string * Json.t) list option)
+      ?(params_target : string option) ?(target : string option)
+      ~(path : string) ~(trigger : trigger) ~(children : React.element) ()
+      =
+    let children, set_children =
+      React.useState (fun () -> Promise.return children)
+    in
+    let children = React.use children in
+    let%browser_only fetch _ =
+      React.startTransition @@ fun () ->
+      let params = Option.value params ~default:[] in
+      let extra_params =
+        match params_target with
+        | None -> None
+        | Some id ->
+            let t = Hx_targets.get id in
+            Option.bind t (fun t ->
+                match t.Hx_targets.target with
+                | Target_form_element el -> (
+                    let fd = Hx_dom.FormData.ofFormElement el in
+                    let extra_params = ref [] in
+                    Webapi.FormData.Iterator.forEach
+                      (Webapi.FormData.entries fd) ~f:(fun [@u] (k, v) ->
+                        match Webapi.FormData.EntryValue.classify v with
+                        | `File _ -> ()
+                        | `String v ->
+                            extra_params :=
+                              (k, Js.Json.string v) :: !extra_params);
+                    match !extra_params with [] -> None | p -> Some p)
+                | Target_element -> None)
+      in
+      let extra_params = Option.value extra_params ~default:[] in
+      let children = fetch ~params:(params @ extra_params) Get path in
+      let set_children =
+        match target with
+        | None -> Some set_children
+        | Some id ->
+            let t = Hx_targets.get id in
+            Option.map (fun t -> t.Hx_targets.set) t
+      in
+      match set_children with
+      | Some set_children -> set_children (fun _ -> children)
+      | None -> Js.log "no target, dropping update"
+    in
+    let%browser_only submit _ = fetch () in
+    let onClick =
+      match trigger with
+      | On_submit | On_click ->
+          Some
+            (fun%browser_only ev ->
+              ReactEvent.Mouse.preventDefault ev;
+              fetch ())
+      | On_timer _ -> None
+    in
+    React.useEffect1 (fun%browser_only () -> None) [||];
+    <span ?onClick>children</span>
+end

@@ -1,0 +1,104 @@
+open ContainersLabels
+
+let%component select_item ~id ~children () =
+  <Hx.Request path="/select"
+                         trigger=On_click
+                         target="selected"
+                         params=[ "id", `Int id ]>
+    <li>children</li>
+  </Hx.Request>
+
+let%component selected_item () =
+  <Hx.Target id="selected">
+    React.null
+  </Hx.Target>
+
+type profile = {first_name: string; last_name: string}
+
+let profile = ref {first_name = "Andrey"; last_name = "Popp"}
+
+let%component profile_view ~profile () =
+  <div>
+    <div><label>"First Name: "</label>(React.string profile.first_name)</div>
+    <div><label>"Last Name: "</label>(React.string profile.last_name)</div>
+    <Hx.Request path="/profile/edit"
+                          trigger=On_click
+                          target="profile">
+      <button>"Edit"</button>
+    </Hx.Request>
+  </div>
+
+let%component profile_edit ~profile () =
+  <Hx.Form id="profile_form">
+    <div><label>"First Name: "</label><input name="first_name" type_="text" defaultValue=profile.first_name /></div>
+    <div><label>"Last Name: "</label><input name="last_name" type_="text" defaultValue=profile.last_name /></div>
+    <Hx.Request path="/profile/save"
+                params_target="profile_form"
+                trigger=On_submit
+                target="profile">
+      <button>"Save"</button>
+    </Hx.Request>
+  </Hx.Form>
+
+let%component profile_card ~profile () =
+  <React.Suspense>
+    <Hx.Target id="profile">
+      <profile_view profile=profile />
+    </Hx.Target>
+  </React.Suspense>
+
+let main _ =
+  <html>
+    <body>
+      <div>
+        "HELLO, "
+        <Hx.Request path="/click" trigger=On_click>
+          "CLICK ME"
+        </Hx.Request>
+      </div>
+      <div>
+        <ul>
+          <select_item id=1>"one"</select_item>
+          <select_item id=2>"two"</select_item>
+          <select_item id=3>"three"</select_item>
+        </ul>
+      </div>
+      <selected_item />
+      <div>
+        <profile_card profile=(!profile) />
+      </div>
+    </body>
+  </html>
+
+let clicked = ref 0
+
+let message _ =
+  clicked := !clicked + 1;
+  let clicked = string_of_int !clicked in
+  <span>"WORLD!" <b>" (clicked " (React.string clicked) ")"</b></span>
+
+let select req =
+  match Dream.query req "id" with
+  | None -> <span>"ERROR: no id passed"</span>
+  | Some id -> (
+      try
+        let id = Int.of_string_exn id in
+        <span>"SELECTED: " (React.string (string_of_int id))</span>
+      with Failure msg -> <span>"ERROR: " (React.string msg)</span>)
+
+let () =
+  Dream.run ~interface:"0.0.0.0"
+  @@ Dream.logger
+  @@ Dream.router
+       [
+         Hx.hx_runtime ();
+         Hx.hx_render_page "/" main;
+         Hx.hx_handle_get "/click" message;
+         Hx.hx_handle_get "/select" select;
+         Hx.hx_handle_get "/profile/edit" (fun _req -> <profile_edit profile=(!profile) />);
+         Hx.hx_handle_get "/profile/save" (fun req ->
+           let first_name = Dream.query req "first_name" |> Option.get_exn_or "oops" in
+           let last_name = Dream.query req "last_name" |> Option.get_exn_or "oops" in
+           profile := {first_name;last_name};
+           <profile_view profile=(!profile) />);
+       ]

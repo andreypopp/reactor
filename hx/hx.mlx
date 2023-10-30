@@ -1,0 +1,16 @@
+open ContainersLabels
+include Hx_runtime
+
+let hx_runtime () =
+  let static =
+    Hx_static.Sites.static
+    |> List.head_opt
+    |> Option.get_exn_or "no /static dir found"
+  in
+  Dream.get "/static/**" (Dream.static static)
+
+let hx_render_page path ui =
+  let scripts = [ "/static/hx_runtime.js" ] in
+  Dream.get path (React_dream.render ~scripts ui)
+
+let hx_handle_get path ui = Dream.get path (React_dream.render ui)
