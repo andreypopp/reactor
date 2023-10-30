@@ -135,12 +135,13 @@ module Let_component = struct
           if is_key_prop prop then None
           else
             let t =
-              match prop.typ with None -> prop_var prop | Some t -> t
-            in
-            let t =
-              match prop.arg_label with
-              | Optional _ -> [%type: [%t t] option]
-              | _ -> t
+              match prop.typ with
+              | None -> (
+                  let t = prop_var prop in
+                  match prop.arg_label with
+                  | Optional _ -> [%type: [%t t] option]
+                  | _ -> t)
+              | Some t -> t
             in
             let pof_desc = Otag (prop.label, t) in
             Some { pof_loc = loc; pof_attributes = []; pof_desc })
@@ -276,9 +277,10 @@ module Ext_export_component = struct
   open Ast_builder.Default
 
   let component_id ~ctxt name =
+    let code_path = Expansion_context.Extension.code_path ctxt in
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
-    let fname = loc.loc_start.pos_fname in
-    estring ~loc (sprintf "%s#%s" fname name)
+    estring ~loc
+      (sprintf "%s.%s" (Code_path.fully_qualified_path code_path) name)
 
   let props_to_model ~ctxt (props : Let_component.prop list) =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
@@ -772,8 +774,7 @@ module Jsx = struct
                     (fun xs (label, x) ->
                       match label with
                       | Nolabel -> xs
-                      | Optional _ -> assert false
-                      | Labelled name -> (
+                      | Optional name | Labelled name -> (
                           match Html.browser_only_prop name with
                           | true -> xs
                           | false ->
@@ -803,13 +804,19 @@ module Jsx = struct
                 pexp_errorf ~loc
                   "both children and dangerouslySetInnerHTML cannot be \
                    used at once"
+            | Some [ children ], None ->
+                [%expr
+                  React_server.React.unsafe_create_html_element [%e name]
+                    [%e make_props]
+                    (Some (React_server.React.Html_children [%e children]))]
             | Some children, None ->
                 [%expr
                   React_server.React.unsafe_create_html_element [%e name]
                     [%e make_props]
                     (Some
                        (React_server.React.Html_children
-                          [%e pexp_array ~loc children]))]
+                          (React_server.React.array
+                             [%e pexp_array ~loc children])))]
             | None, None ->
                 [%expr
                   React_server.React.unsafe_create_html_element [%e name]
@@ -818,8 +825,14 @@ module Jsx = struct
             let props =
               match children with
               | None -> props
+              | Some [ children ] ->
+                  (Labelled "children", children) :: props
               | Some children ->
-                  (Labelled "children", pexp_array ~loc children) :: props
+                  ( Labelled "children",
+                    [%expr
+                      React_server.React.array
+                        [%e pexp_array ~loc children]] )
+                  :: props
             in
             pexp_apply ~loc component props)
 
