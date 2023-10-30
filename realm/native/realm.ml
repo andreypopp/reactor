@@ -9,6 +9,9 @@ end
 module Json = struct
   type t = Yojson.Basic.t
 
+  let to_json t = t
+  let of_json t = t
+
   module To_json = struct
     let string_to_json v = `String v
     let bool_to_json v = `Bool v

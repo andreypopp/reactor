@@ -16,6 +16,9 @@ end
 module Json = struct
   type t = Js.Json.t
 
+  let to_json t = t
+  let of_json t = t
+
   module To_json = struct
     external string_to_json : string -> t = "%identity"
     external bool_to_json : bool -> t = "%identity"
