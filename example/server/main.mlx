@@ -9,7 +9,7 @@ module UI = struct
     Lwt_unix.sleep delay >|= fun () ->
     <div className="ba pa2">
       <h3 className="ma0 pa0 pb2">(React.string title)</h3>
-      <div className="pb2">(React.array children)</div>
+      <div className="pb2">children</div>
       <div className="f7 bt pa1">
         "I've been sleeping for "
         (React.stringf "%0.1f sec" delay)
@@ -21,8 +21,7 @@ module UI = struct
     <html className="h-100">
       <head><title>(React.string title)</title></head>
       <body className="pa4 sans-serif dark-gray bg-washed-yellow h-100">
-        <h1><span>(React.string title)</span></h1>
-        <div>(React.array children)</div>
+        <h1><span>(React.string title)</span></h1> <div>children</div>
       </body>
     </html>
 
