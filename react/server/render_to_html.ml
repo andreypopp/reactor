@@ -188,7 +188,7 @@ let rec client_to_html t = function
         props;
         children = Some (Html_children children);
       } ->
-      client_to_html_many t children >|= fun children ->
+      client_to_html t children >|= fun children ->
       Html.node tag_name props [ children ]
   | El_html
       {
@@ -214,13 +214,13 @@ let rec client_to_html t = function
       wait ()
   | El_async_thunk _ -> failwith "async component in client mode"
   | El_suspense { children; fallback = _; key = _ } -> (
-      match Array.length children with
-      | 0 -> Lwt.return (Emit_html.html_suspense Html.empty)
+      match children with
+      | El_null -> Lwt.return (Emit_html.html_suspense Html.empty)
       | _ ->
           Computation.fork t @@ fun t ->
           let idx = Computation.use_idx t in
           let async =
-            client_to_html_many t children >|= Emit_html.html_chunk idx
+            client_to_html t children >|= Emit_html.html_chunk idx
           in
           `Fork (async, Emit_html.html_suspense_placeholder idx))
   | El_client_thunk
@@ -239,7 +239,7 @@ let rec server_to_html t = function
   | El_html
       { tag_name; key; props; children = Some (Html_children children) }
     ->
-      server_to_html_many t children >|= fun (html, children) ->
+      server_to_html t children >|= fun (html, children) ->
       ( Html.node tag_name props [ html ],
         Render_to_model.node ~tag_name ~key
           ~props:(props :> (string * json) list)
@@ -278,7 +278,7 @@ let rec server_to_html t = function
       >>= fun (tree, _reqs) -> server_to_html t tree
   | El_suspense { children; fallback = _; key } -> (
       Computation.fork t @@ fun t ->
-      let promise = server_to_html_many t children in
+      let promise = server_to_html t children in
       match Lwt.state promise with
       | Sleep ->
           let idx = Computation.use_idx t in

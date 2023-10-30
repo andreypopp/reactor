@@ -13,8 +13,8 @@ type element =
   | El_null : element
   | El_frag : children -> element
   | El_suspense : {
-      children : children;
-      fallback : children;
+      children : element;
+      fallback : element;
       key : string option;
     }
       -> element
@@ -39,7 +39,7 @@ type element =
 and children = element array
 
 and html_children =
-  | Html_children of children
+  | Html_children of element
   | Html_children_raw of unsafe_html
 
 and client_props = (string * client_prop) list
@@ -58,7 +58,7 @@ let thunk f = El_thunk f
 let async_thunk f = El_async_thunk f
 
 module Suspense = struct
-  let make ?key ?(fallback = [| null |]) ~children () =
+  let make ?key ?(fallback = null) ~children () =
     El_suspense { children; fallback; key }
 end
 

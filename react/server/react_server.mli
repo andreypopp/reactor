@@ -23,8 +23,8 @@ module React : sig
   module Suspense : sig
     val make :
       ?key:string ->
-      ?fallback:children ->
-      children:children ->
+      ?fallback:element ->
+      children:element ->
       unit ->
       element
   end
@@ -57,7 +57,7 @@ module React : sig
   type unsafe_html = { __html : string }
 
   type html_children =
-    | Html_children of children
+    | Html_children of element
     | Html_children_raw of unsafe_html
 
   val unsafe_create_html_element :

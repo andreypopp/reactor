@@ -75,9 +75,7 @@ let rec to_model ctx idx el =
           match children with
           | None -> None, props
           | Some (Html_children children) ->
-              ( Some
-                  (Array.to_list children |> List.map ~f:to_model' |> list),
-                props )
+              Some (children |> to_model'), props
           | Some (Html_children_raw { __html }) ->
               ( None,
                 ( "dangerouslySetInnerHTML",
@@ -86,8 +84,7 @@ let rec to_model ctx idx el =
         in
         node ~tag_name ~key ~props children
     | El_suspense { children; fallback = _; key } ->
-        suspense ~key
-          (Array.to_list children |> List.map ~f:to_model' |> list)
+        suspense ~key (children |> to_model')
     | El_thunk f ->
         let tree, _reqs = Remote.Runner.with_ctx ctx.remote_ctx f in
         to_model' tree

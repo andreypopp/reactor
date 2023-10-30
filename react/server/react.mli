@@ -6,8 +6,8 @@ include
 module Suspense : sig
   val make :
     ?key:string ->
-    ?fallback:children ->
-    children:children ->
+    ?fallback:element ->
+    children:element ->
     unit ->
     element
 end
