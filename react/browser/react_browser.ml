@@ -21,6 +21,13 @@ module ReactDOM = struct
     ref, dom_ref
 end
 
+module ReactServerDOM = struct
+  external createFromFetch :
+    Fetch.response Promise.t -> React.element Promise.t
+    = "createFromFetch"
+  [@@mel.module "react-server-dom-webpack/client"]
+end
+
 module Component_map = React_browser_component_map
 
 module Router = struct

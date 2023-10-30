@@ -4,7 +4,7 @@
  (wrapped false)
  (flags :standard -open Realm)
  (modes melange)
- (libraries melange.dom realm.browser reason-react)
+ (libraries melange.dom realm.browser reason-react melange-fetch)
  (preprocess
   (pps melange.ppx)))
 
