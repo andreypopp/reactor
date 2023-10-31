@@ -1,5 +1,6 @@
 (library
  (name hx)
+ (public_name hx)
  (modules hx hx_static)
  (libraries hx_runtime react.server react_dream dune-site containers)
  (preprocess
@@ -15,16 +16,17 @@
 
 (generate_sites_module
  (module hx_static)
- (sites react_example))
+ (sites hx))
 
 (library
  (name hx_runtime_browser)
  (modules hx_runtime hx_targets hx_dom)
+ (enabled_if
+  (<> %{profile} "release"))
  (wrapped false)
  (libraries
   melange.dom
   react.browser
-  api_browser
   remote.browser
   realm.browser
   melange-webapi)
@@ -37,9 +39,10 @@
  native
  (library
   (name hx_runtime)
+  (public_name hx.runtime)
   (wrapped false)
   (modes native)
-  (libraries react.browser_server remote.native realm.native api_native)
+  (libraries react.browser_server remote.native realm.native)
   (flags :standard -open Realm)
   (preprocess
    (pps react.ppx -native ppx_deriving_json.native)))
@@ -49,6 +52,8 @@
 (melange.emit
  (alias browser_js)
  (target output)
+ (enabled_if
+  (<> %{profile} "release"))
  (modules)
  (libraries hx_runtime_browser)
  (module_systems commonjs))
@@ -84,8 +89,8 @@
    ./__boot.js)))
 
 (install
- (package react_example)
+ (package hx)
  (section
   (site
-   (react_example static)))
+   (hx static)))
  (files hx_runtime.js))
