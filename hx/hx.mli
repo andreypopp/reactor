@@ -38,9 +38,10 @@ module Request : sig
 end
 
 val hx_runtime : unit -> Dream.route
+val hx_page : string -> (Dream.request -> React.element) -> Dream.route
 
-val hx_render_page :
-  string -> (Dream.request -> React.element) -> Dream.route
-
-val hx_handle_get :
-  string -> (Dream.request -> React.element) -> Dream.route
+val hx_handle :
+  Dream.method_ ->
+  string ->
+  (Dream.request -> React.element) ->
+  Dream.route

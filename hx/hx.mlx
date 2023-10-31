@@ -9,8 +9,34 @@ let hx_runtime () =
   in
   Dream.get "/static/**" (Dream.static static)
 
-let hx_render_page path ui =
+let hx_page path ui =
   let scripts = [ "/static/hx_runtime.js" ] in
   Dream.get path (React_dream.render ~scripts ui)
 
-let hx_handle_get path ui = Dream.get path (React_dream.render ui)
+let hx_handle (verb : Dream.method_) path ui =
+  let handle = React_dream.render ui in
+  let handle =
+    match verb with
+    | `Method verb -> (
+        fun req ->
+          match Dream.method_ req with
+          | `Method verb' when String.equal verb' verb -> handle req
+          | _ ->
+              Dream.respond ~status:`Method_Not_Allowed
+                "METHOD NOT ALLOWED")
+    | _ -> handle
+  in
+  let route =
+    match verb with
+    | `GET -> Dream.get
+    | `POST -> Dream.post
+    | `PUT -> Dream.put
+    | `DELETE -> Dream.delete
+    | `PATCH -> Dream.patch
+    | `HEAD -> Dream.head
+    | `TRACE -> Dream.trace
+    | `OPTIONS -> Dream.options
+    | `CONNECT -> Dream.connect
+    | `Method _ -> Dream.any
+  in
+  route path handle

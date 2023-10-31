@@ -2,36 +2,44 @@ open ContainersLabels
 
 let%component select_item ~id ~children () =
   <Hx.Request path="/select"
-                         trigger=On_click
-                         target="selected"
-                         params=[ "id", `Int id ]>
+              trigger=On_click
+              target="selected"
+              params=[ "id", `Int id ]>
     <li>children</li>
   </Hx.Request>
 
 let%component selected_item () =
-  <Hx.Target id="selected">
-    React.null
-  </Hx.Target>
+  <Hx.Target id="selected">React.null</Hx.Target>
 
-type profile = {first_name: string; last_name: string}
+type profile = { first_name : string; last_name : string }
 
-let profile = ref {first_name = "Andrey"; last_name = "Popp"}
+let profile = ref { first_name = "Andrey"; last_name = "Popp" }
 
 let%component profile_view ~profile () =
   <div>
-    <div><label>"First Name: "</label>(React.string profile.first_name)</div>
-    <div><label>"Last Name: "</label>(React.string profile.last_name)</div>
-    <Hx.Request path="/profile/edit"
-                          trigger=On_click
-                          target="profile">
+    <div>
+      <label>"First Name: "</label> (React.string profile.first_name)
+    </div>
+    <div>
+      <label>"Last Name: "</label> (React.string profile.last_name)
+    </div>
+    <Hx.Request path="/profile/edit" trigger=On_click target="profile">
       <button>"Edit"</button>
     </Hx.Request>
   </div>
 
 let%component profile_edit ~profile () =
   <Hx.Form id="profile_form">
-    <div><label>"First Name: "</label><input name="first_name" type_="text" defaultValue=profile.first_name /></div>
-    <div><label>"Last Name: "</label><input name="last_name" type_="text" defaultValue=profile.last_name /></div>
+    <div>
+      <label>"First Name: "</label>
+      <input name="first_name"
+             type_="text"
+             defaultValue=profile.first_name />
+    </div>
+    <div>
+      <label>"Last Name: "</label>
+      <input name="last_name" type_="text" defaultValue=profile.last_name />
+    </div>
     <Hx.Request path="/profile/save"
                 params_target="profile_form"
                 trigger=On_submit
@@ -40,21 +48,20 @@ let%component profile_edit ~profile () =
     </Hx.Request>
   </Hx.Form>
 
-let%component profile_card ~profile () =
-  <React.Suspense>
-    <Hx.Target id="profile">
-      <profile_view profile=profile />
-    </Hx.Target>
-  </React.Suspense>
+let%component profile_card ?(mode = `View) ~profile () =
+  let children =
+    match mode with
+    | `View -> <profile_view profile />
+    | `Edit -> <profile_edit profile />
+  in
+  <Hx.Target id="profile">children</Hx.Target>
 
 let main _ =
   <html>
     <body>
       <div>
         "HELLO, "
-        <Hx.Request path="/click" trigger=On_click>
-          "CLICK ME"
-        </Hx.Request>
+        <Hx.Request path="/click" trigger=On_click>"CLICK ME"</Hx.Request>
       </div>
       <div>
         <ul>
@@ -64,9 +71,7 @@ let main _ =
         </ul>
       </div>
       <selected_item />
-      <div>
-        <profile_card profile=(!profile) />
-      </div>
+      <div><profile_card profile=!profile /></div>
     </body>
   </html>
 
@@ -92,13 +97,18 @@ let () =
   @@ Dream.router
        [
          Hx.hx_runtime ();
-         Hx.hx_render_page "/" main;
-         Hx.hx_handle_get "/click" message;
-         Hx.hx_handle_get "/select" select;
-         Hx.hx_handle_get "/profile/edit" (fun _req -> <profile_edit profile=(!profile) />);
-         Hx.hx_handle_get "/profile/save" (fun req ->
-           let first_name = Dream.query req "first_name" |> Option.get_exn_or "oops" in
-           let last_name = Dream.query req "last_name" |> Option.get_exn_or "oops" in
-           profile := {first_name;last_name};
-           <profile_view profile=(!profile) />);
+         Hx.hx_page "/" main;
+         Hx.hx_handle `GET "/click" message;
+         Hx.hx_handle `GET "/select" select;
+         Hx.hx_handle `GET "/profile/edit" (fun _req ->
+             <profile_edit profile=!profile />);
+         Hx.hx_handle `GET "/profile/save" (fun req ->
+             let first_name =
+               Dream.query req "first_name" |> Option.get_exn_or "oops"
+             in
+             let last_name =
+               Dream.query req "last_name" |> Option.get_exn_or "oops"
+             in
+             profile := { first_name; last_name };
+             <profile_view profile=!profile />);
        ]

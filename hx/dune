@@ -9,7 +9,6 @@
  (name hx_example)
  (public_name hx)
  (modules hx_example)
- (package react_example)
  (libraries hx dream containers)
  (preprocess
   (pps react.ppx -native)))
@@ -57,6 +56,8 @@
 (rule
  (target ./__boot.js)
  (deps ./output/hx/hx_runtime.js)
+ (enabled_if
+  (<> %{profile} "release"))
  (action
   (with-stdout-to
    %{target}
@@ -66,6 +67,9 @@
 
 (rule
  (target ./hx_runtime.js)
+ (mode promote)
+ (enabled_if
+  (<> %{profile} "release"))
  (deps
   %{lib:react.browser:react_browser_runtime.js}
   (alias browser_js))
@@ -75,6 +79,7 @@
    --log-level=warning
    --bundle
    --loader:.js=jsx
+   --minify
    --outfile=%{target}
    ./__boot.js)))
 
