@@ -12,7 +12,12 @@ module Computation : sig
     (t -> [ `Fail of exn | `Fork of Html.t Lwt.t * 'a | `Sync of 'a ]) ->
     'a Lwt.t
 
-  val remote_runner_ctx : t -> Remote.Runner.ctx
+  val update_ctx : t -> 'a React_model.context -> 'a -> t
+  val with_ctx : t -> (unit -> 'a) -> 'a * Remote.Runner.running list
+
+  val with_ctx_async :
+    t -> (unit -> 'a Lwt.t) -> ('a * Remote.Runner.running list) Lwt.t
+
   val use_idx : t -> int
   val emit_html : t -> Html.t -> unit
 end = struct
@@ -25,11 +30,22 @@ end = struct
 
   type t = {
     ctx : ctx;
+    react_ctx : Hmap.t;
     finished : unit Lwt.t;
     mutable emit_html : Html.t -> unit;
   }
 
-  let remote_runner_ctx t = t.ctx.remote_runner_ctx
+  let update_ctx t ctx v =
+    let react_ctx = Hmap.add ctx.React_model.key v t.react_ctx in
+    { t with react_ctx }
+
+  let with_ctx t f =
+    let f () = React_model.with_context t.react_ctx f in
+    Remote.Runner.with_ctx t.ctx.remote_runner_ctx f
+
+  let with_ctx_async t f =
+    let f () = React_model.with_context t.react_ctx f in
+    Remote.Runner.with_ctx_async t.ctx.remote_runner_ctx f
 
   let use_idx t =
     t.ctx.idx <- t.ctx.idx + 1;
@@ -55,7 +71,8 @@ end = struct
       | Some chunks -> htmls := Some (chunk :: chunks)
       | None -> failwith "invariant violation: root computation finished"
     in
-    f ({ ctx; emit_html; finished }, idx) >|= fun html ->
+    f ({ ctx; emit_html; finished; react_ctx = Hmap.empty }, idx)
+    >|= fun html ->
     let htmls =
       match !htmls with
       | Some chunks ->
@@ -75,7 +92,14 @@ end = struct
   let fork parent_t f =
     let ctx = parent_t.ctx in
     let finished, parent_done = Lwt.wait () in
-    let t = { ctx; emit_html = parent_t.emit_html; finished } in
+    let t =
+      {
+        ctx;
+        emit_html = parent_t.emit_html;
+        react_ctx = parent_t.react_ctx;
+        finished;
+      }
+    in
     match f t with
     | `Fork (async, sync) ->
         ctx.pending <- ctx.pending + 1;
@@ -179,6 +203,9 @@ let rec client_to_html t = function
   | React_model.El_null -> Lwt.return (Html.text "")
   | El_text s -> Lwt.return (Html.text s)
   | El_frag els -> client_to_html_many t els
+  | El_context (key, value, children) ->
+      let t = Computation.update_ctx t key value in
+      client_to_html t children
   | El_html { tag_name; key = _; props; children = None } ->
       Lwt.return (Html.node tag_name props [])
   | El_html
@@ -200,9 +227,7 @@ let rec client_to_html t = function
       Lwt.return (Html.node tag_name props [ Html.unsafe_raw __html ])
   | El_thunk f ->
       let rec wait () =
-        match
-          Remote.Runner.with_ctx (Computation.remote_runner_ctx t) f
-        with
+        match Computation.with_ctx t f with
         | exception React_model.Suspend (Any_promise promise) ->
             promise >>= fun _ -> wait ()
         | v, [] -> client_to_html t v
@@ -236,6 +261,8 @@ let rec server_to_html t = function
   | React_model.El_null -> Lwt.return (Html.empty, Render_to_model.null)
   | El_text s -> Lwt.return (Html.text s, Render_to_model.text s)
   | El_frag els -> server_to_html_many t els
+  | El_context _ ->
+      failwith "react context is not supported in server environment"
   | El_html
       { tag_name; key; props; children = Some (Html_children children) }
     ->
@@ -267,15 +294,13 @@ let rec server_to_html t = function
             ~props:(props :> (string * json) list)
             None )
   | El_thunk f ->
-      let tree, _reqs =
-        Remote.Runner.with_ctx (Computation.remote_runner_ctx t) f
-      in
+      let tree, _reqs = Computation.with_ctx t f in
       (* TODO: need to register them somewhere? *)
       (* let payload = handle_remote_reqs t reqs in *)
       server_to_html t tree
   | El_async_thunk f ->
-      Remote.Runner.with_ctx_async (Computation.remote_runner_ctx t) f
-      >>= fun (tree, _reqs) -> server_to_html t tree
+      Computation.with_ctx_async t f >>= fun (tree, _reqs) ->
+      server_to_html t tree
   | El_suspense { children; fallback = _; key } -> (
       Computation.fork t @@ fun t ->
       let promise = server_to_html t children in

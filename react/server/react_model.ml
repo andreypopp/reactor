@@ -9,9 +9,17 @@ type unsafe_html = { __html : string }
 
 module Html_props = React_server_html_props
 
+let current_context : Hmap.t Lwt.key = Lwt.new_key ()
+
+let with_context context f =
+  Lwt.with_value current_context (Some context) f
+
+type 'a context = { key : 'a Hmap.key; default : 'a }
+
 type element =
   | El_null : element
   | El_frag : children -> element
+  | El_context : 'a context * 'a * element -> element
   | El_suspense : {
       children : element;
       fallback : element;
@@ -79,6 +87,23 @@ let use_memo2 _a _b f = f ()
 let use_callback0 f = f
 let use_callback1 _a f = f
 let use_callback2 _a _b f = f
+
+module Context = struct
+  type 'a t = 'a context
+
+  let provider ctx ?key:_ ~value ~children () =
+    El_context (ctx, value, children)
+end
+
+let useContext ctx =
+  match Lwt.get current_context with
+  | None -> ctx.default
+  | Some ctx_map -> (
+      match Hmap.find ctx.key ctx_map with
+      | None -> ctx.default
+      | Some v -> v)
+
+let createContext default = { default; key = Hmap.Key.create () }
 
 type dom_element
 type 'a nullable

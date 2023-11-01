@@ -69,6 +69,8 @@ let rec to_model ctx idx el =
     | El_null -> `Null
     | El_text s -> `String s
     | El_frag els -> `List (Array.map els ~f:to_model' |> Array.to_list)
+    | El_context _ ->
+        failwith "react context is not supported in server environment"
     | El_html { tag_name; key; props; children } ->
         let props = (props :> (string * json) list) in
         let children, props =

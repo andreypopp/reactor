@@ -21,6 +21,30 @@ module type REACT = sig
   val useEffect1 : (unit -> (unit -> unit) option) -> 'a array -> unit
   val startTransition : (unit -> unit) -> unit
 
+  module Context : sig
+    type 'a t
+
+    val provider :
+      'a t ->
+      ?key:string ->
+      value:'a ->
+      children:element ->
+      unit ->
+      element
+  end
+
+  val createContext : 'a -> 'a Context.t
+  val useContext : 'a Context.t -> 'a
+
+  module Suspense : sig
+    val make :
+      ?key:string ->
+      ?fallback:element ->
+      children:element ->
+      unit ->
+      element
+  end
+
   type 'value ref = { mutable current : 'value }
 
   val useRef : 'value -> 'value ref
