@@ -110,4 +110,7 @@ type html_rendering =
 val render_to_html : React.element -> html_rendering Lwt.t
 (** [render_to_html elem] renders React element [elem] to HTML. *)
 
+type browser_only
+(** values of this type are impossible to use in server environment *)
+
 module Html : module type of Html

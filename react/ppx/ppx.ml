@@ -455,9 +455,15 @@ module Browser_only_expression = struct
     | _ -> (
         match expr.pexp_desc with
         | Pexp_fun _ | Pexp_function _ ->
-            pat, [%expr fun _ -> raise React_server.React.Browser_only]
+            ( pat,
+              [%expr
+                fun _ : React_server.browser_only ->
+                  raise React_server.React.Browser_only] )
         | Pexp_lazy _ ->
-            pat, [%expr lazy (raise React_server.React.Browser_only)]
+            ( pat,
+              [%expr
+                (lazy (raise React_server.React.Browser_only)
+                  : React_server.browser_only lazy_t)] )
         | _ ->
             raise_errorf ~loc:pat.ppat_loc
               "Invalid %%browser_only usage, only the following is \
@@ -475,12 +481,12 @@ module Browser_only_expression = struct
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
     try
       match payload with
-      | `Let_form (orig_expr, recflag, bindings, body) -> (
+      | `Let_form (orig_expr, _recflag, bindings, body) -> (
           match mode with
           | Target_js -> orig_expr
           | Target_native ->
               let bindings = build_bindings ~ctxt bindings in
-              pexp_let ~loc:orig_expr.pexp_loc recflag bindings body)
+              pexp_let ~loc:orig_expr.pexp_loc Nonrecursive bindings body)
       | `Fun_form (orig_expr, recflag, default, pat) -> (
           match mode with
           | Target_js -> orig_expr

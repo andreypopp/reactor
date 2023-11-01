@@ -16,3 +16,5 @@ type html_rendering = Render_to_html.html_rendering =
 let render_to_html = Render_to_html.render
 
 module Html = Html
+
+type browser_only
