@@ -1,5 +1,3 @@
-[@@@warning "-32-27-26"]
-
 let%component link' ~href ~label () =
   let%browser_only onClick ev =
     ReactEvent.Mouse.preventDefault ev;
@@ -7,7 +5,7 @@ let%component link' ~href ~label () =
   in
   <a href onClick>(React.string label)</a>
 
-let%component with_children ~children () = <div />
+let%component with_children ~children:_ () = <div />
 
 let%component button' ~onPress:onClick ~label () =
   <button className="pv1 ph2 br1 bg-light-gray bw1 b--gray" onClick>
@@ -25,7 +23,7 @@ let%component hello ~name () =
       [| name |]
   in
   let msg = React.use (Remote.run_query q) in
-  let%browser_only onClick _ev =
+  let%browser_only onClick [@ocaml.warning "-26"] = (fun  _ev  ->
     ignore
       (Promise.(
          let* () =
@@ -36,7 +34,7 @@ let%component hello ~name () =
          React.startTransition (fun () ->
              setq (fun _ -> Api.Hello.hello ~name));
          return ())
-        : unit Promise.t)
+  : unit Promise.t)) 
   in
   <div onClick>(React.string msg)</div>
 
@@ -77,6 +75,7 @@ let%component nav' () =
 type about_mode = About_light | About_dark [@@deriving json]
 
 let%export_component about ~(mode : about_mode) ~(num : int) () =
+  let _ = num in
   let%browser_only () =
     match mode with
     | About_dark -> Js.log "dark"

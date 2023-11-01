@@ -8,7 +8,7 @@
   remote.browser
   realm.browser
   melange-webapi)
- (flags :standard -open Realm -open React_browser)
+ (flags :standard -open Realm -open React_browser -alert ++browser_only)
  (modes melange)
  (preprocess
   (pps melange.ppx react.ppx ppx_deriving_json.browser)))
@@ -20,7 +20,7 @@
   (wrapped false)
   (modes native)
   (libraries react.browser_server remote.native realm.native api_native)
-  (flags :standard -open Realm)
+  (flags :standard -open Realm -alert ++browser_only -w -32-27-26)
   (preprocess
    (pps react.ppx -native ppx_deriving_json.native)))
  (copy_files#
