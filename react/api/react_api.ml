@@ -8,13 +8,10 @@ module type REACT = sig
 
   val array : children -> element
   val list : element list -> element
-
   val null : element
-  (** [null] renders nothing *)
-
   val string : string -> element
-  (** [string s] renders string [s]. *)
-
+  val int : int -> element
+  val float : float -> element
   val stringf : ('a, unit, string, element) format4 -> 'a
   val useState : (unit -> 'state) -> 'state * (('state -> 'state) -> unit)
   val useEffect : (unit -> (unit -> unit) option) -> unit
