@@ -2,6 +2,16 @@
 
 type trigger = On_click | On_submit | On_timer of int [@@deriving json]
 
+module Current_target = struct
+  let ctx : string option React.Context.t = React.createContext None
+
+  module Provider = struct
+    include React.Context
+
+    let make = provider ctx
+  end
+end
+
 let%browser_only fetch ?params method_ path =
   let headers =
     Fetch.HeadersInit.makeWithArray
@@ -65,7 +75,9 @@ module Target = struct
 
   let%export_component make ~(id : string) ~(children : React.element) ()
       =
-    <React.Suspense><inner id>children</inner></React.Suspense>
+    <Current_target.Provider value=(Some id)>
+      <React.Suspense><inner id>children</inner></React.Suspense>
+    </Current_target.Provider>
 end
 
 module Request = struct
@@ -76,6 +88,7 @@ module Request = struct
     let children, set_children =
       React.useState (fun () -> Promise.return children)
     in
+    let target_of_context = React.useContext Current_target.ctx in
     let children = React.use children in
     let%browser_only fetch _ =
       React.startTransition @@ fun () ->
@@ -103,6 +116,9 @@ module Request = struct
       let extra_params = Option.value extra_params ~default:[] in
       let children = fetch ~params:(params @ extra_params) Get path in
       let set_children =
+        let target =
+          match target with None -> target_of_context | target -> target
+        in
         match target with
         | None -> Some set_children
         | Some id ->
