@@ -43,7 +43,7 @@
   (wrapped false)
   (modes native)
   (libraries react.browser_server remote.native realm.native)
-  (flags :standard -open Realm)
+  (flags :standard -open Realm -alert ++browser_only -w -32-27-26)
   (preprocess
    (pps react.ppx -native ppx_deriving_json.native)))
  (copy_files#

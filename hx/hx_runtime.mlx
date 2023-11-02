@@ -1,5 +1,3 @@
-[@@@warning "-26-27"]
-
 type trigger = On_click | On_submit | On_timer of int [@@deriving json]
 
 module Current_target = struct
@@ -129,7 +127,6 @@ module Request = struct
       | Some set_children -> set_children (fun _ -> children)
       | None -> Js.log "no target, dropping update"
     in
-    let%browser_only submit _ = fetch () in
     let onClick =
       match trigger with
       | On_submit | On_click ->
