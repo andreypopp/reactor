@@ -52,16 +52,22 @@ syntactically represent a function:
     ()
   
   (* NATIVE *)
-  let f _ = raise React_server.React.Browser_only
+  let f _ : React_server.browser_only =
+    raise React_server.React.Browser_only
   
   let () =
-    let f _ = raise React_server.React.Browser_only in
+    let f _ : React_server.browser_only =
+      raise React_server.React.Browser_only
+    in
     ()
   
-  let f _ = raise React_server.React.Browser_only
+  let f _ : React_server.browser_only =
+    raise React_server.React.Browser_only
   
   let () =
-    let f _ = raise React_server.React.Browser_only in
+    let f _ : React_server.browser_only =
+      raise React_server.React.Browser_only
+    in
     ()
 
 Any other uses are disallowed:

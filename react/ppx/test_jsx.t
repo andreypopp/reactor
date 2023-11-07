@@ -35,9 +35,11 @@ Producing HTML elements, with children:
   React_server.React.unsafe_create_html_element "div" []
     (Some
        (React_server.React.Html_children
-          [|
-            a; React_server.React.unsafe_create_html_element "div" [] None;
-          |]))
+          (React_server.React.array
+             [|
+               a;
+               React_server.React.unsafe_create_html_element "div" [] None;
+             |])))
 
 Producing HTML elements, with props with nested elements:
   $ ./ppx_test_runner <<EOF
@@ -91,7 +93,10 @@ Producing component elements, with children:
   (* NATIVE *)
   some_thing
     ~children:
-      [| a; React_server.React.unsafe_create_html_element "div" [] None |]
+      (React_server.React.array
+         [|
+           a; React_server.React.unsafe_create_html_element "div" [] None;
+         |])
     ()
 
 Producing component with (within module) elements, no props:
