@@ -1,0 +1,25 @@
+(library
+ (name persistent)
+ (modules persistent)
+ (libraries sqlite3 containers))
+
+(library
+ (name persistent_ppx)
+ (modules persistent_ppx)
+ (libraries ppxlib containers)
+ (ppx_runtime_libraries sqlite3 persistent)
+ (preprocess
+  (pps ppxlib.metaquot))
+ (kind ppx_deriver))
+
+(executable
+ (name persistent_ppx_test)
+ (modules persistent_ppx_test)
+ (libraries persistent_ppx ppxlib))
+
+(executable
+ (name persistent_example)
+ (modules persistent_example)
+ (preprocess
+  (pps persistent_ppx))
+ (libraries containers))
