@@ -18,6 +18,7 @@
   >   print_json (None : opt) opt_to_json;
   >   print_json (Some "some" : opt) opt_to_json;
   >   print_json (42, "works") tuple_to_json;
+  >   print_json {name="N"; age=1} record_to_json;
   >   print_json (A : sum) sum_to_json;
   >   print_json (B 42 : sum) sum_to_json;
   >   print_json (C {name="cname"} : sum) sum_to_json;
@@ -38,6 +39,7 @@
   >   of_json {|"OK"|} (param_of_json string_of_json) "OK";
   >   of_json {|"some"|} opt_of_json (Some "some");
   >   of_json {|[42, "works"]|} tuple_of_json (42, "works");
+  >   of_json {|{"name":"N","age":1}|} record_of_json {name="N"; age=1};
   >   of_json {|["A"]|} sum_of_json (A : sum);
   >   of_json {|["B", 42]|} sum_of_json (B 42 : sum);
   >   of_json {|["C", {"name": "cname"}]|} sum_of_json (C {name="cname"} : sum);
@@ -56,6 +58,7 @@
   null
   "some"
   [42,"works"]
+  {"name":"N","age":1}
   ["A"]
   ["B",42]
   ["C",{"name":"cname"}]
@@ -69,6 +72,7 @@
   "OK"
   "some"
   [42, "works"]
+  {"name":"N","age":1}
   ["A"]
   ["B", 42]
   ["C", {"name": "cname"}]
