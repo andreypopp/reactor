@@ -1,6 +1,7 @@
 open Printf
 open ContainersLabels
 
+type db = Sqlite3.db
 type ctx = { mutable idx : int }
 type columns = string -> (string * string) list
 type 'a decode = ctx * Sqlite3.Data.t array -> 'a
@@ -158,13 +159,13 @@ module E : sig
   val of_opt : 's opt -> ('s -> ('a, _) t) -> 'a eopt
   val inject : string -> 'a decode -> 'a e
   val inject_opt : string -> 'a decode -> 'a eopt
-  val as_col : int -> string -> string -> ('a, 'n) t -> ('a, 'n) t
-  val col : int -> string -> string -> 'a decode -> 'a e
-  val col_opt : int -> string -> string -> 'a decode -> 'a eopt
+  val as_col : string -> string -> ('a, 'n) t -> ('a, 'n) t
+  val col : string -> string -> 'a decode -> 'a e
+  val col_opt : string -> string -> 'a decode -> 'a eopt
   val decode : 'a e -> 'a decode
   val decode_opt : 'a eopt -> 'a option decode
   val to_sql : (_, _) t -> string
-  val cols : (_, _) t -> (int * string) list
+  val cols : (_, _) t -> (string * string) list
 end = struct
   type not_null = private NOT_NULL
   type null = private NULL
@@ -172,7 +173,7 @@ end = struct
   type ('a, 'n) t = {
     sql : string;
     decode : 'a decode;
-    cols : (int * string) list;
+    cols : (string * string) list;
   }
 
   let cols e = e.cols
@@ -210,14 +211,14 @@ end = struct
   let inject sql decode = { sql; decode; cols = [] }
   let inject_opt sql decode = { sql; decode; cols = [] }
 
-  let col id t col decode =
-    { sql = sprintf "%s.%s" t col; decode; cols = [ id, col ] }
+  let col t col decode =
+    { sql = sprintf "%s.%s" t col; decode; cols = [ t, col ] }
 
-  let col_opt id t col decode =
-    { sql = sprintf "%s.%s" t col; decode; cols = [ id, col ] }
+  let col_opt t col decode =
+    { sql = sprintf "%s.%s" t col; decode; cols = [ t, col ] }
 
-  let as_col id t col e =
-    { e with sql = sprintf "%s.%s" t col; cols = [ id, col ] }
+  let as_col t col e =
+    { e with sql = sprintf "%s.%s" t col; cols = [ t, col ] }
 
   let to_sql e = e.sql
   let decode e = e.decode
@@ -230,6 +231,7 @@ end
 
 type 'a e = 'a E.e
 type any_expr = Any_expr : ('a, 'n) E.t -> any_expr
+type fields = (any_expr * string) list
 
 module Q = struct
   type void = private Void
@@ -238,8 +240,7 @@ module Q = struct
   let asc e = Asc e
   let desc e = Desc e
 
-  type fields = (any_expr * string) list
-  type 's make_scope = int -> string -> 's
+  type 's make_scope = string -> 's
 
   type (_, _) q =
     | From : 'a table * fields * 's make_scope -> ('s, 'a) q
@@ -255,17 +256,9 @@ module Q = struct
         ('s, 'a) q * ('s -> 's1 make_scope * fields * 'a1 decode)
         -> ('s1, 'a1) q
 
-  let genid =
-    let id = ref 0 in
-    fun () ->
-      let v = !id in
-      id := v + 1;
-      v
-
   type ('s, 'a) rel = {
-    id : int;
     tree : tree;
-    scope : int -> string -> 's;
+    scope : 's make_scope;
     fields : (any_expr * string) list;
     mutable select : (any_expr * string) list;
     default_select : string;
@@ -309,9 +302,9 @@ module Q = struct
     | Desc e -> Printf.sprintf "%s DESC" (E.to_sql e)
 
   module Col_set = Set.Make (struct
-    type t = int * string
+    type t = string * string
 
-    let compare = Ord.pair Ord.int Ord.string
+    let compare = Ord.pair Ord.string Ord.string
   end)
 
   let used_expr e used =
@@ -323,29 +316,22 @@ module Q = struct
     List.fold_left fs ~init:used ~f:(fun used (Any_expr e, _) ->
         used_expr e used)
 
-  let mark rel used_select used =
-    print_endline (sprintf "======== %i" rel.id);
-    Col_set.iter
-      (fun (id, n) -> print_endline (sprintf "- used %i %s" id n))
-      used;
-    print_endline "---";
+  let mark t rel used_select used =
     if not (Col_set.is_empty used_select) then
       rel.select <-
-        List.filter rel.fields ~f:(fun (_, n) ->
-            print_endline (sprintf "- field %s" n);
-            Col_set.mem (rel.id, n) used)
+        List.filter rel.fields ~f:(fun (_, n) -> Col_set.mem (t, n) used)
 
   let rec trim_select : type s a. (s, a) rel -> unit =
    fun rel ->
     let used_select = used_fields rel.select Col_set.empty in
     match rel.tree with
     | SUBQUERY inner ->
-        mark inner used_select used_select;
+        mark "t" inner used_select used_select;
         trim_select inner
     | FROM _ -> ()
     | WHERE (inner, e) ->
         let used = used_expr e used_select in
-        mark inner used_select used;
+        mark "t" inner used_select used;
         trim_select inner
     | ORDER_BY (inner, fs) ->
         let used =
@@ -354,24 +340,21 @@ module Q = struct
               | Asc e -> used_expr e used | Desc e -> used_expr e used)
             ~init:used_select
         in
-        mark inner used_select used;
+        mark "t" inner used_select used;
         trim_select inner
     | JOIN (a, b, e) ->
         let used = used_expr e used_select in
-        mark a used_select used;
+        mark "a" a used_select used;
         trim_select a;
-        mark b used_select used;
+        mark "b" b used_select used;
         trim_select b
 
-  let forward_fields id t fs =
-    List.map fs ~f:(fun (Any_expr e, n) ->
-        Any_expr (E.as_col id t n e), n)
+  let forward_fields t fs =
+    List.map fs ~f:(fun (Any_expr e, n) -> Any_expr (E.as_col t n e), n)
 
   let rec to_rel : type s a. (s, a) q -> (s, a) rel = function
     | From (t, fields, scope) ->
-        let id = genid () in
         {
-          id;
           decode = t.decode;
           scope;
           tree = FROM t;
@@ -380,27 +363,23 @@ module Q = struct
           default_select = "*";
         }
     | Where (q, e) ->
-        let id = genid () in
         let inner = to_rel q in
-        let e = e (inner.scope inner.id "t") in
+        let e = e (inner.scope "t") in
         {
-          id;
           decode = inner.decode;
           scope = inner.scope;
           tree = WHERE (inner, e);
-          fields = forward_fields inner.id "t" inner.fields;
+          fields = forward_fields "t" inner.fields;
           select = [];
           default_select = "t.*";
         }
     | Order_by (q, e) ->
         let inner = to_rel q in
-        let id = genid () in
         {
-          id;
           decode = inner.decode;
           scope = inner.scope;
-          tree = ORDER_BY (inner, e (inner.scope inner.id "t"));
-          fields = forward_fields inner.id "t" inner.fields;
+          tree = ORDER_BY (inner, e (inner.scope "t"));
+          fields = forward_fields "t" inner.fields;
           select = [];
           default_select = "t.*";
         }
@@ -424,33 +403,28 @@ module Q = struct
     (*       default_select = "a.*, b.*"; *)
     (*     } *)
     | Left_join (a, b, e) ->
-        let id = genid () in
         let a = to_rel a in
         let b = to_rel b in
-        let a_scope, b_scope = a.scope a.id "a", b.scope b.id "b" in
-        let scope id s = a.scope id s, Opt (b.scope id s) in
+        let a_scope, b_scope = a.scope "a", b.scope "b" in
+        let scope s = a.scope s, Opt (b.scope s) in
         let decode v =
           let a = a.decode v in
           let b = option_decode b.decode v in
           a, b
         in
         {
-          id;
           decode;
           scope;
           tree = JOIN (a, b, e (a_scope, b_scope));
           select = [];
           fields =
-            forward_fields a.id "a" a.fields
-            @ forward_fields b.id "b" b.fields;
+            forward_fields "a" a.fields @ forward_fields "b" b.fields;
           default_select = "a.*, b.*";
         }
     | Select (q, f) ->
         let inner = to_rel q in
-        let id = genid () in
-        let scope, fields, decode = f (inner.scope inner.id "t") in
+        let scope, fields, decode = f (inner.scope "t") in
         {
-          id;
           decode;
           scope;
           tree = SUBQUERY inner;
@@ -480,7 +454,30 @@ module Q = struct
   let iter db q ~f = fold db q ~init:() ~f:(fun () row -> f row)
 end
 
-module P = struct
+type ('s, 'a) query = ('s, 'a) Q.q
+
+module P : sig
+  type 'a t
+
+  val get : 'a e -> 'a t
+  val both : 'a t -> 'b t -> ('a * 'b) t
+  val map : ('a -> 'b) -> 'a t -> 'b t
+  val ( let+ ) : 'a t -> ('a -> 'b) -> 'b t
+  val ( and+ ) : 'a t -> 'b t -> ('a * 'b) t
+  val decode : 'a t -> 'a decode
+  val fields : 'a t -> (any_expr * string) list
+
+  val fold :
+    ('scope, 'c) query ->
+    ('scope -> 'b t) ->
+    db ->
+    init:'d ->
+    f:('d -> 'b -> 'd) ->
+    'd
+
+  val iter :
+    ('a, 'c) query -> ('a -> 'b t) -> db -> f:('b -> unit) -> unit
+end = struct
   type _ t =
     | E : 'a e -> 'a t
     | B : 'a t * 'b t -> ('a * 'b) t
@@ -492,18 +489,19 @@ module P = struct
   let ( let+ ) a f = map f a
   let ( and+ ) a b = both a b
 
-  let rec cols : type a. a t -> (int * string) list = function
-    | E e -> E.cols e
-    | B (a, b) -> cols a @ cols b
-    | F (a, _) -> cols a
-
   let fields p =
-    let rec fields : type a. a t -> Q.fields = function
-      | E e -> [ Any_expr e, "c" ]
-      | B (a, b) -> fields a @ fields b
-      | F (a, _) -> fields a
+    let rec fields : type a. int -> fields -> a t -> int * fields =
+     fun idx fs p ->
+      match p with
+      | E e -> idx + 1, (Any_expr e, sprintf "c%i" idx) :: fs
+      | B (a, b) ->
+          let idx, fs = fields idx fs a in
+          let idx, fs = fields idx fs b in
+          idx, fs
+      | F (a, _) -> fields idx fs a
     in
-    List.mapi (fields p) ~f:(fun i (e, _) -> e, sprintf "c%i" i)
+    let _idx, fs = fields 1 [] p in
+    List.rev fs
 
   let rec decode : type a. a t -> a decode =
    fun p data ->
@@ -517,7 +515,7 @@ module P = struct
         let a = decode a data in
         f a
 
-  let fold p db q ~init ~f =
+  let fold q p db ~init ~f =
     let q =
       Q.select
         (fun scope ->
@@ -530,5 +528,5 @@ module P = struct
     print_endline sql;
     fold' decode sql db ~init ~f
 
-  let iter p db q ~f = fold p db q ~init:() ~f:(fun () row -> f row)
+  let iter q p db ~f = fold q p db ~init:() ~f:(fun () row -> f row)
 end

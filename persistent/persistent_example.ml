@@ -18,41 +18,39 @@ type user = {
 type subscription = { user_id : int; name : string }
 [@@deriving codec, entity]
 
-let user_scope id t =
+let user_scope t =
   object
-    method id = E.col id t "id" int_decode
-    method created_at = E.col id t "created_at" float_decode
-
-    method pair =
-      E.col id t "pair_0" int_decode, E.col id t "pair_1" int_decode
+    method id = E.col t "id" int_decode
+    method created_at = E.col t "created_at" float_decode
+    method pair = E.col t "pair_0" int_decode, E.col t "pair_1" int_decode
 
     method profile =
       object
-        method name = E.col id t "profile_name" string_decode
-        method age = E.col id t "profile_age" int_decode
+        method name = E.col t "profile_name" string_decode
+        method age = E.col t "profile_age" int_decode
       end
   end
 
 let user_fields =
   [
-    Any_expr (E.col 0 "t" "id" int_decode), "id";
-    Any_expr (E.col 0 "t" "created_at" float_decode), "created_at";
-    Any_expr (E.col 0 "t" "pair_0" int_decode), "pair_0";
-    Any_expr (E.col 0 "t" "pair_1" int_decode), "pair_1";
-    Any_expr (E.col 0 "t" "profile_name" string_decode), "profile_name";
-    Any_expr (E.col 0 "t" "profile_age" int_decode), "profile_age";
+    Any_expr (E.col "t" "id" int_decode), "id";
+    Any_expr (E.col "t" "created_at" float_decode), "created_at";
+    Any_expr (E.col "t" "pair_0" int_decode), "pair_0";
+    Any_expr (E.col "t" "pair_1" int_decode), "pair_1";
+    Any_expr (E.col "t" "profile_name" string_decode), "profile_name";
+    Any_expr (E.col "t" "profile_age" int_decode), "profile_age";
   ]
 
-let subscription_scope id t =
+let subscription_scope t =
   object
-    method user_id = E.col id t "user_id" int_decode
-    method name = E.col id t "name" string_decode
+    method user_id = E.col t "user_id" int_decode
+    method name = E.col t "name" string_decode
   end
 
 let subscription_fields =
   [
-    Any_expr (E.col 0 "t" "user_id" int_decode), "user_id";
-    Any_expr (E.col 0 "t" "name" float_decode), "name";
+    Any_expr (E.col "t" "user_id" int_decode), "user_id";
+    Any_expr (E.col "t" "name" float_decode), "name";
   ]
 
 let () =
@@ -75,18 +73,32 @@ let () =
     *)
   in
   (* q |> iter db ~f:(fun (u, _) -> print_endline u.profile.name) *)
-  q
-  |> P.(
-       iter
-         E.(
-           fun (user, _) ->
-             let+ name = get user#profile#name
-             and+ is_john = get (user#profile#name = string "John") in
-             name, is_john)
-         db
-         ~f:(fun (name, is_john) ->
-           print_endline
-             (Printf.sprintf "name=%s, is_john=%b" name is_john)))
+  P.iter q
+    E.(
+      fun (user, _) ->
+        P.(
+          let+ name = get user#profile#name
+          and+ is_john = get (user#profile#name = string "John") in
+          name, is_john))
+    db
+    ~f:(fun (name, is_john) ->
+      print_endline (Printf.sprintf "name=%s, is_john=%b" name is_john))
+
+(*
+let%query q =
+  Q.from user
+  |> Q.where (here.user.id = 3)
+  |> Q.order_by (desc here.user.created_at)
+  |> Q.left_join (Q.from subscription) ~on:(here.id = subscription.user_id)
+  |> Q.select
+       {
+         name = user.profile.name;
+         is_john = user.profile.name = "John";
+         sub_name = sub.name;
+       }
+  |> Q.group_by here.sub_name
+  |> Q.select { sub_name = here.sub_name; count = group.count () }
+ *)
 
 (*
    TODO: make a ppx, so the above query can be written as:
