@@ -1,0 +1,21 @@
+(library
+ (public_name ppx_deriving_json.browser)
+ (name ppx_deriving_json_browser)
+ (modules ppx_deriving_json_browser)
+ (libraries ppx_deriving_schema ppxlib containers)
+ (ppx_runtime_libraries ppx_deriving_json.browser_runtime)
+ (preprocess
+  (pps ppxlib.metaquot))
+ (kind ppx_deriver))
+
+(library
+ (public_name ppx_deriving_json.browser_runtime)
+ (name ppx_deriving_json_browser_runtime)
+ (modules ppx_deriving_json_runtime)
+ (wrapped false)
+ (modes melange))
+
+(executable
+ (name ppx_deriving_json_browser_test)
+ (modules ppx_deriving_json_browser_test)
+ (libraries ppx_deriving_json.browser ppxlib))

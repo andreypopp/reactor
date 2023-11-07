@@ -258,7 +258,7 @@ class virtual deriving1 =
         : ctxt:Expansion_context.Deriver.t ->
           rec_flag * type_declaration list ->
           structure =
-      fun ~ctxt (rec_flag, type_decls) ->
+      fun ~ctxt (_rec_flag, type_decls) ->
         let loc = Expansion_context.Deriver.derived_item_loc ctxt in
         match List.map type_decls ~f:Repr.of_type_declaration with
         | exception Not_supported msg ->
@@ -268,13 +268,10 @@ class virtual deriving1 =
               List.flat_map reprs ~f:(fun decl ->
                   self#derive_type_decl decl)
             in
-            let rec_flag =
-              match bindings with [ _ ] -> Nonrecursive | _ -> rec_flag
-            in
             [%str
-              [@@@ocaml.warning "-39-11"]
+              [@@@ocaml.warning "-39-11-27"]
 
-              [%%i pstr_value ~loc rec_flag bindings]]
+              [%%i pstr_value ~loc Recursive bindings]]
   end
 
 type deriving =
@@ -436,11 +433,7 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
         in
         let catch_all =
           [%pat? x]
-          --> List.fold_left (List.rev inherits)
-                ~init:
-                  [%expr
-                    let _ = x in
-                    None]
+          --> List.fold_left (List.rev inherits) ~init:[%expr None]
                 ~f:(fun next (n, ts) ->
                   let maybe =
                     self#derive_type_ref ~loc self#binding_name n ts
@@ -526,7 +519,7 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
 
        method derive_type_decl decl =
          match decl.shape with
-         | Ts_expr (t, Te_polyvariant _) ->
+         | Ts_expr (_t, Te_polyvariant _) ->
              let str =
                let { name = decl_name; params; shape = _; loc } = decl in
                let expr =
@@ -544,7 +537,7 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
                         match [%e init] with
                         | Some x -> x
                         | None -> [%e error ~loc]
-                       : [%t self#t ~loc t])]
+                       : [%t self#t ~loc (Repr.decl_to_te_expr decl)])]
                  in
                  List.fold_left params ~init ~f:(fun body param ->
                      pexp_fun ~loc Nolabel None
