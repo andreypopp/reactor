@@ -1,5 +1,9 @@
 open Ppxlib
 
+exception Not_supported of string
+
+val not_supported : string -> 'a
+
 (** Simplified type expression / declaration representation. *)
 module Repr : sig
   type type_decl = {
@@ -33,6 +37,7 @@ module Repr : sig
   val of_core_type : core_type -> type_expr
   val of_type_declaration : type_declaration -> type_decl
   val te_opaque : longident loc -> type_expr list -> type_expr
+  val decl_to_te_expr : type_decl -> core_type
 end
 
 type deriving
@@ -157,6 +162,15 @@ val register : ?deps:Deriving.t list -> deriving -> Deriving.t
 (** Register a deriving. *)
 
 module Deriving_helper : sig
+  val gen_tuple :
+    loc:location -> label -> int -> pattern list * expression
+
+  val gen_record :
+    loc:location ->
+    label ->
+    (label loc * Repr.type_expr) list ->
+    pattern list * expression
+
   val gen_pat_tuple :
     loc:location -> string -> int -> pattern * expression list
   (** [let patt, exprs = gen_pat_tuple ~loc prefix n in ...]
@@ -172,7 +186,7 @@ module Deriving_helper : sig
   val gen_pat_record :
     loc:location ->
     string ->
-    (label loc * 'a) list ->
+    (label loc * Repr.type_expr) list ->
     pattern * expression list
   (** [let patt, exprs = gen_pat_record ~loc prefix fs in ...]
       generates a pattern to match record with fields [fs] and a list of expressions
@@ -182,6 +196,9 @@ module Deriving_helper : sig
 
   val ( --> ) : pattern -> expression -> case
   (** A shortcut to define a pattern matching case. *)
+
+  val name_loc_of_t : string -> string loc -> string loc
+  val lident_of_t : string -> string loc -> longident loc
 end
 
 (** define a generic deriver *)
@@ -196,19 +213,19 @@ class virtual deriving1 : object
   method virtual t : loc:location -> core_type -> core_type
   (** produce a type expression for the deriver *)
 
-  method virtual derive_of_tuple :
+  method derive_of_tuple :
     loc:location -> Repr.type_expr list -> expression -> expression
 
-  method virtual derive_of_record :
+  method derive_of_record :
     loc:location ->
     (label loc * Repr.type_expr) list ->
     expression ->
     expression
 
-  method virtual derive_of_variant :
+  method derive_of_variant :
     loc:location -> Repr.variant_case list -> expression -> expression
 
-  method virtual derive_of_polyvariant :
+  method derive_of_polyvariant :
     loc:location ->
     Repr.polyvariant_case list ->
     core_type ->

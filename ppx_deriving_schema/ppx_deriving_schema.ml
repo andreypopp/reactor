@@ -3,6 +3,11 @@ open Ppxlib
 open Ast_builder.Default
 open ContainersLabels
 
+exception Not_supported of string
+
+let not_supported what =
+  raise (Not_supported (sprintf "%s are not supported" what))
+
 module Repr = struct
   type type_decl = {
     name : label loc;
@@ -31,11 +36,6 @@ module Repr = struct
   and polyvariant_case =
     | Pvc_construct of label loc * type_expr list
     | Pvc_inherit of Longident.t loc * type_expr list
-
-  exception Not_supported of string
-
-  let not_supported what =
-    raise (Not_supported (sprintf "%s are not supported" what))
 
   let rec of_core_type (typ : Parsetree.core_type) : type_expr =
     match typ.ptyp_desc with
@@ -119,6 +119,24 @@ module Deriving_helper = struct
            let expr = pexp_ident ~loc { loc; txt = lident id } in
            patt, expr))
 
+  let gen_tuple ~loc prefix n =
+    let ps, es = gen_bindings ~loc prefix n in
+    ps, pexp_tuple ~loc es
+
+  let gen_record ~loc prefix fs =
+    let ps, es =
+      List.split
+        (List.map fs ~f:(fun (n, _t) ->
+             let id = sprintf "%s_%s" prefix n.txt in
+             let patt = ppat_var ~loc { loc = n.loc; txt = id } in
+             let expr =
+               pexp_ident ~loc { loc = n.loc; txt = lident id }
+             in
+             (to_lident n, patt), expr))
+    in
+    let ns, ps = List.split ps in
+    ps, pexp_record ~loc (List.combine ns es) None
+
   let gen_pat_tuple ~loc prefix n =
     let patts, exprs = gen_bindings ~loc prefix n in
     ppat_tuple ~loc patts, exprs
@@ -160,6 +178,10 @@ module Deriving_helper = struct
   let ederiver name (lid : Longident.t loc) =
     pexp_ident ~loc:lid.loc
       { loc = lid.loc; txt = name_of_longident name_of_t name lid.txt }
+
+  let lident_of_t name label =
+    let n = name_loc_of_t name label in
+    { loc = n.loc; txt = Longident.parse n.txt }
 end
 
 type deriver =
@@ -183,24 +205,28 @@ class virtual deriving1 =
     method binding_name = self#name
     method virtual t : loc:location -> core_type -> core_type
 
-    method virtual derive_of_tuple
-        : loc:location -> type_expr list -> expression -> expression
+    method derive_of_tuple
+        : loc:location -> type_expr list -> expression -> expression =
+      not_supported "tuple types"
 
-    method virtual derive_of_record
+    method derive_of_record
         : loc:location ->
           (label loc * type_expr) list ->
           expression ->
-          expression
+          expression =
+      not_supported "record types"
 
-    method virtual derive_of_variant
-        : loc:location -> variant_case list -> expression -> expression
+    method derive_of_variant
+        : loc:location -> variant_case list -> expression -> expression =
+      not_supported "variant types"
 
-    method virtual derive_of_polyvariant
+    method derive_of_polyvariant
         : loc:location ->
           polyvariant_case list ->
           core_type ->
           expression ->
-          expression
+          expression =
+      not_supported "variant types"
 
     method private derive_type_ref' ~loc name n ts =
       let f = ederiver name n in
@@ -288,16 +314,16 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
     object (self)
       inherit deriving1
       method name = name
-      method binding_name = sprintf "%s_poly" name [@@ocaml.warning "-7"]
+      method! binding_name = sprintf "%s_poly" name
       method t ~loc t = [%type: [%t of_t ~loc] -> [%t t] option]
 
-      method derive_of_tuple ~loc =
+      method! derive_of_tuple ~loc =
         derive_of_tuple ~loc self#derive_of_type_expr
 
-      method derive_of_record ~loc:_ _ _ = assert false
-      method derive_of_variant ~loc:_ _ _ = assert false
+      method! derive_of_record ~loc:_ _ _ = assert false
+      method! derive_of_variant ~loc:_ _ _ = assert false
 
-      method derive_of_polyvariant ~loc cs t x =
+      method! derive_of_polyvariant ~loc cs t x =
         let cases =
           List.fold_left (List.rev cs) ~init:[%expr None]
             ~f:(fun next c ->
@@ -326,13 +352,13 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
        method name = name
        method t ~loc t = [%type: [%t of_t ~loc] -> [%t t]]
 
-       method derive_of_tuple ~loc =
+       method! derive_of_tuple ~loc =
          derive_of_tuple ~loc self#derive_of_type_expr
 
-       method derive_of_record ~loc =
+       method! derive_of_record ~loc =
          derive_of_record ~loc self#derive_of_type_expr
 
-       method private derive_of_variant ~loc cs x =
+       method! private derive_of_variant ~loc cs x =
          let cases =
            List.fold_left (List.rev cs) ~init:(error ~loc)
              ~f:(fun next c ->
@@ -349,7 +375,7 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
          in
          derive_of_variant ~loc self#derive_of_type_expr cases x
 
-       method private derive_of_polyvariant ~loc cs t x =
+       method! private derive_of_polyvariant ~loc cs t x =
          let cases =
            List.fold_left (List.rev cs) ~init:(error ~loc)
              ~f:(fun next c ->
@@ -419,13 +445,13 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
       method t ~loc t = [%type: [%t of_t ~loc] -> [%t t] option]
       method binding_name = sprintf "%s_poly" name [@@ocaml.warning "-7"]
 
-      method derive_of_tuple ~loc =
+      method! derive_of_tuple ~loc =
         derive_of_tuple ~loc self#derive_of_type_expr
 
-      method derive_of_record ~loc:_ _ _ = assert false
-      method derive_of_variant ~loc:_ _ _ = assert false
+      method! derive_of_record ~loc:_ _ _ = assert false
+      method! derive_of_variant ~loc:_ _ _ = assert false
 
-      method derive_of_polyvariant ~loc cs t x =
+      method! derive_of_polyvariant ~loc cs t x =
         let ctors, inherits =
           List.partition_filter_map cs ~f:(function
             | Pvc_construct (n, ts) -> `Left (n, ts)
@@ -463,13 +489,13 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
        method name = name
        method t ~loc t = [%type: [%t of_t ~loc] -> [%t t]]
 
-       method derive_of_tuple ~loc =
+       method! derive_of_tuple ~loc =
          derive_of_tuple ~loc self#derive_of_type_expr
 
-       method derive_of_record ~loc =
+       method! derive_of_record ~loc =
          derive_of_record ~loc self#derive_of_type_expr
 
-       method derive_of_variant ~loc cs x =
+       method! derive_of_variant ~loc cs x =
          let cases =
            List.fold_left (List.rev cs)
              ~init:[ [%pat? _] --> error ~loc ]
@@ -489,7 +515,7 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
          in
          pexp_match ~loc x cases
 
-       method derive_of_polyvariant ~loc cs t x =
+       method! derive_of_polyvariant ~loc cs t x =
          let ctors, inherits =
            List.partition_filter_map cs ~f:(function
              | Pvc_construct (n, ts) -> `Left (n, ts)
@@ -565,18 +591,18 @@ let deriving_to ~name ~t_to ~derive_of_tuple ~derive_of_record
        method name = name
        method t ~loc t = [%type: [%t t] -> [%t t_to ~loc]]
 
-       method derive_of_tuple ~loc ts x =
+       method! derive_of_tuple ~loc ts x =
          let n = List.length ts in
          let p, es = gen_pat_tuple ~loc "x" n in
          pexp_match ~loc x
            [ p --> derive_of_tuple ~loc self#derive_of_type_expr ts es ]
 
-       method derive_of_record ~loc fs x =
+       method! derive_of_record ~loc fs x =
          let p, es = gen_pat_record ~loc "x" fs in
          pexp_match ~loc x
            [ p --> derive_of_record ~loc self#derive_of_type_expr fs es ]
 
-       method derive_of_variant ~loc cs x =
+       method! derive_of_variant ~loc cs x =
          let ctor_pat (n : label loc) pat =
            ppat_construct ~loc:n.loc (to_lident n) pat
          in
@@ -594,7 +620,7 @@ let deriving_to ~name ~t_to ~derive_of_tuple ~derive_of_record
                  --> derive_of_variant_case ~loc self#derive_of_type_expr
                        n ts es))
 
-       method derive_of_polyvariant ~loc cs _t x =
+       method! derive_of_polyvariant ~loc cs _t x =
          let cases =
            List.map cs ~f:(function
              | Pvc_construct (n, []) ->
