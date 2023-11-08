@@ -10,24 +10,30 @@ let derive_decode =
     method name = "decode"
 
     method t ~loc t =
-      [%type: Persistent.ctx * Sqlite3.Data.t array -> [%t t]]
+      [%type: Sqlite3.Data.t array -> Persistent.ctx -> [%t t]]
 
     method! derive_of_tuple ~loc ts x =
       let n = List.length ts in
       let ps, e = gen_tuple ~loc "x" n in
-      List.fold_left2 (List.rev ps) (List.rev ts) ~init:e
-        ~f:(fun next p t ->
-          [%expr
-            let [%p p] = [%e self#derive_of_type_expr ~loc t x] in
-            [%e next]])
+      let e =
+        List.fold_left2 (List.rev ps) (List.rev ts) ~init:e
+          ~f:(fun next p t ->
+            [%expr
+              let [%p p] = [%e self#derive_of_type_expr ~loc t x] ctx in
+              [%e next]])
+      in
+      [%expr fun ctx -> [%e e]]
 
     method! derive_of_record ~loc fs x =
       let ps, e = gen_record ~loc "x" fs in
-      List.fold_left2 (List.rev ps) (List.rev fs) ~init:e
-        ~f:(fun next p (_, t) ->
-          [%expr
-            let [%p p] = [%e self#derive_of_type_expr ~loc t x] in
-            [%e next]])
+      let e =
+        List.fold_left2 (List.rev ps) (List.rev fs) ~init:e
+          ~f:(fun next p (_, t) ->
+            [%expr
+              let [%p p] = [%e self#derive_of_type_expr ~loc t x] ctx in
+              [%e next]])
+      in
+      [%expr fun ctx -> [%e e]]
   end
 
 let derive_bind =

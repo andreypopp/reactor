@@ -4,22 +4,22 @@ open ContainersLabels
 type db = Sqlite3.db
 type ctx = { mutable idx : int }
 type columns = string -> (string * string) list
-type 'a decode = ctx * Sqlite3.Data.t array -> 'a
+type 'a decode = Sqlite3.Data.t array -> ctx -> 'a
 type 'a bind = 'a -> ctx -> Sqlite3.stmt -> unit
 
-let option_decode decode (ctx, row) =
+let option_decode decode row ctx =
   let v =
     (* TODO: this is wrong, this way decoder can still can succeed *)
     match row.(ctx.idx) with
     | Sqlite3.Data.NULL -> None
-    | _ -> Some (decode (ctx, row))
+    | _ -> Some (decode row ctx)
   in
   ctx.idx <- ctx.idx + 1;
   v
 
 let bool_columns name = [ name, "INT" ]
 
-let bool_decode (ctx, row) =
+let bool_decode row ctx =
   let v =
     match row.(ctx.idx) with
     | Sqlite3.Data.INT 0L -> false
@@ -36,7 +36,7 @@ let bool_bind v ctx stmt =
 
 let string_columns name = [ name, "TEXT" ]
 
-let string_decode (ctx, row) =
+let string_decode row ctx =
   let v =
     match row.(ctx.idx) with
     | Sqlite3.Data.TEXT v -> v
@@ -51,7 +51,7 @@ let string_bind v ctx stmt =
 
 let int_columns name = [ name, "INT" ]
 
-let int_decode (ctx, row) =
+let int_decode row ctx =
   let v =
     match row.(ctx.idx) with
     | Sqlite3.Data.INT v -> Int64.to_int v
@@ -66,7 +66,7 @@ let int_bind v ctx stmt =
 
 let float_columns name = [ name, "FLOAT" ]
 
-let float_decode (ctx, row) =
+let float_decode row ctx =
   let v =
     match row.(ctx.idx) with
     | Sqlite3.Data.FLOAT v -> v
@@ -127,7 +127,7 @@ let fold' decode sql ~init ~f db =
   let rc, acc =
     Sqlite3.fold stmt ~init ~f:(fun acc row ->
         let ctx = { idx = 0 } in
-        let user = decode (ctx, row) in
+        let user = decode row ctx in
         f acc user)
   in
   Sqlite3.Rc.check rc;
@@ -407,9 +407,9 @@ module Q = struct
         let b = to_rel b in
         let a_scope, b_scope = a.scope "a", b.scope "b" in
         let scope s = a.scope s, Opt (b.scope s) in
-        let decode v =
-          let a = a.decode v in
-          let b = option_decode b.decode v in
+        let decode row ctx =
+          let a = a.decode row ctx in
+          let b = option_decode b.decode row ctx in
           a, b
         in
         {
@@ -504,15 +504,15 @@ end = struct
     List.rev fs
 
   let rec decode : type a. a t -> a decode =
-   fun p data ->
+   fun p row ctx ->
     match p with
-    | E e -> E.decode e data
+    | E e -> E.decode e row ctx
     | B (a, b) ->
-        let a = decode a data in
-        let b = decode b data in
+        let a = decode a row ctx in
+        let b = decode b row ctx in
         a, b
     | F (a, f) ->
-        let a = decode a data in
+        let a = decode a row ctx in
         f a
 
   let fold q p db ~init ~f =
