@@ -198,7 +198,7 @@ open Deriving_helper
 class virtual deriving1 =
   object (self)
     method virtual name : string
-    method virtual t : loc:location -> core_type -> core_type
+    method virtual t : loc:location -> label loc -> core_type -> core_type
 
     method derive_of_tuple
         : loc:location -> type_expr list -> expression -> expression =
@@ -258,7 +258,7 @@ class virtual deriving1 =
     method derive_type_decl ({ name; params; shape; loc } as decl) =
       let expr = self#derive_type_shape ~loc [%expr x] shape in
       let t = Repr.decl_to_te_expr decl in
-      let expr = [%expr (fun x -> [%e expr] : [%t self#t ~loc t])] in
+      let expr = [%expr (fun x -> [%e expr] : [%t self#t ~loc name t])] in
       let expr =
         List.fold_left params ~init:expr ~f:(fun body param ->
             pexp_fun ~loc Nolabel None
@@ -313,7 +313,7 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
     object (self)
       inherit deriving1
       method name = name
-      method t ~loc t = [%type: [%t of_t ~loc] -> [%t t] option]
+      method t ~loc _name t = [%type: [%t of_t ~loc] -> [%t t] option]
 
       method! derive_type_decl_label name =
         map_loc (derive_of_label poly_name) name
@@ -349,7 +349,7 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
     (object (self)
        inherit deriving1 as super
        method name = name
-       method t ~loc t = [%type: [%t of_t ~loc] -> [%t t]]
+       method t ~loc _name t = [%type: [%t of_t ~loc] -> [%t t]]
 
        method! derive_of_tuple ~loc =
          derive_of_tuple ~loc self#derive_of_type_expr
@@ -414,7 +414,7 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
                         match [%e init] with
                         | Some x -> x
                         | None -> [%e error ~loc]
-                       : [%t self#t ~loc t])]
+                       : [%t self#t ~loc decl_name t])]
                  in
                  List.fold_left params ~init ~f:(fun body param ->
                      pexp_fun ~loc Nolabel None
@@ -442,7 +442,7 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
     object (self)
       inherit deriving1
       method name = name
-      method t ~loc t = [%type: [%t of_t ~loc] -> [%t t] option]
+      method t ~loc _name t = [%type: [%t of_t ~loc] -> [%t t] option]
 
       method! derive_type_decl_label name =
         map_loc (derive_of_label poly_name) name
@@ -488,7 +488,7 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
     (object (self)
        inherit deriving1 as super
        method name = name
-       method t ~loc t = [%type: [%t of_t ~loc] -> [%t t]]
+       method t ~loc _name t = [%type: [%t of_t ~loc] -> [%t t]]
 
        method! derive_of_tuple ~loc =
          derive_of_tuple ~loc self#derive_of_type_expr
@@ -564,7 +564,9 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
                         match [%e init] with
                         | Some x -> x
                         | None -> [%e error ~loc]
-                       : [%t self#t ~loc (Repr.decl_to_te_expr decl)])]
+                       : [%t
+                           self#t ~loc decl_name
+                             (Repr.decl_to_te_expr decl)])]
                  in
                  List.fold_left params ~init ~f:(fun body param ->
                      pexp_fun ~loc Nolabel None
@@ -590,7 +592,7 @@ let deriving_to ~name ~t_to ~derive_of_tuple ~derive_of_record
     (object (self)
        inherit deriving1
        method name = name
-       method t ~loc t = [%type: [%t t] -> [%t t_to ~loc]]
+       method t ~loc _name t = [%type: [%t t] -> [%t t_to ~loc]]
 
        method! derive_of_tuple ~loc ts x =
          let n = List.length ts in

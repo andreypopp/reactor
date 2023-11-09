@@ -218,7 +218,7 @@ class virtual deriving1 : object
   method virtual name : string
   (** name of the deriver *)
 
-  method virtual t : loc:location -> core_type -> core_type
+  method virtual t : loc:location -> label loc -> core_type -> core_type
   (** produce a type expression for the deriver *)
 
   method derive_of_tuple :
