@@ -4,12 +4,172 @@ open ContainersLabels
 open Ppx_deriving_schema
 open Deriving_helper
 
+class virtual deriving_type =
+  object (self)
+    method virtual name : string
+
+    method derive_of_tuple
+        : loc:location -> Repr.type_expr list -> core_type =
+      not_supported "tuple types"
+
+    method derive_of_record
+        : loc:location -> (label loc * Repr.type_expr) list -> core_type =
+      not_supported "record types"
+
+    method derive_of_variant
+        : loc:location -> Repr.variant_case list -> core_type =
+      not_supported "variant types"
+
+    method derive_of_polyvariant
+        : loc:location -> Repr.polyvariant_case list -> core_type =
+      not_supported "variant types"
+
+    method derive_of_type_expr
+        : loc:location -> Repr.type_expr -> core_type =
+      fun ~loc t ->
+        match t with
+        | _, Repr.Te_tuple ts -> self#derive_of_tuple ~loc ts
+        | _, Te_var _ -> not_supported "type variables"
+        | _, Te_opaque (n, ts) ->
+            if not (List.is_empty ts) then not_supported "type params"
+            else
+              let n = map_loc (derive_of_longident self#name) n in
+              ptyp_constr ~loc n []
+        | _, Te_polyvariant cs -> self#derive_of_polyvariant ~loc cs
+
+    method private derive_type_shape ~(loc : location) =
+      function
+      | Repr.Ts_expr t -> self#derive_of_type_expr ~loc t
+      | Ts_record fs -> self#derive_of_record ~loc fs
+      | Ts_variant cs -> self#derive_of_variant ~loc cs
+
+    method derive_type_decl { Repr.name; params; shape; loc }
+        : type_declaration list =
+      let manifest = self#derive_type_shape ~loc shape in
+      if not (List.is_empty params) then not_supported "type params"
+      else
+        [
+          type_declaration ~loc
+            ~name:(map_loc (derive_of_label self#name) name)
+            ~manifest:(Some manifest) ~cstrs:[] ~private_:Public
+            ~kind:Ptype_abstract ~params:[];
+        ]
+
+    method generator
+        : ctxt:Expansion_context.Deriver.t ->
+          rec_flag * type_declaration list ->
+          structure =
+      fun ~ctxt (_rec_flag, type_decls) ->
+        let loc = Expansion_context.Deriver.derived_item_loc ctxt in
+        match List.map type_decls ~f:Repr.of_type_declaration with
+        | exception Not_supported msg ->
+            [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
+        | reprs ->
+            let type_decls =
+              List.flat_map reprs ~f:(fun decl ->
+                  self#derive_type_decl decl)
+            in
+            [%str [%%i pstr_type ~loc Recursive type_decls]]
+  end
+
+let with_genname_field ~loc col body =
+  [%expr
+    let genname =
+      match [%e col] with
+      | "" -> fun n -> n
+      | prefix -> fun n -> Printf.sprintf "%s_%s" prefix n
+    in
+    [%e body [%expr genname]]]
+
+let with_genname_idx ~loc col body =
+  [%expr
+    let genname =
+      match [%e col] with
+      | "" -> fun i -> Printf.sprintf "c%i" i
+      | prefix -> fun i -> Printf.sprintf "%s_c%i" prefix i
+    in
+    [%e body [%expr genname]]]
+
+let derive_scope_type =
+  object (self)
+    inherit deriving_type
+    method name = "scope"
+
+    method! derive_of_record
+        : loc:location -> (label loc * Repr.type_expr) list -> core_type =
+      fun ~loc fs ->
+        let fs =
+          List.map fs ~f:(fun (n, t) ->
+              let loc = n.loc in
+              let t = self#derive_of_type_expr ~loc t in
+              {
+                pof_desc = Otag (n, t);
+                pof_loc = loc;
+                pof_attributes = [];
+              })
+        in
+        ptyp_object ~loc fs Closed
+
+    method! derive_of_tuple
+        : loc:location -> Repr.type_expr list -> core_type =
+      fun ~loc ts ->
+        let ts = List.map ts ~f:(self#derive_of_type_expr ~loc) in
+        ptyp_tuple ~loc ts
+  end
+
+let derive_scope =
+  let match_table ~loc x f =
+    match gen_pat_tuple ~loc "x" 2 with
+    | p, [ t; c ] -> pexp_match ~loc x [ p --> f (t, c) ]
+    | _, _ -> assert false
+  in
+  object (self)
+    inherit deriving1
+    method name = "scope"
+
+    method t ~loc name _t =
+      let id = map_loc (derive_of_label derive_scope_type#name) name in
+      let id = map_loc lident id in
+      let scope = ptyp_constr ~loc id [] in
+      [%type: string * string -> [%t scope]]
+
+    method! derive_of_tuple ~loc ts x =
+      match_table ~loc x @@ fun (tbl, col) ->
+      with_genname_idx ~loc col @@ fun genname ->
+      let es =
+        List.mapi ts ~f:(fun idx t ->
+            let idx = eint ~loc idx in
+            self#derive_of_type_expr ~loc t
+              [%expr [%e tbl], [%e genname] [%e idx]])
+      in
+      pexp_tuple ~loc es
+
+    method! derive_of_record ~loc fs x =
+      match_table ~loc x @@ fun (tbl, col) ->
+      with_genname_field ~loc col @@ fun genname ->
+      let fields =
+        List.map fs ~f:(fun (n, t) ->
+            let loc = n.loc in
+            let col' = estring ~loc n.txt in
+            let e =
+              self#derive_of_type_expr ~loc t
+                [%expr [%e tbl], [%e genname] [%e col']]
+            in
+            {
+              pcf_desc = Pcf_method (n, Public, Cfk_concrete (Fresh, e));
+              pcf_loc = loc;
+              pcf_attributes = [];
+            })
+      in
+      pexp_object ~loc (class_structure ~self:(ppat_any ~loc) ~fields)
+  end
+
 let derive_decode =
   object (self)
     inherit deriving1
     method name = "decode"
 
-    method t ~loc t =
+    method t ~loc _name t =
       [%type: Sqlite3.Data.t array -> Persistent.ctx -> [%t t]]
 
     method! derive_of_tuple ~loc ts x =
@@ -41,7 +201,7 @@ let derive_bind =
     inherit deriving1
     method name = "bind"
 
-    method t ~loc t =
+    method t ~loc _name t =
       [%type: [%t t] -> Persistent.ctx -> Sqlite3.stmt -> unit]
 
     method! derive_of_tuple ~loc ts x =
@@ -68,45 +228,68 @@ let derive_bind =
       [%expr fun ctx stmt -> [%e pexp_match ~loc x [ p --> e ]]]
   end
 
-let pexp_list ~loc xs =
-  List.fold_left (List.rev xs) ~init:[%expr []] ~f:(fun xs x ->
-      [%expr [%e x] :: [%e xs]])
-
 let derive_columns =
   object (self)
     inherit deriving1
     method name = "columns"
-    method t ~loc _t = [%type: string -> (string * string) list]
+    method t ~loc _name _t = [%type: string -> (string * string) list]
 
     method! derive_of_tuple ~loc ts x =
+      with_genname_idx ~loc x @@ fun genname ->
       let es =
         List.mapi ts ~f:(fun i t ->
             let i = eint ~loc i in
             [%expr
-              [%e self#derive_of_type_expr ~loc t [%expr genname [%e i]]]])
+              [%e
+                self#derive_of_type_expr ~loc t
+                  [%expr [%e genname] [%e i]]]])
       in
-      [%expr
-        let genname =
-          match [%e x] with
-          | "" -> fun i -> Printf.sprintf "c%i" i
-          | prefix -> fun i -> Printf.sprintf "%s_%i" prefix i
-        in
-        List.flatten [%e pexp_list ~loc es]]
+      [%expr List.flatten [%e pexp_list ~loc es]]
 
     method! derive_of_record ~loc fs x =
+      with_genname_field ~loc x @@ fun genname ->
       let es =
         List.map fs ~f:(fun ((n : label loc), t) ->
             let n = estring ~loc:n.loc n.txt in
             [%expr
-              [%e self#derive_of_type_expr ~loc t [%expr genname [%e n]]]])
+              [%e
+                self#derive_of_type_expr ~loc t
+                  [%expr [%e genname] [%e n]]]])
       in
-      [%expr
-        let genname =
-          match [%e x] with
-          | "" -> Fun.id
-          | prefix -> fun n -> Printf.sprintf "%s_%s" prefix n
-        in
-        List.flatten [%e pexp_list ~loc es]]
+      [%expr List.flatten [%e pexp_list ~loc es]]
+  end
+
+let derive_fields =
+  object (self)
+    inherit deriving1
+    method name = "fields"
+
+    method t ~loc _name _t =
+      [%type: string -> (Persistent.any_expr * string) list]
+
+    method! derive_of_tuple ~loc ts x =
+      with_genname_idx ~loc x @@ fun genname ->
+      let es =
+        List.mapi ts ~f:(fun i t ->
+            let i = eint ~loc i in
+            [%expr
+              [%e
+                self#derive_of_type_expr ~loc t
+                  [%expr [%e genname] [%e i]]]])
+      in
+      [%expr List.flatten [%e pexp_list ~loc es]]
+
+    method! derive_of_record ~loc fs x =
+      with_genname_field ~loc x @@ fun genname ->
+      let es =
+        List.map fs ~f:(fun ((n : label loc), t) ->
+            let n = estring ~loc:n.loc n.txt in
+            [%expr
+              [%e
+                self#derive_of_type_expr ~loc t
+                  [%expr [%e genname] [%e n]]]])
+      in
+      [%expr List.flatten [%e pexp_list ~loc es]]
   end
 
 let codec =
@@ -115,13 +298,20 @@ let codec =
       (Deriving.Generator.V2.make Deriving.Args.empty (fun ~ctxt str ->
            derive_decode#generator ~ctxt str
            @ derive_bind#generator ~ctxt str
-           @ derive_columns#generator ~ctxt str))
+           @ derive_columns#generator ~ctxt str
+           @ derive_fields#generator ~ctxt str
+           @ derive_scope_type#generator ~ctxt str
+           @ derive_scope#generator ~ctxt str))
 
 let _ =
   let derive_table ({ name; params; shape = _; loc } : Repr.type_decl) =
     if not (List.is_empty params) then not_supported "type parameters";
     let pat = ppat_var ~loc name in
     let columns = map_loc (derive_of_label "columns") name in
+    let scope = map_loc lident (map_loc (derive_of_label "scope") name) in
+    let fields =
+      map_loc lident (map_loc (derive_of_label "fields") name)
+    in
     let bind = map_loc lident (map_loc (derive_of_label "bind") name) in
     let decode =
       map_loc lident (map_loc (derive_of_label "decode") name)
@@ -134,9 +324,11 @@ let _ =
         [%expr
           {
             Persistent.table = [%e estring ~loc name.txt];
+            scope = (fun t -> [%e pexp_ident ~loc scope] (t, ""));
             columns = [%e pexp_ident ~loc columns] "";
             decode = [%e pexp_ident ~loc decode];
             bind = [%e pexp_ident ~loc bind];
+            fields = [%e pexp_ident ~loc fields] "";
           }]
   in
   Deriving.add "entity"

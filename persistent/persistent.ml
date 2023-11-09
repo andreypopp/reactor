@@ -79,63 +79,6 @@ let float_bind v ctx stmt =
   Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx (FLOAT v));
   ctx.idx <- ctx.idx + 1
 
-type 'a table = {
-  table : string;
-  columns : (string * string) list;
-  decode : 'a decode;
-  bind : 'a bind;
-}
-
-let create_table_sql t =
-  Printf.sprintf "CREATE TABLE IF NOT EXISTS %s(%s)" t.table
-    (t.columns
-    |> List.map ~f:(fun (n, t) -> Printf.sprintf "%s %s" n t)
-    |> String.concat ~sep:",")
-
-let insert_sql t =
-  Printf.sprintf "INSERT INTO %s(%s) VALUES(%s)" t.table
-    (t.columns |> List.map ~f:fst |> String.concat ~sep:", ")
-    (t.columns |> List.map ~f:(fun _ -> "?") |> String.concat ~sep:", ")
-
-let select_sql t =
-  Printf.sprintf "SELECT %s FROM %s"
-    (t.columns |> List.map ~f:fst |> String.concat ~sep:", ")
-    t.table
-
-let init t =
-  let sql = create_table_sql t in
-  fun db -> Sqlite3.Rc.check (Sqlite3.exec db sql)
-
-let rec insert_work stmt =
-  match Sqlite3.step stmt with
-  | Sqlite3.Rc.DONE -> ()
-  | OK -> insert_work stmt
-  | rc -> Sqlite3.Rc.check rc
-
-let insert t =
-  let sql = insert_sql t in
-  fun db ->
-    let stmt = Sqlite3.prepare db sql in
-    fun v ->
-      let ctx = { idx = 1 } in
-      Sqlite3.Rc.check (Sqlite3.reset stmt);
-      t.bind v ctx stmt;
-      insert_work stmt
-
-let fold' decode sql ~init ~f db =
-  let stmt = Sqlite3.prepare db sql in
-  let rc, acc =
-    Sqlite3.fold stmt ~init ~f:(fun acc row ->
-        let ctx = { idx = 0 } in
-        let user = decode row ctx in
-        f acc user)
-  in
-  Sqlite3.Rc.check rc;
-  acc
-
-let fold t ~init ~f = fold' t.decode (select_sql t) ~init ~f
-let iter t decode ~f = fold t decode ~init:() ~f:(fun () -> f)
-
 type 's opt = Opt of 's
 type 's agg = Agg of 's
 
@@ -232,6 +175,66 @@ end
 type 'a e = 'a E.e
 type any_expr = Any_expr : ('a, 'n) E.t -> any_expr
 type fields = (any_expr * string) list
+type 's make_scope = string -> 's
+
+type ('a, 's) table = {
+  table : string;
+  columns : (string * string) list;
+  decode : 'a decode;
+  bind : 'a bind;
+  scope : 's make_scope;
+  fields : (any_expr * string) list;
+}
+
+let create_table_sql t =
+  Printf.sprintf "CREATE TABLE IF NOT EXISTS %s(%s)" t.table
+    (t.columns
+    |> List.map ~f:(fun (n, t) -> Printf.sprintf "%s %s" n t)
+    |> String.concat ~sep:",")
+
+let insert_sql t =
+  Printf.sprintf "INSERT INTO %s(%s) VALUES(%s)" t.table
+    (t.columns |> List.map ~f:fst |> String.concat ~sep:", ")
+    (t.columns |> List.map ~f:(fun _ -> "?") |> String.concat ~sep:", ")
+
+let select_sql t =
+  Printf.sprintf "SELECT %s FROM %s"
+    (t.columns |> List.map ~f:fst |> String.concat ~sep:", ")
+    t.table
+
+let init t =
+  let sql = create_table_sql t in
+  fun db -> Sqlite3.Rc.check (Sqlite3.exec db sql)
+
+let rec insert_work stmt =
+  match Sqlite3.step stmt with
+  | Sqlite3.Rc.DONE -> ()
+  | OK -> insert_work stmt
+  | rc -> Sqlite3.Rc.check rc
+
+let insert t =
+  let sql = insert_sql t in
+  fun db ->
+    let stmt = Sqlite3.prepare db sql in
+    fun v ->
+      let ctx = { idx = 1 } in
+      Sqlite3.Rc.check (Sqlite3.reset stmt);
+      t.bind v ctx stmt;
+      insert_work stmt
+
+let fold' decode sql ~init ~f db =
+  let stmt = Sqlite3.prepare db sql in
+  let rc, acc =
+    Sqlite3.fold stmt ~init ~f:(fun acc row ->
+        let ctx = { idx = 0 } in
+        let user = decode row ctx in
+        f acc user)
+  in
+  Sqlite3.Rc.check rc;
+  acc
+
+let fold t ~init ~f = fold' t.decode (select_sql t) ~init ~f
+let iter t decode ~f = fold t decode ~init:() ~f:(fun () -> f)
 
 module Q = struct
   type void = private Void
@@ -240,10 +243,8 @@ module Q = struct
   let asc e = Asc e
   let desc e = Desc e
 
-  type 's make_scope = string -> 's
-
   type (_, _) q =
-    | From : 'a table * fields * 's make_scope -> ('s, 'a) q
+    | From : ('a, 's) table -> ('s, 'a) q
     | Where : ('s, 'a) q * ('s -> bool e) -> ('s, 'a) q
     | Order_by : ('s, 'a) q * ('s -> order list) -> ('s, 'a) q
     (* | Join : *)
@@ -353,12 +354,12 @@ module Q = struct
     List.map fs ~f:(fun (Any_expr e, n) -> Any_expr (E.as_col t n e), n)
 
   let rec to_rel : type s a. (s, a) q -> (s, a) rel = function
-    | From (t, fields, scope) ->
+    | From t ->
         {
           decode = t.decode;
-          scope;
+          scope = t.scope;
           tree = FROM t;
-          fields;
+          fields = t.fields;
           select = [];
           default_select = "*";
         }
@@ -438,7 +439,7 @@ module Q = struct
     trim_select rel;
     rel.decode, rel.scope, render_rel rel
 
-  let from t f s = From (t, f, s)
+  let from t = From t
   let where e q = Where (q, e)
   let order_by e q = Order_by (q, e)
 
@@ -530,3 +531,20 @@ end = struct
 
   let iter q p db ~f = fold q p db ~init:() ~f:(fun () row -> f row)
 end
+
+type 'a scope_field =
+  | Scope : 'a -> 'a scope_field
+  | Field : 'a e -> 'a scope_field
+
+let scope_field name field = name, field
+
+type string_scope = string e
+type int_scope = int e
+type float_scope = float e
+
+let string_scope (tbl, col) = E.col tbl col string_decode
+let int_scope (tbl, col) = E.col tbl col int_decode
+let float_scope (tbl, col) = E.col tbl col float_decode
+let string_fields n = [ Any_expr (E.col "t" n string_decode), n ]
+let int_fields n = [ Any_expr (E.col "t" n int_decode), n ]
+let float_fields n = [ Any_expr (E.col "t" n float_decode), n ]
