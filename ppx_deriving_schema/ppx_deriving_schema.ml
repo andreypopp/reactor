@@ -109,7 +109,7 @@ module Repr = struct
 end
 
 module Deriving_helper = struct
-  let to_lident id = { loc = id.loc; txt = lident id.txt }
+  let map_loc f a_loc = { a_loc with txt = f a_loc.txt }
 
   let gen_bindings ~loc prefix n =
     List.split
@@ -132,7 +132,7 @@ module Deriving_helper = struct
              let expr =
                pexp_ident ~loc { loc = n.loc; txt = lident id }
              in
-             (to_lident n, patt), expr))
+             (map_loc lident n, patt), expr))
     in
     let ns, ps = List.split ps in
     ps, pexp_record ~loc (List.combine ns es) None
@@ -156,32 +156,28 @@ module Deriving_helper = struct
           let id = sprintf "%s_%s" prefix n.txt in
           let patt = ppat_var ~loc { loc = n.loc; txt = id } in
           let expr = pexp_ident ~loc { loc = n.loc; txt = lident id } in
-          (to_lident n, patt), expr)
+          (map_loc lident n, patt), expr)
     in
-    (* TODO: is there unzip/uncombine somewhere? *)
     ppat_record ~loc (List.map xs ~f:fst) Closed, List.map xs ~f:snd
+
+  let pexp_list ~loc xs =
+    List.fold_left (List.rev xs) ~init:[%expr []] ~f:(fun xs x ->
+        [%expr [%e x] :: [%e xs]])
 
   let ( --> ) pc_lhs pc_rhs = { pc_lhs; pc_rhs; pc_guard = None }
 
-  let name_of_t name = function
+  let derive_of_label name = function
     | "t" -> name
     | t -> Printf.sprintf "%s_%s" t name
 
-  let name_loc_of_t name id = { id with txt = name_of_t name id.txt }
-
-  let name_of_longident name_of_t name (lid : Longident.t) =
+  let derive_of_longident name (lid : Longident.t) =
     match lid with
-    | Lident lab -> Longident.Lident (name_of_t name lab)
-    | Ldot (lid, lab) -> Longident.Ldot (lid, name_of_t name lab)
+    | Lident lab -> Longident.Lident (derive_of_label name lab)
+    | Ldot (lid, lab) -> Longident.Ldot (lid, derive_of_label name lab)
     | Lapply (_, _) -> failwith "unable to get name of Lapply"
 
   let ederiver name (lid : Longident.t loc) =
-    pexp_ident ~loc:lid.loc
-      { loc = lid.loc; txt = name_of_longident name_of_t name lid.txt }
-
-  let lident_of_t name label =
-    let n = name_loc_of_t name label in
-    { loc = n.loc; txt = Longident.parse n.txt }
+    pexp_ident ~loc:lid.loc (map_loc (derive_of_longident name) lid)
 end
 
 type deriver =
@@ -242,11 +238,11 @@ class virtual deriving1 =
 
     method private derive_of_type_expr' ~loc =
       function
-      | _, Te_tuple ts -> As_fun (fun x -> self#derive_of_tuple ~loc ts x)
-      | _, Te_var id -> As_val (ederiver self#name (to_lident id))
+      | _, Te_tuple ts -> As_fun (self#derive_of_tuple ~loc ts)
+      | _, Te_var id -> As_val (ederiver self#name (map_loc lident id))
       | _, Te_opaque (n, ts) -> self#derive_type_ref' self#name ~loc n ts
       | t, Te_polyvariant cs ->
-          As_fun (fun x -> self#derive_of_polyvariant ~loc cs t x)
+          As_fun (self#derive_of_polyvariant ~loc cs t)
 
     method derive_of_type_expr ~loc repr x =
       as_val ~loc (self#derive_of_type_expr' ~loc repr) x
@@ -264,12 +260,14 @@ class virtual deriving1 =
       let expr =
         List.fold_left params ~init:expr ~f:(fun body param ->
             pexp_fun ~loc Nolabel None
-              (ppat_var ~loc (name_loc_of_t self#name param))
+              (ppat_var ~loc (map_loc (derive_of_label self#name) param))
               body)
       in
       [
         value_binding ~loc
-          ~pat:(ppat_var ~loc (name_loc_of_t self#binding_name name))
+          ~pat:
+            (ppat_var ~loc
+               (map_loc (derive_of_label self#binding_name) name))
           ~expr;
       ]
 
@@ -363,7 +361,7 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
            List.fold_left (List.rev cs) ~init:(error ~loc)
              ~f:(fun next c ->
                let make (n : label loc) arg =
-                 pexp_construct (to_lident n) ~loc:n.loc arg
+                 pexp_construct (map_loc lident n) ~loc:n.loc arg
                in
                match c with
                | Vc_record (n, fs) ->
@@ -404,9 +402,9 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
                  let x = [%expr x] in
                  let init =
                    poly#derive_type_ref ~loc poly#binding_name
-                     (to_lident decl_name)
+                     (map_loc lident decl_name)
                      (List.map params ~f:(fun p ->
-                          te_opaque (to_lident p) []))
+                          te_opaque (map_loc lident p) []))
                      x
                  in
                  let init =
@@ -419,14 +417,17 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
                  in
                  List.fold_left params ~init ~f:(fun body param ->
                      pexp_fun ~loc Nolabel None
-                       (ppat_var ~loc (name_loc_of_t name param))
+                       (ppat_var ~loc
+                          (map_loc (derive_of_label name) param))
                        body)
                in
                [
                  value_binding ~loc
                    ~pat:
                      (ppat_var ~loc
-                        (name_loc_of_t self#binding_name decl_name))
+                        (map_loc
+                           (derive_of_label self#binding_name)
+                           decl_name))
                    ~expr;
                ]
              in
@@ -501,7 +502,7 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
              ~init:[ [%pat? _] --> error ~loc ]
              ~f:(fun next c ->
                let make (n : label loc) arg =
-                 pexp_construct (to_lident n) ~loc:n.loc arg
+                 pexp_construct (map_loc lident n) ~loc:n.loc arg
                in
                match c with
                | Vc_record (n, fs) ->
@@ -552,9 +553,9 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
                  let x = [%expr x] in
                  let init =
                    poly#derive_type_ref ~loc poly#binding_name
-                     (to_lident decl_name)
+                     (map_loc lident decl_name)
                      (List.map params ~f:(fun p ->
-                          te_opaque (to_lident p) []))
+                          te_opaque (map_loc lident p) []))
                      x
                  in
                  let init =
@@ -567,14 +568,17 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
                  in
                  List.fold_left params ~init ~f:(fun body param ->
                      pexp_fun ~loc Nolabel None
-                       (ppat_var ~loc (name_loc_of_t name param))
+                       (ppat_var ~loc
+                          (map_loc (derive_of_label name) param))
                        body)
                in
                [
                  value_binding ~loc
                    ~pat:
                      (ppat_var ~loc
-                        (name_loc_of_t self#binding_name decl_name))
+                        (map_loc
+                           (derive_of_label self#binding_name)
+                           decl_name))
                    ~expr;
                ]
              in
@@ -604,7 +608,7 @@ let deriving_to ~name ~t_to ~derive_of_tuple ~derive_of_record
 
        method! derive_of_variant ~loc cs x =
          let ctor_pat (n : label loc) pat =
-           ppat_construct ~loc:n.loc (to_lident n) pat
+           ppat_construct ~loc:n.loc (map_loc lident n) pat
          in
          pexp_match ~loc x
            (List.map cs ~f:(function

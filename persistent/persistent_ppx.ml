@@ -121,9 +121,11 @@ let _ =
   let derive_table ({ name; params; shape = _; loc } : Repr.type_decl) =
     if not (List.is_empty params) then not_supported "type parameters";
     let pat = ppat_var ~loc name in
-    let columns = name_loc_of_t "columns" name in
-    let bind = lident_of_t "bind" name in
-    let decode = lident_of_t "decode" name in
+    let columns = map_loc (derive_of_label "columns") name in
+    let bind = map_loc lident (map_loc (derive_of_label "bind") name) in
+    let decode =
+      map_loc lident (map_loc (derive_of_label "decode") name)
+    in
     let columns =
       { loc = columns.loc; txt = Longident.parse columns.txt }
     in

@@ -21,11 +21,11 @@ module Of_json = struct
 
   let build_record ~loc derive fs x make =
     let handle_field fs (n, t) =
-      ( to_lident n,
+      ( map_loc lident n,
         [%expr
           match
             Js.Undefined.toOption
-              [%e fs] ## [%e pexp_ident ~loc:n.loc (to_lident n)]
+              [%e fs] ## [%e pexp_ident ~loc:n.loc (map_loc lident n)]
           with
           | Stdlib.Option.Some v -> [%e derive ~loc t [%expr v]]
           | Stdlib.Option.None ->
@@ -140,7 +140,7 @@ module To_json = struct
     let fs =
       List.map2 fs es ~f:(fun (n, t) x ->
           let this = derive ~loc t x in
-          to_lident n, this)
+          map_loc lident n, this)
     in
     let record = pexp_record ~loc fs None in
     as_json ~loc [%expr [%mel.obj [%e record]]]

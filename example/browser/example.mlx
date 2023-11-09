@@ -23,7 +23,8 @@ let%component hello ~name () =
       [| name |]
   in
   let msg = React.use (Remote.run_query q) in
-  let%browser_only onClick [@ocaml.warning "-26"] = (fun  _ev  ->
+  let%browser_only (onClick [@ocaml.warning "-26"]) =
+   fun _ev ->
     ignore
       (Promise.(
          let* () =
@@ -34,7 +35,7 @@ let%component hello ~name () =
          React.startTransition (fun () ->
              setq (fun _ -> Api.Hello.hello ~name));
          return ())
-  : unit Promise.t)) 
+        : unit Promise.t)
   in
   <div onClick>(React.string msg)</div>
 

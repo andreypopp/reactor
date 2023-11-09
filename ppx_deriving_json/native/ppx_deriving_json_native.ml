@@ -52,7 +52,7 @@ module Of_json = struct
     let build =
       let fields =
         List.map fs ~f:(fun (n, _) ->
-            ( to_lident n,
+            ( map_loc lident n,
               [%expr
                 match Stdlib.( ! ) [%e ename n] with
                 | Stdlib.Option.Some v -> v
@@ -124,10 +124,6 @@ module Of_json = struct
 end
 
 module To_json = struct
-  let pexp_list ~loc xs =
-    List.fold_left (List.rev xs) ~init:[%expr []] ~f:(fun xs x ->
-        [%expr [%e x] :: [%e xs]])
-
   let derive_of_tuple ~loc derive ts es =
     let es = List.map2 ts es ~f:(derive ~loc) in
     [%expr `List [%e pexp_list ~loc es]]
