@@ -1,9 +1,5 @@
 open Ppxlib
 
-exception Not_supported of string
-
-val not_supported : string -> 'a
-
 (** Simplified type expression / declaration representation. *)
 module Repr : sig
   type type_decl = {
@@ -268,3 +264,9 @@ class virtual deriving1 : object
     rec_flag * type_declaration list ->
     structure
 end
+
+exception Not_supported of string
+(** TODO: remove it from interface *)
+
+val not_supported : string -> 'a
+(** [not_supported what] terminates ppx with an error message telling [what] unsupported. *)
