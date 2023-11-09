@@ -218,10 +218,6 @@ class virtual deriving1 : object
   method virtual name : string
   (** name of the deriver *)
 
-  method binding_name : string
-  (** name of the binding produced by the deriver (defaults to [name] but can
-      be overriden to customize "shallow" derivers) *)
-
   method virtual t : loc:location -> core_type -> core_type
   (** produce a type expression for the deriver *)
 
@@ -247,6 +243,7 @@ class virtual deriving1 : object
   method derive_of_type_expr :
     loc:location -> Repr.type_expr -> expression -> expression
 
+  method derive_type_decl_label : label loc -> label loc
   method derive_type_decl : Repr.type_decl -> value_binding list
 
   method derive_type_ref :

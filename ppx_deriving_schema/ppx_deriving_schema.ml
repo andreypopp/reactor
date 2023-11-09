@@ -198,7 +198,6 @@ open Deriving_helper
 class virtual deriving1 =
   object (self)
     method virtual name : string
-    method binding_name = self#name
     method virtual t : loc:location -> core_type -> core_type
 
     method derive_of_tuple
@@ -253,6 +252,9 @@ class virtual deriving1 =
       | Ts_record fs -> self#derive_of_record ~loc fs x
       | Ts_variant cs -> self#derive_of_variant ~loc cs x
 
+    method derive_type_decl_label name =
+      map_loc (derive_of_label self#name) name
+
     method derive_type_decl ({ name; params; shape; loc } as decl) =
       let expr = self#derive_type_shape ~loc [%expr x] shape in
       let t = Repr.decl_to_te_expr decl in
@@ -265,9 +267,7 @@ class virtual deriving1 =
       in
       [
         value_binding ~loc
-          ~pat:
-            (ppat_var ~loc
-               (map_loc (derive_of_label self#binding_name) name))
+          ~pat:(ppat_var ~loc (self#derive_type_decl_label name))
           ~expr;
       ]
 
@@ -308,12 +308,15 @@ type derive_of_type_expr =
 let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
     ~derive_of_variant ~derive_of_variant_case
     ~derive_of_variant_case_record () =
+  let poly_name = sprintf "%s_poly" name in
   let poly =
     object (self)
       inherit deriving1
       method name = name
-      method! binding_name = sprintf "%s_poly" name
       method t ~loc t = [%type: [%t of_t ~loc] -> [%t t] option]
+
+      method! derive_type_decl_label name =
+        map_loc (derive_of_label poly_name) name
 
       method! derive_of_tuple ~loc =
         derive_of_tuple ~loc self#derive_of_type_expr
@@ -333,9 +336,7 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
                   derive_of_variant_case ~loc self#derive_of_type_expr
                     make n ts next
               | Pvc_inherit (n, ts) ->
-                  let x =
-                    self#derive_type_ref ~loc self#binding_name n ts x
-                  in
+                  let x = self#derive_type_ref ~loc poly_name n ts x in
                   [%expr
                     match [%e x] with
                     | Some x -> (Some x :> [%t t] option)
@@ -384,7 +385,7 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
                      make n ts next
                | Pvc_inherit (n, ts) ->
                    let maybe_e =
-                     poly#derive_type_ref ~loc poly#binding_name n ts x
+                     poly#derive_type_ref ~loc poly_name n ts x
                    in
                    [%expr
                      match [%e maybe_e] with
@@ -393,7 +394,7 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
          in
          derive_of_variant ~loc self#derive_of_type_expr cases x
 
-       method derive_type_decl decl =
+       method! derive_type_decl decl =
          match decl.shape with
          | Ts_expr (t, Te_polyvariant _) ->
              let str =
@@ -401,7 +402,7 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
                let expr =
                  let x = [%expr x] in
                  let init =
-                   poly#derive_type_ref ~loc poly#binding_name
+                   poly#derive_type_ref ~loc poly_name
                      (map_loc lident decl_name)
                      (List.map params ~f:(fun p ->
                           te_opaque (map_loc lident p) []))
@@ -425,26 +426,26 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
                  value_binding ~loc
                    ~pat:
                      (ppat_var ~loc
-                        (map_loc
-                           (derive_of_label self#binding_name)
-                           decl_name))
+                        (map_loc (derive_of_label self#name) decl_name))
                    ~expr;
                ]
              in
              poly#derive_type_decl decl @ str
          | _ -> super#derive_type_decl decl
-       [@@ocaml.warning "-7"]
     end)
 
 let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
     ~derive_of_record ~derive_of_variant_case
     ~derive_of_variant_case_record () =
+  let poly_name = sprintf "%s_poly" name in
   let poly =
     object (self)
       inherit deriving1
       method name = name
       method t ~loc t = [%type: [%t of_t ~loc] -> [%t t] option]
-      method binding_name = sprintf "%s_poly" name [@@ocaml.warning "-7"]
+
+      method! derive_type_decl_label name =
+        map_loc (derive_of_label poly_name) name
 
       method! derive_of_tuple ~loc =
         derive_of_tuple ~loc self#derive_of_type_expr
@@ -463,8 +464,7 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
           --> List.fold_left (List.rev inherits) ~init:[%expr None]
                 ~f:(fun next (n, ts) ->
                   let maybe =
-                    self#derive_type_ref ~loc self#binding_name n ts
-                      [%expr x]
+                    self#derive_type_ref ~loc poly_name n ts [%expr x]
                   in
                   [%expr
                     match [%e maybe] with
@@ -527,7 +527,7 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
            --> List.fold_left (List.rev inherits) ~init:(error ~loc)
                  ~f:(fun next (n, ts) ->
                    let maybe =
-                     poly#derive_type_ref ~loc poly#binding_name n ts x
+                     poly#derive_type_ref ~loc poly_name n ts x
                    in
                    [%expr
                      match [%e maybe] with
@@ -544,7 +544,7 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
          in
          pexp_match ~loc x cases
 
-       method derive_type_decl decl =
+       method! derive_type_decl decl =
          match decl.shape with
          | Ts_expr (_t, Te_polyvariant _) ->
              let str =
@@ -552,7 +552,7 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
                let expr =
                  let x = [%expr x] in
                  let init =
-                   poly#derive_type_ref ~loc poly#binding_name
+                   poly#derive_type_ref ~loc poly_name
                      (map_loc lident decl_name)
                      (List.map params ~f:(fun p ->
                           te_opaque (map_loc lident p) []))
@@ -576,15 +576,12 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
                  value_binding ~loc
                    ~pat:
                      (ppat_var ~loc
-                        (map_loc
-                           (derive_of_label self#binding_name)
-                           decl_name))
+                        (map_loc (derive_of_label self#name) decl_name))
                    ~expr;
                ]
              in
              poly#derive_type_decl decl @ str
          | _ -> super#derive_type_decl decl
-       [@@ocaml.warning "-7"]
     end)
 
 let deriving_to ~name ~t_to ~derive_of_tuple ~derive_of_record
