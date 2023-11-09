@@ -356,7 +356,7 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
        method! derive_of_record ~loc =
          derive_of_record ~loc self#derive_of_type_expr
 
-       method! private derive_of_variant ~loc cs x =
+       method! derive_of_variant ~loc cs x =
          let cases =
            List.fold_left (List.rev cs) ~init:(error ~loc)
              ~f:(fun next c ->
@@ -373,7 +373,7 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
          in
          derive_of_variant ~loc self#derive_of_type_expr cases x
 
-       method! private derive_of_polyvariant ~loc cs t x =
+       method! derive_of_polyvariant ~loc cs t x =
          let cases =
            List.fold_left (List.rev cs) ~init:(error ~loc)
              ~f:(fun next c ->
