@@ -29,9 +29,10 @@ class virtual deriving_type =
       fun ~loc t ->
         match t with
         | _, Repr.Te_tuple ts -> self#derive_of_tuple ~loc ts
-        | _, Te_var _ -> not_supported "type variables"
+        | _, Te_var _ -> not_supported ~loc "type variables"
         | _, Te_opaque (n, ts) ->
-            if not (List.is_empty ts) then not_supported "type params"
+            if not (List.is_empty ts) then
+              not_supported ~loc "type params"
             else
               let n = map_loc (derive_of_longident self#name) n in
               ptyp_constr ~loc n []
@@ -46,7 +47,7 @@ class virtual deriving_type =
     method derive_type_decl { Repr.name; params; shape; loc }
         : type_declaration list =
       let manifest = self#derive_type_shape ~loc shape in
-      if not (List.is_empty params) then not_supported "type params"
+      if not (List.is_empty params) then not_supported ~loc "type params"
       else
         [
           type_declaration ~loc
@@ -62,7 +63,7 @@ class virtual deriving_type =
       fun ~ctxt (_rec_flag, type_decls) ->
         let loc = Expansion_context.Deriver.derived_item_loc ctxt in
         match List.map type_decls ~f:Repr.of_type_declaration with
-        | exception Not_supported msg ->
+        | exception Not_supported (loc, msg) ->
             [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
         | reprs ->
             let type_decls =
@@ -296,16 +297,20 @@ let codec =
   Deriving.add "codec"
     ~str_type_decl:
       (Deriving.Generator.V2.make Deriving.Args.empty (fun ~ctxt str ->
-           derive_decode#generator ~ctxt str
-           @ derive_bind#generator ~ctxt str
-           @ derive_columns#generator ~ctxt str
-           @ derive_fields#generator ~ctxt str
-           @ derive_scope_type#generator ~ctxt str
-           @ derive_scope#generator ~ctxt str))
+           try
+             derive_decode#generator ~ctxt str
+             @ derive_bind#generator ~ctxt str
+             @ derive_columns#generator ~ctxt str
+             @ derive_fields#generator ~ctxt str
+             @ derive_scope_type#generator ~ctxt str
+             @ derive_scope#generator ~ctxt str
+           with Not_supported (loc, msg) ->
+             [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]))
 
 let _ =
   let derive_table ({ name; params; shape = _; loc } : Repr.type_decl) =
-    if not (List.is_empty params) then not_supported "type parameters";
+    if not (List.is_empty params) then
+      not_supported ~loc "type parameters";
     let pat = ppat_var ~loc name in
     let columns = map_loc (derive_of_label "columns") name in
     let scope = map_loc lident (map_loc (derive_of_label "scope") name) in
@@ -337,7 +342,7 @@ let _ =
          (fun ~ctxt (rec_flag, type_decls) ->
            let loc = Expansion_context.Deriver.derived_item_loc ctxt in
            match List.map type_decls ~f:Repr.of_type_declaration with
-           | exception Not_supported msg ->
+           | exception Not_supported (loc, msg) ->
                [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
            | reprs -> (
                try
@@ -346,5 +351,5 @@ let _ =
                    [@@@ocaml.warning "-39-11"]
 
                    [%%i pstr_value ~loc rec_flag bindings]]
-               with Not_supported msg ->
+               with Not_supported (loc, msg) ->
                  [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ])))
