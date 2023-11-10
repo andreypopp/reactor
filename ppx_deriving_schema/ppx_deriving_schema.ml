@@ -3,10 +3,10 @@ open Ppxlib
 open Ast_builder.Default
 open ContainersLabels
 
-exception Not_supported of string
+exception Not_supported of location * string
 
-let not_supported what =
-  raise (Not_supported (sprintf "%s are not supported" what))
+let not_supported ~loc what =
+  raise (Not_supported (loc, sprintf "%s are not supported" what))
 
 module Repr = struct
   type type_decl = {
@@ -38,6 +38,7 @@ module Repr = struct
     | Pvc_inherit of Longident.t loc * type_expr list
 
   let rec of_core_type (typ : Parsetree.core_type) : type_expr =
+    let loc = typ.ptyp_loc in
     match typ.ptyp_desc with
     | Ptyp_tuple ts -> typ, Te_tuple (List.map ts ~f:of_core_type)
     | Ptyp_constr (id, ts) ->
@@ -50,24 +51,27 @@ module Repr = struct
                   Pvc_construct (id, List.map ts ~f:of_core_type)
               | Rinherit { ptyp_desc = Ptyp_constr (id, ts); _ } ->
                   Pvc_inherit (id, List.map ts ~f:of_core_type)
-              | Rinherit _ -> not_supported "this polyvariant inherit")
+              | Rinherit _ ->
+                  not_supported ~loc:field.prf_loc
+                    "this polyvariant inherit")
         in
         typ, Te_polyvariant cs
-    | Ptyp_variant _ -> not_supported "non closed polyvariants"
-    | Ptyp_arrow _ -> not_supported "function types"
-    | Ptyp_any -> not_supported "type placeholders"
+    | Ptyp_variant _ -> not_supported ~loc "non closed polyvariants"
+    | Ptyp_arrow _ -> not_supported ~loc "function types"
+    | Ptyp_any -> not_supported ~loc "type placeholders"
     | Ptyp_var label -> typ, Te_var { txt = label; loc = typ.ptyp_loc }
-    | Ptyp_object _ -> not_supported "object types"
-    | Ptyp_class _ -> not_supported "class types"
-    | Ptyp_poly _ -> not_supported "polymorphic type expressions"
-    | Ptyp_package _ -> not_supported "packaged module types"
-    | Ptyp_extension _ -> not_supported "extension nodes"
-    | Ptyp_alias _ -> not_supported "type aliases"
+    | Ptyp_object _ -> not_supported ~loc "object types"
+    | Ptyp_class _ -> not_supported ~loc "class types"
+    | Ptyp_poly _ -> not_supported ~loc "polymorphic type expressions"
+    | Ptyp_package _ -> not_supported ~loc "packaged module types"
+    | Ptyp_extension _ -> not_supported ~loc "extension nodes"
+    | Ptyp_alias _ -> not_supported ~loc "type aliases"
 
   let of_type_declaration (td : Parsetree.type_declaration) : type_decl =
+    let loc = td.ptype_loc in
     let shape =
       match td.ptype_kind, td.ptype_manifest with
-      | Ptype_abstract, None -> not_supported "abstract types"
+      | Ptype_abstract, None -> not_supported ~loc "abstract types"
       | Ptype_abstract, Some t -> Ts_expr (of_core_type t)
       | Ptype_variant ctors, _ ->
           let cs =
@@ -88,7 +92,7 @@ module Repr = struct
             List.map fs ~f:(fun f -> f.pld_name, of_core_type f.pld_type)
           in
           Ts_record fs
-      | Ptype_open, _ -> not_supported "open types"
+      | Ptype_open, _ -> not_supported ~loc "open types"
     in
     let params =
       List.map td.ptype_params ~f:(fun (t, _) ->
@@ -285,7 +289,7 @@ class virtual deriving1 =
       fun ~ctxt (_rec_flag, type_decls) ->
         let loc = Expansion_context.Deriver.derived_item_loc ctxt in
         match List.map type_decls ~f:Repr.of_type_declaration with
-        | exception Not_supported msg ->
+        | exception Not_supported (loc, msg) ->
             [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
         | reprs ->
             let bindings =

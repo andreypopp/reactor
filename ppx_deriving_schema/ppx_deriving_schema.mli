@@ -262,8 +262,8 @@ class virtual deriving1 : object
     structure
 end
 
-exception Not_supported of string
+exception Not_supported of location * string
 (** TODO: remove it from interface *)
 
-val not_supported : string -> 'a
+val not_supported : loc:location -> string -> 'a
 (** [not_supported what] terminates ppx with an error message telling [what] unsupported. *)
