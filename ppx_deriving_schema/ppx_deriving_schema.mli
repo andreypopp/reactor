@@ -166,7 +166,7 @@ module Deriving_helper : sig
   val gen_record :
     loc:location ->
     label ->
-    (label loc * Repr.type_expr) list ->
+    (label loc * 'a) list ->
     pattern list * expression
   (** [let patts, expr = gen_tuple label n in ...] creates a record expression
       and a corresponding list of patterns. *)
@@ -180,7 +180,7 @@ module Deriving_helper : sig
   val gen_pat_record :
     loc:location ->
     string ->
-    (label loc * Repr.type_expr) list ->
+    (label loc * 'a) list ->
     pattern * expression list
   (** [let patt, exprs = gen_pat_record ~loc prefix fs in ...]
       generates a pattern to match record with fields [fs] and a list of expressions
