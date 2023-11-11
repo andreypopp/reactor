@@ -171,7 +171,7 @@ let derive_decode =
     method name = "decode"
 
     method t ~loc _name t =
-      [%type: Sqlite3.Data.t array -> Persistent.ctx -> [%t t]]
+      [%type: Sqlite3.Data.t array -> Persistent.Codec.ctx -> [%t t]]
 
     method! derive_of_tuple ~loc ts x =
       let n = List.length ts in
@@ -201,9 +201,7 @@ let derive_bind =
   object (self)
     inherit deriving1
     method name = "bind"
-
-    method t ~loc _name t =
-      [%type: [%t t] -> Persistent.ctx -> Sqlite3.stmt -> unit]
+    method t ~loc _name t = [%type: [%t t] Persistent.Codec.bind]
 
     method! derive_of_tuple ~loc ts x =
       let n = List.length ts in

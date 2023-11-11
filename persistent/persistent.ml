@@ -1,83 +1,86 @@
 open Printf
 open ContainersLabels
 
-type db = Sqlite3.db
-type ctx = { mutable idx : int }
-type columns = string -> (string * string) list
-type 'a decode = Sqlite3.Data.t array -> ctx -> 'a
-type 'a bind = 'a -> ctx -> Sqlite3.stmt -> unit
+module Codec = struct
+  type ctx = { mutable idx : int }
+  type columns = string -> (string * string) list
+  type 'a decode = Sqlite3.Data.t array -> ctx -> 'a
+  type 'a bind = 'a -> ctx -> Sqlite3.stmt -> unit
 
-let option_decode decode row ctx =
-  let v =
-    (* TODO: this is wrong, this way decoder can still can succeed *)
-    match row.(ctx.idx) with
-    | Sqlite3.Data.NULL -> None
-    | _ -> Some (decode row ctx)
-  in
-  ctx.idx <- ctx.idx + 1;
-  v
+  module Builtins = struct
+    let option_decode decode row ctx =
+      let v =
+        (* TODO: this is wrong, this way decoder can still can succeed *)
+        match row.(ctx.idx) with
+        | Sqlite3.Data.NULL -> None
+        | _ -> Some (decode row ctx)
+      in
+      ctx.idx <- ctx.idx + 1;
+      v
 
-let bool_columns name = [ name, "INT" ]
+    let bool_columns name = [ name, "INT" ]
 
-let bool_decode row ctx =
-  let v =
-    match row.(ctx.idx) with
-    | Sqlite3.Data.INT 0L -> false
-    | Sqlite3.Data.INT 1L -> true
-    | _ -> failwith "sql type error: expected bool (int)"
-  in
-  ctx.idx <- ctx.idx + 1;
-  v
+    let bool_decode row ctx =
+      let v =
+        match row.(ctx.idx) with
+        | Sqlite3.Data.INT 0L -> false
+        | Sqlite3.Data.INT 1L -> true
+        | _ -> failwith "sql type error: expected bool (int)"
+      in
+      ctx.idx <- ctx.idx + 1;
+      v
 
-let bool_bind v ctx stmt =
-  Sqlite3.Rc.check
-    (Sqlite3.bind stmt ctx.idx (INT (Int64.of_int (Bool.to_int v))));
-  ctx.idx <- ctx.idx + 1
+    let bool_bind v ctx stmt =
+      Sqlite3.Rc.check
+        (Sqlite3.bind stmt ctx.idx (INT (Int64.of_int (Bool.to_int v))));
+      ctx.idx <- ctx.idx + 1
 
-let string_columns name = [ name, "TEXT" ]
+    let string_columns name = [ name, "TEXT" ]
 
-let string_decode row ctx =
-  let v =
-    match row.(ctx.idx) with
-    | Sqlite3.Data.TEXT v -> v
-    | _ -> failwith "sql type error: expected text"
-  in
-  ctx.idx <- ctx.idx + 1;
-  v
+    let string_decode row ctx =
+      let v =
+        match row.(ctx.idx) with
+        | Sqlite3.Data.TEXT v -> v
+        | _ -> failwith "sql type error: expected text"
+      in
+      ctx.idx <- ctx.idx + 1;
+      v
 
-let string_bind v ctx stmt =
-  Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx (TEXT v));
-  ctx.idx <- ctx.idx + 1
+    let string_bind v ctx stmt =
+      Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx (TEXT v));
+      ctx.idx <- ctx.idx + 1
 
-let int_columns name = [ name, "INT" ]
+    let int_columns name = [ name, "INT" ]
 
-let int_decode row ctx =
-  let v =
-    match row.(ctx.idx) with
-    | Sqlite3.Data.INT v -> Int64.to_int v
-    | _ -> failwith "sql type error: expected int"
-  in
-  ctx.idx <- ctx.idx + 1;
-  v
+    let int_decode row ctx =
+      let v =
+        match row.(ctx.idx) with
+        | Sqlite3.Data.INT v -> Int64.to_int v
+        | _ -> failwith "sql type error: expected int"
+      in
+      ctx.idx <- ctx.idx + 1;
+      v
 
-let int_bind v ctx stmt =
-  Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx (INT (Int64.of_int v)));
-  ctx.idx <- ctx.idx + 1
+    let int_bind v ctx stmt =
+      Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx (INT (Int64.of_int v)));
+      ctx.idx <- ctx.idx + 1
 
-let float_columns name = [ name, "FLOAT" ]
+    let float_columns name = [ name, "FLOAT" ]
 
-let float_decode row ctx =
-  let v =
-    match row.(ctx.idx) with
-    | Sqlite3.Data.FLOAT v -> v
-    | _ -> failwith "sql type error: expected float"
-  in
-  ctx.idx <- ctx.idx + 1;
-  v
+    let float_decode row ctx =
+      let v =
+        match row.(ctx.idx) with
+        | Sqlite3.Data.FLOAT v -> v
+        | _ -> failwith "sql type error: expected float"
+      in
+      ctx.idx <- ctx.idx + 1;
+      v
 
-let float_bind v ctx stmt =
-  Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx (FLOAT v));
-  ctx.idx <- ctx.idx + 1
+    let float_bind v ctx stmt =
+      Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx (FLOAT v));
+      ctx.idx <- ctx.idx + 1
+  end
+end
 
 type 's opt = Opt of 's
 type 's agg = Agg of 's
@@ -100,13 +103,13 @@ module E : sig
   val ( || ) : (bool, 'n) t -> (bool, 'n) t -> (bool, 'n) t
   val coalesce : ('a, _) t -> ('a, 'n) t -> ('a, 'n) t
   val of_opt : 's opt -> ('s -> ('a, _) t) -> 'a eopt
-  val inject : string -> 'a decode -> 'a e
-  val inject_opt : string -> 'a decode -> 'a eopt
+  val inject : string -> 'a Codec.decode -> 'a e
+  val inject_opt : string -> 'a Codec.decode -> 'a eopt
   val as_col : string -> string -> ('a, 'n) t -> ('a, 'n) t
-  val col : string -> string -> 'a decode -> 'a e
-  val col_opt : string -> string -> 'a decode -> 'a eopt
-  val decode : 'a e -> 'a decode
-  val decode_opt : 'a eopt -> 'a option decode
+  val col : string -> string -> 'a Codec.decode -> 'a e
+  val col_opt : string -> string -> 'a Codec.decode -> 'a eopt
+  val decode : 'a e -> 'a Codec.decode
+  val decode_opt : 'a eopt -> 'a option Codec.decode
   val to_sql : (_, _) t -> string
   val cols : (_, _) t -> (string * string) list
 end = struct
@@ -115,7 +118,7 @@ end = struct
 
   type ('a, 'n) t = {
     sql : string;
-    decode : 'a decode;
+    decode : 'a Codec.decode;
     cols : (string * string) list;
   }
 
@@ -124,11 +127,26 @@ end = struct
   type 'a e = ('a, not_null) t
   type 'a eopt = ('a, null) t
 
-  let int v = { sql = string_of_int v; decode = int_decode; cols = [] }
-  let bool v = { sql = string_of_bool v; decode = bool_decode; cols = [] }
+  let int v =
+    {
+      sql = string_of_int v;
+      decode = Codec.Builtins.int_decode;
+      cols = [];
+    }
+
+  let bool v =
+    {
+      sql = string_of_bool v;
+      decode = Codec.Builtins.bool_decode;
+      cols = [];
+    }
 
   let string v =
-    { sql = Printf.sprintf "'%s'" v; decode = string_decode; cols = [] }
+    {
+      sql = Printf.sprintf "'%s'" v;
+      decode = Codec.Builtins.string_decode;
+      cols = [];
+    }
 
   let make_binop decode op a b =
     {
@@ -137,9 +155,9 @@ end = struct
       cols = a.cols @ b.cols;
     }
 
-  let eq a b = make_binop bool_decode "=" a b
-  let and_ a b = make_binop bool_decode "AND" a b
-  let or_ a b = make_binop bool_decode "OR" a b
+  let eq a b = make_binop Codec.Builtins.bool_decode "=" a b
+  let and_ a b = make_binop Codec.Builtins.bool_decode "AND" a b
+  let or_ a b = make_binop Codec.Builtins.bool_decode "OR" a b
   let ( = ) = eq
   let ( && ) = and_
   let ( || ) = or_
@@ -165,7 +183,7 @@ end = struct
 
   let to_sql e = e.sql
   let decode e = e.decode
-  let decode_opt e = option_decode e.decode
+  let decode_opt e = Codec.Builtins.option_decode e.decode
 
   let of_opt (Opt s : 's opt) f =
     let e = f s in
@@ -181,8 +199,8 @@ type 's make_scope = string -> 's
 type ('a, 's) table = {
   table : string;
   columns : (string * string) list;
-  decode : 'a decode;
-  bind : 'a bind;
+  decode : 'a Codec.decode;
+  bind : 'a Codec.bind;
   scope : 's make_scope;
   fields : (any_expr * string) list;
 }
@@ -203,6 +221,8 @@ let select_sql t =
     (t.columns |> List.map ~f:fst |> String.concat ~sep:", ")
     t.table
 
+type db = Sqlite3.db
+
 let init = Sqlite3.db_open
 
 let create t =
@@ -220,7 +240,7 @@ let insert t =
   fun db ->
     let stmt = Sqlite3.prepare db sql in
     fun v ->
-      let ctx = { idx = 1 } in
+      let ctx = { Codec.idx = 1 } in
       Sqlite3.Rc.check (Sqlite3.reset stmt);
       t.bind v ctx stmt;
       insert_work stmt
@@ -229,7 +249,7 @@ let fold' decode sql ~init ~f db =
   let stmt = Sqlite3.prepare db sql in
   let rc, acc =
     Sqlite3.fold stmt ~init ~f:(fun acc row ->
-        let ctx = { idx = 0 } in
+        let ctx = { Codec.idx = 0 } in
         let user = decode row ctx in
         f acc user)
   in
@@ -257,7 +277,7 @@ module Q = struct
         ('sa, 'a) q * ('sb, 'b) q * ('sa * 'sb -> bool e)
         -> ('sa * 'sb opt, 'a * 'b option) q
     | Select :
-        ('s, 'a) q * ('s -> 's1 make_scope * fields * 'a1 decode)
+        ('s, 'a) q * ('s -> 's1 make_scope * fields * 'a1 Codec.decode)
         -> ('s1, 'a1) q
 
   type ('s, 'a) rel = {
@@ -266,7 +286,7 @@ module Q = struct
     fields : (any_expr * string) list;
     mutable select : (any_expr * string) list;
     default_select : string;
-    decode : 'a decode;
+    decode : 'a Codec.decode;
   }
 
   and tree =
@@ -439,7 +459,7 @@ module Q = struct
         let scope s = a.scope s, Opt (b.scope s) in
         let decode row ctx =
           let a = a.decode row ctx in
-          let b = option_decode b.decode row ctx in
+          let b = Codec.Builtins.option_decode b.decode row ctx in
           a, b
         in
         {
@@ -496,7 +516,7 @@ module P : sig
   val map : ('a -> 'b) -> 'a t -> 'b t
   val ( let+ ) : 'a t -> ('a -> 'b) -> 'b t
   val ( and+ ) : 'a t -> 'b t -> ('a * 'b) t
-  val decode : 'a t -> 'a decode
+  val decode : 'a t -> 'a Codec.decode
   val fields : 'a t -> (any_expr * string) list
   val select : ('a -> 'b t) -> ('a, 'c) query -> (unit, 'b) query
 
@@ -548,7 +568,7 @@ end = struct
     let _idx, fs = fields 1 [] p in
     List.rev fs
 
-  let rec decode : type a. a t -> a decode =
+  let rec decode : type a. a t -> a Codec.decode =
    fun p row ctx ->
     match p with
     | E (e, _) -> E.decode e row ctx
@@ -581,19 +601,20 @@ end = struct
   let iter q p db ~f = fold q p db ~init:() ~f:(fun () row -> f row)
 end
 
-type 'a scope_field =
-  | Scope : 'a -> 'a scope_field
-  | Field : 'a e -> 'a scope_field
+module Builtins = struct
+  include Codec.Builtins
 
-let scope_field name field = name, field
+  type string_scope = string e
+  type int_scope = int e
+  type float_scope = float e
+  type bool_scope = bool e
 
-type string_scope = string e
-type int_scope = int e
-type float_scope = float e
-
-let string_scope (tbl, col) = E.col tbl col string_decode
-let int_scope (tbl, col) = E.col tbl col int_decode
-let float_scope (tbl, col) = E.col tbl col float_decode
-let string_fields n = [ Any_expr (E.col "t" n string_decode), n ]
-let int_fields n = [ Any_expr (E.col "t" n int_decode), n ]
-let float_fields n = [ Any_expr (E.col "t" n float_decode), n ]
+  let string_scope (tbl, col) = E.col tbl col string_decode
+  let int_scope (tbl, col) = E.col tbl col int_decode
+  let float_scope (tbl, col) = E.col tbl col float_decode
+  let bool_scope (tbl, col) = E.col tbl col bool_decode
+  let string_fields n = [ Any_expr (E.col "t" n string_decode), n ]
+  let int_fields n = [ Any_expr (E.col "t" n int_decode), n ]
+  let float_fields n = [ Any_expr (E.col "t" n float_decode), n ]
+  let bool_fields n = [ Any_expr (E.col "t" n bool_decode), n ]
+end

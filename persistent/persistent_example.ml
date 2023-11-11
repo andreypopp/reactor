@@ -1,4 +1,4 @@
-open Persistent
+open Persistent.Builtins
 
 type profile = { name : string; age : int } [@@deriving codec]
 
@@ -15,9 +15,9 @@ type subscription = { user_id : int; name : string }
 
 let () =
   let db =
-    let db = init "./persistent.db" in
-    create user db;
-    create subscription db;
+    let db = Persistent.init "./persistent.db" in
+    Persistent.create user db;
+    Persistent.create subscription db;
     db
   in
   let%query sub =
@@ -32,5 +32,5 @@ let () =
     q = { name = u.profile.name; is_john = u.profile.name = "John" };
     where q.is_john
   in
-  Q.iter db q ~f:(fun (name, is_john) ->
+  Persistent.Q.iter db q ~f:(fun (name, is_john) ->
       print_endline (Printf.sprintf "name=%s, is_john=%b" name is_john))
