@@ -353,3 +353,225 @@ let _ =
                    [%%i pstr_value ~loc rec_flag bindings]]
                with Not_supported (loc, msg) ->
                  [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ])))
+
+let pexp_errorf ~loc fmt =
+  let open Ast_builder.Default in
+  Printf.ksprintf
+    (fun msg ->
+      pexp_extension ~loc (Location.error_extensionf ~loc "%s" msg))
+    fmt
+
+exception Error of expression
+
+let raise_errorf ~loc fmt =
+  let open Ast_builder.Default in
+  Printf.ksprintf
+    (fun msg ->
+      let expr =
+        pexp_extension ~loc (Location.error_extensionf ~loc "%s" msg)
+      in
+      raise (Error expr))
+    fmt
+
+let wrap_expand f ~ctxt e = try f ~ctxt e with Error e -> e
+
+module Expr_form = struct
+  let expand ~ctxt:_ (e : expression) =
+    let rec rewrite e =
+      let loc = e.pexp_loc in
+      match e.pexp_desc with
+      | Pexp_ident { txt = Lident "="; _ } -> [%expr Persistent.E.( = )]
+      | Pexp_ident _ -> e
+      | Pexp_field (e, { txt = Lident n; loc = nloc }) ->
+          pexp_send ~loc (rewrite e) { txt = n; loc = nloc }
+      | Pexp_apply (e, args) ->
+          pexp_apply ~loc (rewrite e)
+            (List.map args ~f:(fun (l, e) -> l, rewrite e))
+      | Pexp_constant (Pconst_integer _) ->
+          [%expr Persistent.E.int [%e e]]
+      | Pexp_constant (Pconst_char _) -> [%expr Persistent.E.char [%e e]]
+      | Pexp_constant (Pconst_string (_, _, _)) ->
+          [%expr Persistent.E.string [%e e]]
+      | Pexp_constant (Pconst_float (_, _)) ->
+          [%expr Persistent.E.float [%e e]]
+      | Pexp_field _
+      | Pexp_let (_, _, _)
+      | Pexp_function _
+      | Pexp_fun (_, _, _, _)
+      | Pexp_match (_, _)
+      | Pexp_try (_, _)
+      | Pexp_tuple _
+      | Pexp_construct (_, _)
+      | Pexp_variant (_, _)
+      | Pexp_record (_, _)
+      | Pexp_setfield (_, _, _)
+      | Pexp_array _
+      | Pexp_ifthenelse (_, _, _)
+      | Pexp_sequence (_, _)
+      | Pexp_while (_, _)
+      | Pexp_for (_, _, _, _, _)
+      | Pexp_constraint (_, _)
+      | Pexp_coerce (_, _, _)
+      | Pexp_send (_, _)
+      | Pexp_new _
+      | Pexp_setinstvar (_, _)
+      | Pexp_override _
+      | Pexp_letmodule (_, _, _)
+      | Pexp_letexception (_, _)
+      | Pexp_assert _ | Pexp_lazy _
+      | Pexp_poly (_, _)
+      | Pexp_object _
+      | Pexp_newtype (_, _)
+      | Pexp_pack _
+      | Pexp_open (_, _)
+      | Pexp_letop _ | Pexp_extension _ | Pexp_unreachable ->
+          pexp_errorf ~loc "this expression is not supported"
+    in
+    rewrite e
+
+  let ext =
+    let pattern =
+      let open Ast_pattern in
+      single_expr_payload __
+    in
+    Context_free.Rule.extension
+      (Extension.V3.declare "expr" Extension.Context.expression pattern
+         (wrap_expand expand))
+end
+
+module Query_form = struct
+  let rec expand' ~ctxt e =
+    let rec unroll acc e =
+      match e.pexp_desc with
+      | Pexp_sequence (a, b) -> unroll (a :: acc) b
+      | _ -> List.rev (e :: acc)
+    in
+    let ppat_scope ~loc = function
+      | [] -> [%pat? ()]
+      | [ x ] -> x
+      | xs -> ppat_tuple ~loc xs
+    in
+    let pexp_slot' ~loc names e =
+      [%expr
+        fun [@ocaml.warning "-27"] [%p ppat_scope ~loc names] -> [%e e]]
+    in
+    let pexp_slot ~loc names e =
+      [%expr
+        fun [@ocaml.warning "-27"] [%p ppat_scope ~loc names] ->
+          [%e Expr_form.expand ~ctxt e]]
+    in
+    let rewrite names q =
+      let loc = q.pexp_loc in
+      match q with
+      | [%expr from [%e? id]] ->
+          let names =
+            match id.pexp_desc with
+            | Pexp_ident { txt = Lident txt; loc } ->
+                [ ppat_var ~loc { txt; loc } ]
+            | _ ->
+                raise_errorf ~loc:id.pexp_loc
+                  "only identifiers are allowed"
+          in
+          names, [%expr Persistent.Q.from [%e id]]
+      | [%expr where [%e? e]] ->
+          names, [%expr Persistent.Q.where [%e pexp_slot ~loc names e]]
+      | [%expr order_by [%e? fs]] ->
+          let fs =
+            let fs =
+              match fs.pexp_desc with Pexp_tuple fs -> fs | _ -> [ fs ]
+            in
+            List.map fs ~f:(function
+              | [%expr desc [%e? e]] ->
+                  [%expr Persistent.Q.desc [%e Expr_form.expand ~ctxt e]]
+              | [%expr asc [%e? e]] ->
+                  [%expr Persistent.Q.asc [%e Expr_form.expand ~ctxt e]]
+              | e ->
+                  raise_errorf ~loc:e.pexp_loc
+                    "should have form 'desc e' or 'asc e'")
+          in
+          let e = pexp_list ~loc fs in
+          ( names,
+            [%expr Persistent.Q.order_by [%e pexp_slot' ~loc names e]] )
+      | [%expr left_join [%e? q] [%e? e]] ->
+          let qnames, q = expand' ~ctxt q in
+          let names = names @ qnames in
+          ( names,
+            [%expr
+              Persistent.Q.left_join [%e q] [%e pexp_slot ~loc names e]] )
+      | { pexp_desc = Pexp_tuple xs; _ } ->
+          let xs = List.map xs ~f:(Expr_form.expand ~ctxt) in
+          let make_scope =
+            let xs =
+              List.mapi xs ~f:(fun i e ->
+                  let n = estring ~loc (Printf.sprintf "c%i" i) in
+                  [%expr Persistent.E.as_col t [%e n] [%e e]])
+            in
+            pexp_slot' ~loc names [%expr fun t -> [%e pexp_tuple ~loc xs]]
+          in
+          let ps, e = gen_tuple ~loc "col" (List.length xs) in
+          let x, xs =
+            match List.combine ps xs with
+            | [] -> assert false
+            | x :: xs -> x, xs
+          in
+          let make txt (pat, exp) =
+            let exp = [%expr Persistent.P.get [%e exp]] in
+            binding_op ~loc ~op:{ loc; txt } ~pat ~exp
+          in
+          let e =
+            pexp_letop ~loc
+              (letop ~body:e ~let_:(make "let+" x)
+                 ~ands:(List.map xs ~f:(make "and+")))
+          in
+          let e =
+            [%expr
+              let open Persistent.P in
+              [%e e]]
+          in
+          let e =
+            [%expr
+              Persistent.P.select' [%e make_scope]
+                [%e pexp_slot' ~loc names e]]
+          in
+          [ [%pat? here] ], e
+      | { pexp_desc = Pexp_record (_fs, None); _ } ->
+          raise_errorf ~loc "select is not supported yet"
+      | _ -> raise_errorf ~loc "unknown query form"
+    in
+    match unroll [] e with
+    | [] ->
+        raise_errorf
+          ~loc:(Expansion_context.Extension.extension_point_loc ctxt)
+          "empty query"
+    | q :: qs ->
+        List.fold_left qs ~init:(rewrite [] q) ~f:(fun (names, prev) e ->
+            let loc = prev.pexp_loc in
+            let names, e = rewrite names e in
+            names, [%expr [%e prev] |> [%e e]])
+
+  let expand ~ctxt e =
+    let loc = Expansion_context.Extension.extension_point_loc ctxt in
+    match e with
+    | [%expr
+        let [%p? p] = [%e? e] in
+        [%e? body]] ->
+        let e = snd (expand' ~ctxt e) in
+        [%expr
+          let [%p p] = [%e e] in
+          [%e body]]
+    | e -> snd (expand' ~ctxt e)
+
+  let ext =
+    let pattern =
+      let open Ast_pattern in
+      single_expr_payload __
+    in
+    Context_free.Rule.extension
+      (Extension.V3.declare "query" Extension.Context.expression pattern
+         (wrap_expand expand))
+end
+
+let () =
+  Driver.register_transformation
+    ~rules:[ Expr_form.ext; Query_form.ext ]
+    "persistent_ppx"

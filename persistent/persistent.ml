@@ -202,7 +202,9 @@ let select_sql t =
     (t.columns |> List.map ~f:fst |> String.concat ~sep:", ")
     t.table
 
-let init t =
+let init = Sqlite3.db_open
+
+let create t =
   let sql = create_table_sql t in
   fun db -> Sqlite3.Rc.check (Sqlite3.exec db sql)
 
@@ -467,6 +469,13 @@ module P : sig
   val ( and+ ) : 'a t -> 'b t -> ('a * 'b) t
   val decode : 'a t -> 'a decode
   val fields : 'a t -> (any_expr * string) list
+  val select : ('a -> 'b t) -> ('a, 'c) query -> (unit, 'b) query
+
+  val select' :
+    ('a -> 'b make_scope) ->
+    ('a -> 'c t) ->
+    ('a, 'd) query ->
+    ('b, 'c) query
 
   val fold :
     ('scope, 'c) query ->
@@ -516,15 +525,18 @@ end = struct
         let a = decode a row ctx in
         f a
 
+  let select' make_scope p q =
+    Q.select
+      (fun scope ->
+        let p = p scope in
+        let fields = fields p in
+        make_scope scope, fields, decode p)
+      q
+
+  let select p q = select' (fun _ _ -> ()) p q
+
   let fold q p db ~init ~f =
-    let q =
-      Q.select
-        (fun scope ->
-          let p = p scope in
-          let fields = fields p in
-          (fun _ _ -> object end), fields, decode p)
-        q
-    in
+    let q = select p q in
     let decode, _scope, sql = Q.to_sql q in
     print_endline sql;
     fold' decode sql db ~init ~f
