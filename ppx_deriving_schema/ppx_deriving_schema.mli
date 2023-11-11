@@ -245,6 +245,7 @@ class virtual deriving1 : object
 
   method derive_type_decl_label : label loc -> label loc
   method derive_type_decl : Repr.type_decl -> value_binding list
+  method derive_type_ref_name : label -> longident loc -> expression
 
   method derive_type_ref :
     loc:location ->

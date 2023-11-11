@@ -105,6 +105,8 @@ module Repr = struct
   let te_opaque (n : Longident.t loc) ts =
     ptyp_constr ~loc:n.loc n (List.map ts ~f:fst), Te_opaque (n, ts)
 
+  let te_var (n : label loc) = ptyp_var ~loc:n.loc n.txt, Te_var n
+
   let decl_to_te_expr decl =
     let loc = decl.loc in
     ptyp_constr ~loc
@@ -227,8 +229,11 @@ class virtual deriving1 =
           expression =
       not_supported "variant types"
 
+    method derive_type_ref_name : label -> longident loc -> expression =
+      fun name n -> ederiver name n
+
     method private derive_type_ref' ~loc name n ts =
-      let f = ederiver name n in
+      let f = self#derive_type_ref_name name n in
       let args =
         List.fold_left (List.rev ts) ~init:[] ~f:(fun args a ->
             let a = as_fun ~loc (self#derive_of_type_expr' ~loc a) in
@@ -408,8 +413,7 @@ let deriving_of ~name ~of_t ~error ~derive_of_tuple ~derive_of_record
                  let init =
                    poly#derive_type_ref ~loc poly_name
                      (map_loc lident decl_name)
-                     (List.map params ~f:(fun p ->
-                          te_opaque (map_loc lident p) []))
+                     (List.map params ~f:te_var)
                      x
                  in
                  let init =
@@ -558,8 +562,7 @@ let deriving_of_match ~name ~of_t ~error ~derive_of_tuple
                  let init =
                    poly#derive_type_ref ~loc poly_name
                      (map_loc lident decl_name)
-                     (List.map params ~f:(fun p ->
-                          te_opaque (map_loc lident p) []))
+                     (List.map params ~f:te_var)
                      x
                  in
                  let init =
