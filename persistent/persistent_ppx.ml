@@ -440,7 +440,7 @@ module Expr_form = struct
 end
 
 module Query_form = struct
-  let rec expand' ~ctxt e =
+  let rec expand' ?(names = []) ~ctxt e =
     let rec unroll acc e =
       match e.pexp_desc with
       | Pexp_sequence (a, b) -> unroll (a :: acc) b
@@ -499,10 +499,15 @@ module Query_form = struct
             [%expr
               Persistent.Q.left_join [%e q] [%e pexp_slot ~loc names e]] )
       | { pexp_desc = Pexp_tuple xs; _ } ->
-          let xs = List.map xs ~f:(Expr_form.expand ~ctxt) in
+          let xs =
+            List.map xs ~f:(function
+              | [%expr nullable [%e? exp]] ->
+                  `null, Expr_form.expand ~ctxt exp
+              | exp -> `not_null, Expr_form.expand ~ctxt exp)
+          in
           let make_scope =
             let xs =
-              List.mapi xs ~f:(fun i e ->
+              List.mapi xs ~f:(fun i (_, e) ->
                   let n = estring ~loc (Printf.sprintf "c%i" i) in
                   [%expr Persistent.E.as_col t [%e n] [%e e]])
             in
@@ -515,7 +520,11 @@ module Query_form = struct
             | x :: xs -> x, xs
           in
           let make txt (pat, exp) =
-            let exp = [%expr Persistent.P.get [%e exp]] in
+            let exp =
+              match exp with
+              | `null, exp -> [%expr Persistent.P.get_opt [%e exp]]
+              | `not_null, exp -> [%expr Persistent.P.get [%e exp]]
+            in
             binding_op ~loc ~op:{ loc; txt } ~pat ~exp
           in
           let e =
@@ -534,8 +543,72 @@ module Query_form = struct
                 [%e pexp_slot' ~loc names e]]
           in
           [ [%pat? here] ], e
-      | { pexp_desc = Pexp_record (_fs, None); _ } ->
-          raise_errorf ~loc "select is not supported yet"
+      | { pexp_desc = Pexp_record (fs, None); _ } ->
+          let fs =
+            List.map fs ~f:(fun (n, x) ->
+                match n.txt with
+                | Lident txt -> { txt; loc = n.loc }, x
+                | _ -> raise_errorf ~loc "invalid select")
+          in
+          let ps, e = gen_tuple ~loc "c" (List.length fs) in
+          let xs =
+            List.map fs ~f:(fun (n, x) ->
+                match x with
+                | [%expr nullable [%e? exp]] ->
+                    n, (`null, Expr_form.expand ~ctxt exp)
+                | exp -> n, (`not_null, Expr_form.expand ~ctxt exp))
+          in
+          let make_scope =
+            let fields =
+              List.map xs ~f:(fun (n, (_, e)) ->
+                  let ns = estring ~loc:n.loc n.txt in
+                  let e = [%expr Persistent.E.as_col t [%e ns] [%e e]] in
+                  {
+                    pcf_desc =
+                      Pcf_method (n, Public, Cfk_concrete (Fresh, e));
+                    pcf_loc = loc;
+                    pcf_attributes = [];
+                  })
+            in
+            pexp_slot' ~loc names
+              [%expr
+                fun t ->
+                  [%e
+                    pexp_object ~loc
+                      (class_structure ~self:(ppat_any ~loc) ~fields)]]
+          in
+          let x, xs =
+            match List.combine ps xs with
+            | [] -> assert false
+            | x :: xs -> x, xs
+          in
+          let e =
+            let make txt (pat, (name, exp)) =
+              let name = estring ~loc:name.loc name.txt in
+              let exp =
+                match exp with
+                | `null, exp ->
+                    [%expr Persistent.P.get_opt ~name:[%e name] [%e exp]]
+                | `not_null, exp ->
+                    [%expr Persistent.P.get ~name:[%e name] [%e exp]]
+              in
+              binding_op ~loc ~op:{ loc; txt } ~pat ~exp
+            in
+            pexp_letop ~loc
+              (letop ~body:e ~let_:(make "let+" x)
+                 ~ands:(List.map xs ~f:(make "and+")))
+          in
+          let e =
+            [%expr
+              let open Persistent.P in
+              [%e e]]
+          in
+          let e =
+            [%expr
+              Persistent.P.select' [%e make_scope]
+                [%e pexp_slot' ~loc names e]]
+          in
+          [ [%pat? here] ], e
       | { pexp_desc = Pexp_ident id; _ } ->
           let name =
             match id.txt with
@@ -544,6 +617,15 @@ module Query_form = struct
             | Lapply _ -> raise_errorf ~loc "cannot query this"
           in
           [ name ], e
+      | [%expr [%e? name] = [%e? rhs]] ->
+          let name =
+            match name.pexp_desc with
+            | Pexp_ident { txt = Lident txt; loc } ->
+                ppat_var ~loc { txt; loc }
+            | _ -> raise_errorf ~loc "simple identifier expected"
+          in
+          let _names, rhs = expand' ~ctxt ~names rhs in
+          [ name ], rhs
       | _ -> raise_errorf ~loc "unknown query form"
     in
     match unroll [] e with
@@ -552,7 +634,8 @@ module Query_form = struct
           ~loc:(Expansion_context.Extension.extension_point_loc ctxt)
           "empty query"
     | q :: qs ->
-        List.fold_left qs ~init:(rewrite [] q) ~f:(fun (names, prev) e ->
+        List.fold_left qs ~init:(rewrite names q)
+          ~f:(fun (names, prev) e ->
             let loc = prev.pexp_loc in
             let names, e = rewrite names e in
             names, [%expr [%e prev] |> [%e e]])

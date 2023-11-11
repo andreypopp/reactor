@@ -173,6 +173,7 @@ end = struct
 end
 
 type 'a e = 'a E.e
+type 'a eopt = 'a E.eopt
 type any_expr = Any_expr : ('a, 'n) E.t -> any_expr
 type fields = (any_expr * string) list
 type 's make_scope = string -> 's
@@ -462,7 +463,8 @@ type ('s, 'a) query = ('s, 'a) Q.q
 module P : sig
   type 'a t
 
-  val get : 'a e -> 'a t
+  val get : ?name:string -> 'a e -> 'a t
+  val get_opt : ?name:string -> 'a eopt -> 'a option t
   val both : 'a t -> 'b t -> ('a * 'b) t
   val map : ('a -> 'b) -> 'a t -> 'b t
   val ( let+ ) : 'a t -> ('a -> 'b) -> 'b t
@@ -489,21 +491,27 @@ module P : sig
     ('a, 'c) query -> ('a -> 'b t) -> db -> f:('b -> unit) -> unit
 end = struct
   type _ t =
-    | E : 'a e -> 'a t
+    | E : 'a e * string option -> 'a t
+    | EO : 'a eopt * string option -> 'a option t
     | B : 'a t * 'b t -> ('a * 'b) t
     | F : 'a t * ('a -> 'b) -> 'b t
 
-  let get e = E e
+  let get ?name e = E (e, name)
+  let get_opt ?name e = EO (e, name)
   let both a b = B (a, b)
   let map f a = F (a, f)
   let ( let+ ) a f = map f a
   let ( and+ ) a b = both a b
 
+  let field_name name idx =
+    match name with None -> sprintf "c%i" idx | Some name -> name
+
   let fields p =
     let rec fields : type a. int -> fields -> a t -> int * fields =
      fun idx fs p ->
       match p with
-      | E e -> idx + 1, (Any_expr e, sprintf "c%i" idx) :: fs
+      | E (e, name) -> idx + 1, (Any_expr e, field_name name idx) :: fs
+      | EO (e, name) -> idx + 1, (Any_expr e, field_name name idx) :: fs
       | B (a, b) ->
           let idx, fs = fields idx fs a in
           let idx, fs = fields idx fs b in
@@ -516,7 +524,8 @@ end = struct
   let rec decode : type a. a t -> a decode =
    fun p row ctx ->
     match p with
-    | E e -> E.decode e row ctx
+    | E (e, _) -> E.decode e row ctx
+    | EO (e, _) -> E.decode_opt e row ctx
     | B (a, b) ->
         let a = decode a row ctx in
         let b = decode b row ctx in
