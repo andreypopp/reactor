@@ -276,34 +276,60 @@ module Q = struct
     | ORDER_BY : (_, _) rel * order list -> tree
     | JOIN : (_, _) rel * (_, _) rel * (_, _) E.t -> tree
 
-  let rec render_rel : type s a. (s, a) rel -> string =
+  module Containers_pp_aux = struct
+    open Containers_pp
+
+    let comma = text "," ^ newline
+  end
+
+  let rec render_rel : type s a. (s, a) rel -> Containers_pp.t =
    fun rel ->
+    let open Containers_pp in
+    let open Containers_pp_aux in
     let select =
       match rel.select with
-      | [] -> rel.default_select
+      | [] -> text rel.default_select
       | select ->
-          List.map select ~f:(fun (Any_expr e, n) ->
-              sprintf "%s AS %s" (E.to_sql e) n)
-          |> String.concat ~sep:", "
+          of_list ~sep:comma
+            (fun (Any_expr e, n) -> textf "%s AS %s" (E.to_sql e) n)
+            select
     in
-    Printf.sprintf "SELECT %s %s" select (render_tree rel.tree)
+    group (text "SELECT" ^ nest 2 (newline ^ select))
+    ^/ render_tree rel.tree
 
-  and render_tree = function
-    | SUBQUERY rel -> Printf.sprintf "FROM (%s) AS t" (render_rel rel)
-    | FROM t -> Printf.sprintf "FROM %s AS t" t.table
+  and render_tree : tree -> Containers_pp.t =
+    let open Containers_pp in
+    let open Containers_pp_aux in
+    function
+    | SUBQUERY rel -> render_from rel "t"
+    | FROM t -> render_from' (text t.table) "t"
     | JOIN (a, b, e) ->
-        Printf.sprintf "FROM (%s) AS a LEFT JOIN (%s) as b ON %s"
-          (render_rel a) (render_rel b) (E.to_sql e)
+        render_from a "a"
+        ^/ text "LEFT JOIN"
+        ^+ bracket2 "(" (render_rel b) ") AS b"
+        ^/ group (text "ON" ^ nest 2 (newline ^ text (E.to_sql e)))
     | WHERE (rel, e) ->
-        Printf.sprintf "FROM (%s) AS t WHERE %s" (render_rel rel)
-          (E.to_sql e)
+        render_from rel "t"
+        ^/ group (text "WHERE" ^ nest 2 (newline ^ text (E.to_sql e)))
     | ORDER_BY (rel, os) ->
-        Printf.sprintf "FROM (%s) AS t ORDER BY %s" (render_rel rel)
-          (List.map os ~f:render_order |> String.concat ~sep:", ")
+        render_from rel "t"
+        ^/ group
+             (text "ORDER BY"
+             ^ nest 2 (newline ^ of_list ~sep:comma render_order os))
 
-  and render_order = function
-    | Asc e -> Printf.sprintf "%s ASC" (E.to_sql e)
-    | Desc e -> Printf.sprintf "%s DESC" (E.to_sql e)
+  and render_from : type s a. (s, a) rel -> string -> Containers_pp.t =
+    let open Containers_pp in
+    fun rel name -> render_from' (bracket2 "(" (render_rel rel) ")") name
+
+  and render_from' rel name =
+    let open Containers_pp in
+    text "FROM" ^+ rel ^+ textf "AS %s" name
+
+  and render_order =
+    let open Containers_pp in
+    function
+    | Asc e -> textf "%s ASC" (E.to_sql e)
+    | Desc e -> textf "%s DESC" (E.to_sql e)
 
   module Col_set = Set.Make (struct
     type t = string * string
@@ -452,6 +478,7 @@ module Q = struct
 
   let fold db q ~init ~f =
     let decode, _scope, sql = to_sql q in
+    let sql = Containers_pp.Pretty.to_string ~width:79 sql in
     print_endline sql;
     fold' decode sql db ~init ~f
 
@@ -547,6 +574,7 @@ end = struct
   let fold q p db ~init ~f =
     let q = select p q in
     let decode, _scope, sql = Q.to_sql q in
+    let sql = Containers_pp.Pretty.to_string ~width:79 sql in
     print_endline sql;
     fold' decode sql db ~init ~f
 
