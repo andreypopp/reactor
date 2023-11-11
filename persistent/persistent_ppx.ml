@@ -447,7 +447,7 @@ module Query_form = struct
       | _ -> List.rev (e :: acc)
     in
     let ppat_scope ~loc = function
-      | [] -> [%pat? ()]
+      | [] -> [%pat? here]
       | [ x ] -> x
       | xs -> ppat_tuple ~loc xs
     in
@@ -536,6 +536,14 @@ module Query_form = struct
           [ [%pat? here] ], e
       | { pexp_desc = Pexp_record (_fs, None); _ } ->
           raise_errorf ~loc "select is not supported yet"
+      | { pexp_desc = Pexp_ident id; _ } ->
+          let name =
+            match id.txt with
+            | Lident txt | Ldot (_, txt) ->
+                ppat_var ~loc { txt; loc = id.loc }
+            | Lapply _ -> raise_errorf ~loc "cannot query this"
+          in
+          [ name ], e
       | _ -> raise_errorf ~loc "unknown query form"
     in
     match unroll [] e with

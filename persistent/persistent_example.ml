@@ -20,14 +20,15 @@ let () =
     create subscription db;
     db
   in
+  let%query sub =
+    from subscription;
+    where (subscription.user_id = 3)
+  in
   let%query q =
     from user;
     where (user.id = 3);
     order_by (desc user.created_at);
-    left_join
-      (from subscription;
-       where (subscription.user_id = 3))
-      (user.id = subscription.user_id);
+    left_join sub (user.id = sub.user_id);
     user.profile.name, user.profile.name = "John"
   in
   Q.iter db q ~f:(fun (name, is_john) ->
