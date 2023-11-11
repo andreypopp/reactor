@@ -32,5 +32,5 @@ let () =
     q = { name = u.profile.name; is_john = u.profile.name = "John" };
     where q.is_john
   in
-  Persistent.Q.iter db q ~f:(fun (name, is_john) ->
+  Persistent.iter_query db q ~f:(fun (name, is_john) ->
       print_endline (Printf.sprintf "name=%s, is_john=%b" name is_john))

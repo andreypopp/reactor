@@ -4,8 +4,12 @@ open ContainersLabels
 module Codec = struct
   type ctx = { mutable idx : int }
 
-  type 'a t = { columns : columns; decode : 'a decode; bind : 'a bind }
-  and columns = string -> (string * string) list
+  type 'a t = {
+    columns : string -> (string * string) list;
+    decode : 'a decode;
+    bind : 'a bind;
+  }
+
   and 'a decode = Sqlite3.Data.t array -> ctx -> 'a
   and 'a bind = 'a -> ctx -> Sqlite3.stmt -> unit
 
@@ -20,118 +24,99 @@ module Codec = struct
       ctx.idx <- ctx.idx + 1;
       v
 
-    let bool_columns name = [ name, "INT" ]
-
-    let bool_decode row ctx =
-      let v =
-        match row.(ctx.idx) with
-        | Sqlite3.Data.INT 0L -> false
-        | Sqlite3.Data.INT 1L -> true
-        | _ -> failwith "sql type error: expected bool (int)"
+    let option_codec codec =
+      let bind v ctx stmt =
+        match v with
+        | Some v -> codec.bind v ctx stmt
+        | None ->
+            let v = Sqlite3.Data.NULL in
+            Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx v);
+            ctx.idx <- ctx.idx + 1
       in
-      ctx.idx <- ctx.idx + 1;
-      v
+      {
+        decode = option_decode codec.decode;
+        columns = codec.columns;
+        bind;
+      }
 
-    let bool_bind v ctx stmt =
-      Sqlite3.Rc.check
-        (Sqlite3.bind stmt ctx.idx (INT (Int64.of_int (Bool.to_int v))));
-      ctx.idx <- ctx.idx + 1
-
-    let string_columns name = [ name, "TEXT" ]
-
-    let string_decode row ctx =
-      let v =
-        match row.(ctx.idx) with
-        | Sqlite3.Data.TEXT v -> v
-        | _ -> failwith "sql type error: expected text"
+    let bool_codec =
+      let columns name = [ name, "INT" ] in
+      let decode row ctx =
+        let v =
+          match row.(ctx.idx) with
+          | Sqlite3.Data.INT 0L -> false
+          | Sqlite3.Data.INT 1L -> true
+          | _ -> failwith "sql type error: expected bool (int)"
+        in
+        ctx.idx <- ctx.idx + 1;
+        v
       in
-      ctx.idx <- ctx.idx + 1;
-      v
-
-    let string_bind v ctx stmt =
-      Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx (TEXT v));
-      ctx.idx <- ctx.idx + 1
+      let bind v ctx stmt =
+        Sqlite3.Rc.check
+          (Sqlite3.bind stmt ctx.idx (INT (Int64.of_int (Bool.to_int v))));
+        ctx.idx <- ctx.idx + 1
+      in
+      { columns; decode; bind }
 
     let string_codec =
-      {
-        columns = string_columns;
-        decode = string_decode;
-        bind = string_bind;
-      }
-
-    let int_columns name = [ name, "INT" ]
-
-    let int_decode row ctx =
-      let v =
-        match row.(ctx.idx) with
-        | Sqlite3.Data.INT v -> Int64.to_int v
-        | _ -> failwith "sql type error: expected int"
+      let columns name = [ name, "TEXT" ] in
+      let decode row ctx =
+        let v =
+          match row.(ctx.idx) with
+          | Sqlite3.Data.TEXT v -> v
+          | _ -> failwith "sql type error: expected text"
+        in
+        ctx.idx <- ctx.idx + 1;
+        v
       in
-      ctx.idx <- ctx.idx + 1;
-      v
-
-    let int_bind v ctx stmt =
-      Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx (INT (Int64.of_int v)));
-      ctx.idx <- ctx.idx + 1
+      let bind v ctx stmt =
+        Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx (TEXT v));
+        ctx.idx <- ctx.idx + 1
+      in
+      { columns; decode; bind }
 
     let int_codec =
-      { columns = int_columns; decode = int_decode; bind = int_bind }
-
-    let float_columns name = [ name, "FLOAT" ]
-
-    let float_decode row ctx =
-      let v =
-        match row.(ctx.idx) with
-        | Sqlite3.Data.FLOAT v -> v
-        | _ -> failwith "sql type error: expected float"
+      let columns name = [ name, "INT" ] in
+      let decode row ctx =
+        let v =
+          match row.(ctx.idx) with
+          | Sqlite3.Data.INT v -> Int64.to_int v
+          | _ -> failwith "sql type error: expected int"
+        in
+        ctx.idx <- ctx.idx + 1;
+        v
       in
-      ctx.idx <- ctx.idx + 1;
-      v
-
-    let float_bind v ctx stmt =
-      Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx (FLOAT v));
-      ctx.idx <- ctx.idx + 1
+      let bind v ctx stmt =
+        Sqlite3.Rc.check
+          (Sqlite3.bind stmt ctx.idx (INT (Int64.of_int v)));
+        ctx.idx <- ctx.idx + 1
+      in
+      { columns; decode; bind }
 
     let float_codec =
-      {
-        columns = float_columns;
-        decode = float_decode;
-        bind = float_bind;
-      }
+      let columns name = [ name, "FLOAT" ] in
+      let decode row ctx =
+        let v =
+          match row.(ctx.idx) with
+          | Sqlite3.Data.FLOAT v -> v
+          | _ -> failwith "sql type error: expected float"
+        in
+        ctx.idx <- ctx.idx + 1;
+        v
+      in
+      let bind v ctx stmt =
+        Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx (FLOAT v));
+        ctx.idx <- ctx.idx + 1
+      in
+      { columns; decode; bind }
   end
 end
 
 type 's opt = Opt of 's
-type 's agg = Agg of 's
 
-module E : sig
-  type not_null = private NOT_NULL
-  type null = private NULL
-  type ('a, 'n) t
-  type 'a e = ('a, not_null) t
-  type 'a eopt = ('a, null) t
+module E = struct
+  open Codec.Builtins
 
-  val int : int -> int e
-  val bool : bool -> bool e
-  val string : string -> string e
-  val eq : ('a, 'n) t -> ('b, 'n) t -> (bool, 'n) t
-  val and_ : (bool, 'n) t -> (bool, 'n) t -> (bool, 'n) t
-  val or_ : (bool, 'n) t -> (bool, 'n) t -> (bool, 'n) t
-  val ( = ) : ('a, 'n) t -> ('a, 'n) t -> (bool, 'n) t
-  val ( && ) : (bool, 'n) t -> (bool, 'n) t -> (bool, 'n) t
-  val ( || ) : (bool, 'n) t -> (bool, 'n) t -> (bool, 'n) t
-  val coalesce : ('a, _) t -> ('a, 'n) t -> ('a, 'n) t
-  val of_opt : 's opt -> ('s -> ('a, _) t) -> 'a eopt
-  val inject : string -> 'a Codec.decode -> 'a e
-  val inject_opt : string -> 'a Codec.decode -> 'a eopt
-  val as_col : string -> string -> ('a, 'n) t -> ('a, 'n) t
-  val col : string -> string -> 'a Codec.decode -> 'a e
-  val col_opt : string -> string -> 'a Codec.decode -> 'a eopt
-  val decode : 'a e -> 'a Codec.decode
-  val decode_opt : 'a eopt -> 'a option Codec.decode
-  val to_sql : (_, _) t -> string
-  val cols : (_, _) t -> (string * string) list
-end = struct
   type not_null = private NOT_NULL
   type null = private NULL
 
@@ -143,27 +128,19 @@ end = struct
 
   let cols e = e.cols
 
-  type 'a e = ('a, not_null) t
-  type 'a eopt = ('a, null) t
+  type 'a expr = ('a, not_null) t
+  type 'a expr_nullable = ('a, null) t
 
   let int v =
-    {
-      sql = string_of_int v;
-      decode = Codec.Builtins.int_decode;
-      cols = [];
-    }
+    { sql = string_of_int v; decode = int_codec.decode; cols = [] }
 
   let bool v =
-    {
-      sql = string_of_bool v;
-      decode = Codec.Builtins.bool_decode;
-      cols = [];
-    }
+    { sql = string_of_bool v; decode = bool_codec.decode; cols = [] }
 
   let string v =
     {
       sql = Printf.sprintf "'%s'" v;
-      decode = Codec.Builtins.string_decode;
+      decode = string_codec.decode;
       cols = [];
     }
 
@@ -174,9 +151,9 @@ end = struct
       cols = a.cols @ b.cols;
     }
 
-  let eq a b = make_binop Codec.Builtins.bool_decode "=" a b
-  let and_ a b = make_binop Codec.Builtins.bool_decode "AND" a b
-  let or_ a b = make_binop Codec.Builtins.bool_decode "OR" a b
+  let eq a b = make_binop bool_codec.decode "=" a b
+  let and_ a b = make_binop bool_codec.decode "AND" a b
+  let or_ a b = make_binop bool_codec.decode "OR" a b
   let ( = ) = eq
   let ( && ) = and_
   let ( || ) = or_
@@ -187,9 +164,6 @@ end = struct
       decode = v.decode;
       cols = ov.cols @ v.cols;
     }
-
-  let inject sql decode = { sql; decode; cols = [] }
-  let inject_opt sql decode = { sql; decode; cols = [] }
 
   let col t col decode =
     { sql = sprintf "%s.%s" t col; decode; cols = [ t, col ] }
@@ -202,22 +176,22 @@ end = struct
 
   let to_sql e = e.sql
   let decode e = e.decode
-  let decode_opt e = Codec.Builtins.option_decode e.decode
+  let decode_opt e = option_decode e.decode
 
   let of_opt (Opt s : 's opt) f =
     let e = f s in
     { sql = e.sql; decode = e.decode; cols = e.cols }
 end
 
-type 'a e = 'a E.e
-type 'a eopt = 'a E.eopt
+type 'a e = 'a E.expr
+type 'a expr_nullable = 'a E.expr_nullable
 type any_expr = Any_expr : ('a, 'n) E.t -> any_expr
 type fields = (any_expr * string) list
 type 's make_scope = string -> 's
 
 type 's meta = {
   scope : string * string -> 's;
-  fields : string -> (any_expr * string) list;
+  fields : string -> fields;
 }
 
 type ('a, 's) table = {
@@ -225,31 +199,20 @@ type ('a, 's) table = {
   codec : 'a Codec.t;
   columns : (string * string) list;
   scope : 's make_scope;
-  fields : (any_expr * string) list;
+  fields : fields;
 }
-
-let create_table_sql t =
-  Printf.sprintf "CREATE TABLE IF NOT EXISTS %s(%s)" t.table
-    (t.columns
-    |> List.map ~f:(fun (n, t) -> Printf.sprintf "%s %s" n t)
-    |> String.concat ~sep:",")
-
-let insert_sql t =
-  Printf.sprintf "INSERT INTO %s(%s) VALUES(%s)" t.table
-    (t.columns |> List.map ~f:fst |> String.concat ~sep:", ")
-    (t.columns |> List.map ~f:(fun _ -> "?") |> String.concat ~sep:", ")
-
-let select_sql t =
-  Printf.sprintf "SELECT %s FROM %s"
-    (t.columns |> List.map ~f:fst |> String.concat ~sep:", ")
-    t.table
 
 type db = Sqlite3.db
 
 let init = Sqlite3.db_open
 
 let create t =
-  let sql = create_table_sql t in
+  let sql =
+    Printf.sprintf "CREATE TABLE IF NOT EXISTS %s(%s)" t.table
+      (t.columns
+      |> List.map ~f:(fun (n, t) -> Printf.sprintf "%s %s" n t)
+      |> String.concat ~sep:",")
+  in
   fun db -> Sqlite3.Rc.check (Sqlite3.exec db sql)
 
 let rec insert_work stmt =
@@ -259,7 +222,11 @@ let rec insert_work stmt =
   | rc -> Sqlite3.Rc.check rc
 
 let insert t =
-  let sql = insert_sql t in
+  let sql =
+    Printf.sprintf "INSERT INTO %s(%s) VALUES(%s)" t.table
+      (t.columns |> List.map ~f:fst |> String.concat ~sep:", ")
+      (t.columns |> List.map ~f:(fun _ -> "?") |> String.concat ~sep:", ")
+  in
   fun db ->
     let stmt = Sqlite3.prepare db sql in
     fun v ->
@@ -268,7 +235,7 @@ let insert t =
       t.codec.bind v ctx stmt;
       insert_work stmt
 
-let fold' decode sql ~init ~f db =
+let fold_raw sql decode db ~init ~f =
   let stmt = Sqlite3.prepare db sql in
   let rc, acc =
     Sqlite3.fold stmt ~init ~f:(fun acc row ->
@@ -279,29 +246,35 @@ let fold' decode sql ~init ~f db =
   Sqlite3.Rc.check rc;
   acc
 
-let fold t ~init ~f = fold' t.codec.decode (select_sql t) ~init ~f
-let iter t decode ~f = fold t decode ~init:() ~f:(fun () -> f)
+let fold_table t db ~init ~f =
+  let sql =
+    Printf.sprintf "SELECT %s FROM %s"
+      (t.columns |> List.map ~f:fst |> String.concat ~sep:", ")
+      t.table
+  in
+  fold_raw sql t.codec.decode db ~f ~init
+
+let iter_table t db ~f = fold_table ~init:() ~f:(fun () -> f) t db
 
 module Q = struct
-  type void = private Void
   type order = Asc : (_, _) E.t -> order | Desc : (_, _) E.t -> order
 
   let asc e = Asc e
   let desc e = Desc e
 
-  type (_, _) q =
-    | From : ('a, 's) table -> ('s, 'a) q
-    | Where : ('s, 'a) q * ('s -> bool e) -> ('s, 'a) q
-    | Order_by : ('s, 'a) q * ('s -> order list) -> ('s, 'a) q
+  type (_, _) t =
+    | From : ('a, 's) table -> ('s, 'a) t
+    | Where : ('s, 'a) t * ('s -> bool e) -> ('s, 'a) t
+    | Order_by : ('s, 'a) t * ('s -> order list) -> ('s, 'a) t
     (* | Join : *)
     (*     ('sa, 'a) q * ('sb, 'b) q * ('sa * 'sb -> bool e) *)
     (*     -> ('sa * 'sb, 'a * 'b) q *)
     | Left_join :
-        ('sa, 'a) q * ('sb, 'b) q * ('sa * 'sb -> bool e)
-        -> ('sa * 'sb opt, 'a * 'b option) q
+        ('sa, 'a) t * ('sb, 'b) t * ('sa * 'sb -> bool e)
+        -> ('sa * 'sb opt, 'a * 'b option) t
     | Select :
-        ('s, 'a) q * ('s -> 's1 make_scope * fields * 'a1 Codec.decode)
-        -> ('s1, 'a1) q
+        ('s, 'a) t * ('s -> 's1 make_scope * fields * 'a1 Codec.decode)
+        -> ('s1, 'a1) t
 
   type ('s, 'a) rel = {
     tree : tree;
@@ -325,7 +298,7 @@ module Q = struct
     let comma = text "," ^ newline
   end
 
-  let rec render_rel : type s a. (s, a) rel -> Containers_pp.t =
+  let rec print_rel : type s a. (s, a) rel -> Containers_pp.t =
    fun rel ->
     let open Containers_pp in
     let open Containers_pp_aux in
@@ -338,37 +311,37 @@ module Q = struct
             select
     in
     group (text "SELECT" ^ nest 2 (newline ^ select))
-    ^/ render_tree rel.tree
+    ^/ print_tree rel.tree
 
-  and render_tree : tree -> Containers_pp.t =
+  and print_tree : tree -> Containers_pp.t =
     let open Containers_pp in
     let open Containers_pp_aux in
     function
-    | SUBQUERY rel -> render_from rel "t"
-    | FROM t -> render_from' (text t.table) "t"
+    | SUBQUERY rel -> print_from rel "t"
+    | FROM t -> print_from' (text t.table) "t"
     | JOIN (a, b, e) ->
-        render_from a "a"
+        print_from a "a"
         ^/ text "LEFT JOIN"
-        ^+ bracket2 "(" (render_rel b) ") AS b"
+        ^+ bracket2 "(" (print_rel b) ") AS b"
         ^/ group (text "ON" ^ nest 2 (newline ^ text (E.to_sql e)))
     | WHERE (rel, e) ->
-        render_from rel "t"
+        print_from rel "t"
         ^/ group (text "WHERE" ^ nest 2 (newline ^ text (E.to_sql e)))
     | ORDER_BY (rel, os) ->
-        render_from rel "t"
+        print_from rel "t"
         ^/ group
              (text "ORDER BY"
-             ^ nest 2 (newline ^ of_list ~sep:comma render_order os))
+             ^ nest 2 (newline ^ of_list ~sep:comma print_order os))
 
-  and render_from : type s a. (s, a) rel -> string -> Containers_pp.t =
+  and print_from : type s a. (s, a) rel -> string -> Containers_pp.t =
     let open Containers_pp in
-    fun rel name -> render_from' (bracket2 "(" (render_rel rel) ")") name
+    fun rel name -> print_from' (bracket2 "(" (print_rel rel) ")") name
 
-  and render_from' rel name =
+  and print_from' rel name =
     let open Containers_pp in
     text "FROM" ^+ rel ^+ textf "AS %s" name
 
-  and render_order =
+  and print_order =
     let open Containers_pp in
     function
     | Asc e -> textf "%s ASC" (E.to_sql e)
@@ -425,7 +398,7 @@ module Q = struct
   let forward_fields t fs =
     List.map fs ~f:(fun (Any_expr e, n) -> Any_expr (E.as_col t n e), n)
 
-  let rec to_rel : type s a. (s, a) q -> (s, a) rel = function
+  let rec to_rel : type s a. (s, a) t -> (s, a) rel = function
     | From t ->
         {
           decode = t.codec.decode;
@@ -509,7 +482,7 @@ module Q = struct
   let to_sql q =
     let rel = to_rel q in
     trim_select rel;
-    rel.decode, rel.scope, render_rel rel
+    rel.decode, rel.scope, print_rel rel
 
   let from t = From t
   let where e q = Where (q, e)
@@ -523,46 +496,45 @@ module Q = struct
     let decode, _scope, sql = to_sql q in
     let sql = Containers_pp.Pretty.to_string ~width:79 sql in
     print_endline sql;
-    fold' decode sql db ~init ~f
+    fold_raw sql decode db ~init ~f
 
   let iter db q ~f = fold db q ~init:() ~f:(fun () row -> f row)
 end
 
-type ('s, 'a) query = ('s, 'a) Q.q
+type ('s, 'a) q = ('s, 'a) Q.t
+
+let fold_query = Q.fold
+let iter_query = Q.iter
 
 module P : sig
   type 'a t
 
   val get : ?name:string -> 'a e -> 'a t
-  val get_opt : ?name:string -> 'a eopt -> 'a option t
+  val get_opt : ?name:string -> 'a expr_nullable -> 'a option t
   val both : 'a t -> 'b t -> ('a * 'b) t
   val map : ('a -> 'b) -> 'a t -> 'b t
   val ( let+ ) : 'a t -> ('a -> 'b) -> 'b t
   val ( and+ ) : 'a t -> 'b t -> ('a * 'b) t
   val decode : 'a t -> 'a Codec.decode
   val fields : 'a t -> (any_expr * string) list
-  val select : ('a -> 'b t) -> ('a, 'c) query -> (unit, 'b) query
+  val select : ('a -> 'b t) -> ('a, 'c) q -> (unit, 'b) q
 
   val select' :
-    ('a -> 'b make_scope) ->
-    ('a -> 'c t) ->
-    ('a, 'd) query ->
-    ('b, 'c) query
+    ('a -> 'b make_scope) -> ('a -> 'c t) -> ('a, 'd) q -> ('b, 'c) q
 
   val fold :
-    ('scope, 'c) query ->
+    ('scope, 'c) q ->
     ('scope -> 'b t) ->
     db ->
     init:'d ->
     f:('d -> 'b -> 'd) ->
     'd
 
-  val iter :
-    ('a, 'c) query -> ('a -> 'b t) -> db -> f:('b -> unit) -> unit
+  val iter : ('a, 'c) q -> ('a -> 'b t) -> db -> f:('b -> unit) -> unit
 end = struct
   type _ t =
     | E : 'a e * string option -> 'a t
-    | EO : 'a eopt * string option -> 'a option t
+    | EO : 'a expr_nullable * string option -> 'a option t
     | B : 'a t * 'b t -> ('a * 'b) t
     | F : 'a t * ('a -> 'b) -> 'b t
 
@@ -619,7 +591,7 @@ end = struct
     let decode, _scope, sql = Q.to_sql q in
     let sql = Containers_pp.Pretty.to_string ~width:79 sql in
     print_endline sql;
-    fold' decode sql db ~init ~f
+    fold_raw sql decode db ~init ~f
 
   let iter q p db ~f = fold q p db ~init:() ~f:(fun () row -> f row)
 end
@@ -633,22 +605,22 @@ module Builtins = struct
   type bool_scope = bool e
 
   let string_meta =
-    let scope (tbl, col) = E.col tbl col string_decode in
-    let fields n = [ Any_expr (E.col "t" n string_decode), n ] in
+    let scope (tbl, col) = E.col tbl col string_codec.decode in
+    let fields n = [ Any_expr (E.col "t" n string_codec.decode), n ] in
     { scope; fields }
 
   let int_meta =
-    let scope (tbl, col) = E.col tbl col int_decode in
-    let fields n = [ Any_expr (E.col "t" n int_decode), n ] in
+    let scope (tbl, col) = E.col tbl col int_codec.decode in
+    let fields n = [ Any_expr (E.col "t" n int_codec.decode), n ] in
     { scope; fields }
 
   let float_meta =
-    let fields n = [ Any_expr (E.col "t" n float_decode), n ] in
-    let scope (tbl, col) = E.col tbl col float_decode in
+    let fields n = [ Any_expr (E.col "t" n float_codec.decode), n ] in
+    let scope (tbl, col) = E.col tbl col float_codec.decode in
     { scope; fields }
 
   let bool_meta =
-    let fields n = [ Any_expr (E.col "t" n bool_decode), n ] in
-    let scope (tbl, col) = E.col tbl col bool_decode in
+    let fields n = [ Any_expr (E.col "t" n bool_codec.decode), n ] in
+    let scope (tbl, col) = E.col tbl col bool_codec.decode in
     { scope; fields }
 end
