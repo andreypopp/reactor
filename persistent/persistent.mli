@@ -1,3 +1,4 @@
+(** encode/decode database values into OCaml values *)
 module Codec : sig
   type ctx
 
@@ -13,6 +14,7 @@ end
 
 type 's opt
 
+(** expression DSL *)
 module E : sig
   type not_null = private NOT_NULL
   type null = private NULL
@@ -31,14 +33,20 @@ module E : sig
   val ( || ) : (bool, 'n) t -> (bool, 'n) t -> (bool, 'n) t
   val coalesce : ('a, _) t -> ('a, 'n) t -> ('a, 'n) t
   val of_opt : 's opt -> ('s -> ('a, _) t) -> 'a expr_nullable
+
   val as_col : string -> string -> ('a, 'n) t -> ('a, 'n) t
+  (** FOR INTERNAL USE ONLY *)
+
   val col : string -> string -> 'a Codec.decode -> 'a expr
+  (** FOR INTERNAL USE ONLY *)
+
   val col_opt : string -> string -> 'a Codec.decode -> 'a expr_nullable
+  (** FOR INTERNAL USE ONLY *)
 end
 
-type 'a e = 'a E.expr
+type 'a expr = 'a E.expr
 type 'a expr_nullable = 'a E.expr_nullable
-type any_expr = Any_expr : ('a, 'n) E.t -> any_expr
+type any_expr = Any_expr : (_, _) E.t -> any_expr
 type fields = (any_expr * string) list
 type 's make_scope = string -> 's
 
@@ -55,6 +63,32 @@ type ('a, 's) table = {
   fields : fields;
 }
 
+(** query DSL *)
+module Q : sig
+  type order
+
+  val asc : (_, _) E.t -> order
+  val desc : (_, _) E.t -> order
+
+  type ('a, 's) t
+
+  val from : ('a, 'b) table -> ('b, 'a) t
+  val where : ('a -> bool expr) -> ('a, 'b) t -> ('a, 'b) t
+  val order_by : ('a -> order list) -> ('a, 'b) t -> ('a, 'b) t
+
+  val left_join :
+    ('a, 'b) t ->
+    ('c * 'a -> bool expr) ->
+    ('c, 'd) t ->
+    ('c * 'a opt, 'd * 'b option) t
+
+  val select :
+    ('scope -> 'next_scope make_scope * fields * 'value Codec.decode) ->
+    ('scope, _) t ->
+    ('next_scope, 'value) t
+  (** FOR INTERNAL USE ONLY *)
+end
+
 type db = Sqlite3.db
 
 val init :
@@ -66,59 +100,60 @@ val init :
   ?vfs:string ->
   string ->
   db
+(** initialize database *)
 
-val create : ('a, _) table -> db -> unit
-val insert : ('a, _) table -> db -> 'a -> unit
+val create : ('row, _) table -> db -> unit
+(** create table *)
 
-val fold_table :
-  ('a, _) table -> db -> init:'acc -> f:('acc -> 'a -> 'acc) -> 'acc
-
-val iter_table : ('a, _) table -> db -> f:('a -> unit) -> unit
-
-module Q : sig
-  type order
-
-  val asc : (_, _) E.t -> order
-  val desc : (_, _) E.t -> order
-
-  type ('a, 's) t
-
-  val from : ('a, 'b) table -> ('b, 'a) t
-  val where : ('a -> bool e) -> ('a, 'b) t -> ('a, 'b) t
-  val order_by : ('a -> order list) -> ('a, 'b) t -> ('a, 'b) t
-
-  val left_join :
-    ('a, 'b) t ->
-    ('c * 'a -> bool e) ->
-    ('c, 'd) t ->
-    ('c * 'a opt, 'd * 'b option) t
-
-  val select :
-    ('scope -> 'next_scope make_scope * fields * 'value Codec.decode) ->
-    ('scope, _) t ->
-    ('next_scope, 'value) t
-end
+val insert : ('row, _) table -> db -> 'row -> unit
+(** insert new row into a table *)
 
 type ('s, 'a) q = ('s, 'a) Q.t
 
-val fold_query : db -> ('a, 'b) q -> init:'c -> f:('c -> 'b -> 'c) -> 'c
-val iter_query : db -> ('a, 'b) q -> f:('b -> unit) -> unit
+val iter_query : db -> (_, 'row) q -> f:('row -> unit) -> unit
+(** iterate over query results *)
 
+val fold_query :
+  db -> (_, 'row) q -> init:'acc -> f:('acc -> 'row -> 'acc) -> 'acc
+(** fold over query results *)
+
+val iter_table : ('row, _) table -> db -> f:('row -> unit) -> unit
+(** iterate over all values of a table *)
+
+val fold_table :
+  ('row, _) table -> db -> init:'acc -> f:('acc -> 'row -> 'acc) -> 'acc
+(** fold over all values of a table *)
+
+module Builtins : sig
+  val bool_codec : bool Codec.t
+  val string_codec : string Codec.t
+  val int_codec : int Codec.t
+  val float_codec : float Codec.t
+  val option_codec : 'a Codec.t -> 'a option Codec.t
+
+  type string_scope = string expr
+  type int_scope = int expr
+  type float_scope = float expr
+  type bool_scope = bool expr
+
+  val string_meta : string expr meta
+  val int_meta : int expr meta
+  val float_meta : float expr meta
+  val bool_meta : bool expr meta
+end
+
+(** decode query results *)
 module P : sig
   type 'a t
 
-  val get : ?name:string -> 'a e -> 'a t
+  val get : ?name:string -> 'a expr -> 'a t
   val get_opt : ?name:string -> 'a expr_nullable -> 'a option t
   val both : 'a t -> 'b t -> ('a * 'b) t
   val map : ('a -> 'b) -> 'a t -> 'b t
   val ( let+ ) : 'a t -> ('a -> 'b) -> 'b t
   val ( and+ ) : 'a t -> 'b t -> ('a * 'b) t
   val decode : 'a t -> 'a Codec.decode
-  val fields : 'a t -> (any_expr * string) list
   val select : ('a -> 'b t) -> ('a, 'c) q -> (unit, 'b) q
-
-  val select' :
-    ('a -> 'b make_scope) -> ('a -> 'c t) -> ('a, 'd) q -> ('b, 'c) q
 
   val fold :
     ('scope, 'c) q ->
@@ -129,22 +164,8 @@ module P : sig
     'd
 
   val iter : ('a, 'c) q -> ('a -> 'b t) -> db -> f:('b -> unit) -> unit
-end
 
-module Builtins : sig
-  val bool_codec : bool Codec.t
-  val string_codec : string Codec.t
-  val int_codec : int Codec.t
-  val float_codec : float Codec.t
-  val option_codec : 'a Codec.t -> 'a option Codec.t
-
-  type string_scope = string e
-  type int_scope = int e
-  type float_scope = float e
-  type bool_scope = bool e
-
-  val string_meta : string e meta
-  val int_meta : int e meta
-  val float_meta : float e meta
-  val bool_meta : bool e meta
+  val select' :
+    ('a -> 'b make_scope) -> ('a -> 'c t) -> ('a, 'd) q -> ('b, 'c) q
+  (** FOR INTERNAL USE ONLY *)
 end

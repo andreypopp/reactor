@@ -183,7 +183,7 @@ module E = struct
     { sql = e.sql; decode = e.decode; cols = e.cols }
 end
 
-type 'a e = 'a E.expr
+type 'a expr = 'a E.expr
 type 'a expr_nullable = 'a E.expr_nullable
 type any_expr = Any_expr : ('a, 'n) E.t -> any_expr
 type fields = (any_expr * string) list
@@ -264,13 +264,13 @@ module Q = struct
 
   type (_, _) t =
     | From : ('a, 's) table -> ('s, 'a) t
-    | Where : ('s, 'a) t * ('s -> bool e) -> ('s, 'a) t
+    | Where : ('s, 'a) t * ('s -> bool expr) -> ('s, 'a) t
     | Order_by : ('s, 'a) t * ('s -> order list) -> ('s, 'a) t
     (* | Join : *)
-    (*     ('sa, 'a) q * ('sb, 'b) q * ('sa * 'sb -> bool e) *)
+    (*     ('sa, 'a) q * ('sb, 'b) q * ('sa * 'sb -> bool expr) *)
     (*     -> ('sa * 'sb, 'a * 'b) q *)
     | Left_join :
-        ('sa, 'a) t * ('sb, 'b) t * ('sa * 'sb -> bool e)
+        ('sa, 'a) t * ('sb, 'b) t * ('sa * 'sb -> bool expr)
         -> ('sa * 'sb opt, 'a * 'b option) t
     | Select :
         ('s, 'a) t * ('s -> 's1 make_scope * fields * 'a1 Codec.decode)
@@ -506,34 +506,9 @@ type ('s, 'a) q = ('s, 'a) Q.t
 let fold_query = Q.fold
 let iter_query = Q.iter
 
-module P : sig
-  type 'a t
-
-  val get : ?name:string -> 'a e -> 'a t
-  val get_opt : ?name:string -> 'a expr_nullable -> 'a option t
-  val both : 'a t -> 'b t -> ('a * 'b) t
-  val map : ('a -> 'b) -> 'a t -> 'b t
-  val ( let+ ) : 'a t -> ('a -> 'b) -> 'b t
-  val ( and+ ) : 'a t -> 'b t -> ('a * 'b) t
-  val decode : 'a t -> 'a Codec.decode
-  val fields : 'a t -> (any_expr * string) list
-  val select : ('a -> 'b t) -> ('a, 'c) q -> (unit, 'b) q
-
-  val select' :
-    ('a -> 'b make_scope) -> ('a -> 'c t) -> ('a, 'd) q -> ('b, 'c) q
-
-  val fold :
-    ('scope, 'c) q ->
-    ('scope -> 'b t) ->
-    db ->
-    init:'d ->
-    f:('d -> 'b -> 'd) ->
-    'd
-
-  val iter : ('a, 'c) q -> ('a -> 'b t) -> db -> f:('b -> unit) -> unit
-end = struct
+module P = struct
   type _ t =
-    | E : 'a e * string option -> 'a t
+    | E : 'a expr * string option -> 'a t
     | EO : 'a expr_nullable * string option -> 'a option t
     | B : 'a t * 'b t -> ('a * 'b) t
     | F : 'a t * ('a -> 'b) -> 'b t
@@ -599,10 +574,10 @@ end
 module Builtins = struct
   include Codec.Builtins
 
-  type string_scope = string e
-  type int_scope = int e
-  type float_scope = float e
-  type bool_scope = bool e
+  type string_scope = string expr
+  type int_scope = int expr
+  type float_scope = float expr
+  type bool_scope = bool expr
 
   let string_meta =
     let scope (tbl, col) = E.col tbl col string_codec.decode in
