@@ -118,6 +118,17 @@ let derive_scope_type =
         ptyp_tuple ~loc ts
   end
 
+class virtual defined_via =
+  object (self)
+    method virtual via_name : string
+
+    method derive_type_ref_name name lid =
+      pexp_field ~loc:lid.loc
+        (pexp_ident ~loc:lid.loc
+           (map_loc (derive_of_longident self#via_name) lid))
+        { txt = lident name; loc = lid.loc }
+  end
+
 let derive_scope =
   let match_table ~loc x f =
     match gen_pat_tuple ~loc "x" 2 with
@@ -126,7 +137,9 @@ let derive_scope =
   in
   object (self)
     inherit deriving1
+    inherit! defined_via
     method name = "scope"
+    method via_name = "meta"
 
     method t ~loc name _t =
       let id = map_loc (derive_of_label derive_scope_type#name) name in
@@ -168,6 +181,8 @@ let derive_scope =
 let derive_decode =
   object (self)
     inherit deriving1
+    inherit! defined_via
+    method via_name = "codec"
     method name = "decode"
 
     method t ~loc _name t =
@@ -200,6 +215,8 @@ let derive_decode =
 let derive_bind =
   object (self)
     inherit deriving1
+    inherit! defined_via
+    method via_name = "codec"
     method name = "bind"
     method t ~loc _name t = [%type: [%t t] Persistent.Codec.bind]
 
@@ -230,6 +247,8 @@ let derive_bind =
 let derive_columns =
   object (self)
     inherit deriving1
+    inherit! defined_via
+    method via_name = "codec"
     method name = "columns"
     method t ~loc _name _t = [%type: string -> (string * string) list]
 
@@ -261,6 +280,8 @@ let derive_columns =
 let derive_fields =
   object (self)
     inherit deriving1
+    inherit! defined_via
+    method via_name = "meta"
     method name = "fields"
 
     method t ~loc _name _t =
@@ -292,63 +313,108 @@ let derive_fields =
   end
 
 let codec =
-  Deriving.add "codec"
-    ~str_type_decl:
-      (Deriving.Generator.V2.make Deriving.Args.empty (fun ~ctxt str ->
-           try
-             derive_decode#generator ~ctxt str
-             @ derive_bind#generator ~ctxt str
-             @ derive_columns#generator ~ctxt str
-             @ derive_fields#generator ~ctxt str
-             @ derive_scope_type#generator ~ctxt str
-             @ derive_scope#generator ~ctxt str
-           with Not_supported (loc, msg) ->
-             [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]))
-
-let _ =
-  let derive_table ({ name; params; shape = _; loc } : Repr.type_decl) =
+  let derive_codec
+      ({ name; params; shape = _; loc } as decl : Repr.type_decl) =
     if not (List.is_empty params) then
       not_supported ~loc "type parameters";
-    let pat = ppat_var ~loc name in
-    let columns = map_loc (derive_of_label "columns") name in
-    let scope = map_loc lident (map_loc (derive_of_label "scope") name) in
-    let fields =
-      map_loc lident (map_loc (derive_of_label "fields") name)
+    let derive deriver =
+      let id = map_loc (derive_of_label deriver#name) name in
+      pexp_ident ~loc (map_loc lident id)
     in
-    let bind = map_loc lident (map_loc (derive_of_label "bind") name) in
-    let decode =
-      map_loc lident (map_loc (derive_of_label "decode") name)
+    let open_struct stris =
+      pstr_open ~loc
+        (open_infos ~loc ~override:Fresh
+           ~expr:(pmod_structure ~loc stris))
     in
-    let columns =
-      { loc = columns.loc; txt = Longident.parse columns.txt }
-    in
-    value_binding ~loc ~pat
-      ~expr:
-        [%expr
-          {
-            Persistent.table = [%e estring ~loc name.txt];
-            scope = (fun t -> [%e pexp_ident ~loc scope] (t, ""));
-            columns = [%e pexp_ident ~loc columns] "";
-            decode = [%e pexp_ident ~loc decode];
-            bind = [%e pexp_ident ~loc bind];
-            fields = [%e pexp_ident ~loc fields] "";
-          }]
+    [
+      pstr_type ~loc Recursive (derive_scope_type#derive_type_decl decl);
+      open_struct
+        [
+          pstr_value ~loc Nonrecursive
+            (derive_decode#derive_type_decl decl);
+          pstr_value ~loc Nonrecursive (derive_bind#derive_type_decl decl);
+          pstr_value ~loc Nonrecursive
+            (derive_columns#derive_type_decl decl);
+          pstr_value ~loc Nonrecursive
+            (derive_fields#derive_type_decl decl);
+          pstr_value ~loc Nonrecursive
+            (derive_scope#derive_type_decl decl);
+        ];
+      pstr_value ~loc Nonrecursive
+        [
+          value_binding ~loc
+            ~pat:(ppat_var ~loc (map_loc (derive_of_label "codec") name))
+            ~expr:
+              [%expr
+                {
+                  Persistent.Codec.columns = [%e derive derive_columns];
+                  decode = [%e derive derive_decode];
+                  bind = [%e derive derive_bind];
+                }];
+          value_binding ~loc
+            ~pat:(ppat_var ~loc (map_loc (derive_of_label "meta") name))
+            ~expr:
+              [%expr
+                {
+                  Persistent.scope = [%e derive derive_scope];
+                  fields = [%e derive derive_fields];
+                }];
+        ];
+    ]
   in
-  Deriving.add "entity"
+  Deriving.add "codec"
     ~str_type_decl:
-      (Deriving.Generator.V2.make ~deps:[ codec ] Deriving.Args.empty
-         (fun ~ctxt (rec_flag, type_decls) ->
+      (Deriving.Generator.V2.make Deriving.Args.empty
+         (fun ~ctxt (_rec_flag, type_decls) ->
            let loc = Expansion_context.Deriver.derived_item_loc ctxt in
            match List.map type_decls ~f:Repr.of_type_declaration with
            | exception Not_supported (loc, msg) ->
                [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
            | reprs -> (
                try
-                 let bindings = List.map reprs ~f:derive_table in
-                 [%str
-                   [@@@ocaml.warning "-39-11"]
+                 let str = List.flat_map reprs ~f:derive_codec in
+                 [%stri [@@@ocaml.warning "-39-11"]] :: str
+               with Not_supported (loc, msg) ->
+                 [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ])))
 
-                   [%%i pstr_value ~loc rec_flag bindings]]
+let _ =
+  let derive_table ({ name; params; shape = _; loc } : Repr.type_decl) =
+    if not (List.is_empty params) then
+      not_supported ~loc "type parameters";
+    let derive what =
+      let id = map_loc (derive_of_label what) name in
+      pexp_ident ~loc (map_loc lident id)
+    in
+    [
+      pstr_value ~loc Nonrecursive
+        [
+          value_binding ~loc ~pat:(ppat_var ~loc name)
+            ~expr:
+              [%expr
+                let codec = [%e derive "codec"] in
+                let meta = [%e derive "meta"] in
+                {
+                  Persistent.table = [%e estring ~loc name.txt];
+                  codec;
+                  fields = meta.fields "";
+                  scope = (fun t -> meta.scope (t, ""));
+                  columns = codec.Persistent.Codec.columns "";
+                }];
+        ];
+    ]
+  in
+  Deriving.add "entity"
+    ~str_type_decl:
+      (Deriving.Generator.V2.make ~deps:[ codec ] Deriving.Args.empty
+         (fun ~ctxt (_rec_flag, type_decls) ->
+           let loc = Expansion_context.Deriver.derived_item_loc ctxt in
+           match List.map type_decls ~f:Repr.of_type_declaration with
+           | exception Not_supported (loc, msg) ->
+               [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
+           | reprs -> (
+               try
+                 let str = List.flat_map reprs ~f:derive_table in
+                 [%stri [@@@ocaml.warning "-39-11"]] :: str
                with Not_supported (loc, msg) ->
                  [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ])))
 

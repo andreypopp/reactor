@@ -3,9 +3,11 @@ open ContainersLabels
 
 module Codec = struct
   type ctx = { mutable idx : int }
-  type columns = string -> (string * string) list
-  type 'a decode = Sqlite3.Data.t array -> ctx -> 'a
-  type 'a bind = 'a -> ctx -> Sqlite3.stmt -> unit
+
+  type 'a t = { columns : columns; decode : 'a decode; bind : 'a bind }
+  and columns = string -> (string * string) list
+  and 'a decode = Sqlite3.Data.t array -> ctx -> 'a
+  and 'a bind = 'a -> ctx -> Sqlite3.stmt -> unit
 
   module Builtins = struct
     let option_decode decode row ctx =
@@ -50,6 +52,13 @@ module Codec = struct
       Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx (TEXT v));
       ctx.idx <- ctx.idx + 1
 
+    let string_codec =
+      {
+        columns = string_columns;
+        decode = string_decode;
+        bind = string_bind;
+      }
+
     let int_columns name = [ name, "INT" ]
 
     let int_decode row ctx =
@@ -65,6 +74,9 @@ module Codec = struct
       Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx (INT (Int64.of_int v)));
       ctx.idx <- ctx.idx + 1
 
+    let int_codec =
+      { columns = int_columns; decode = int_decode; bind = int_bind }
+
     let float_columns name = [ name, "FLOAT" ]
 
     let float_decode row ctx =
@@ -79,6 +91,13 @@ module Codec = struct
     let float_bind v ctx stmt =
       Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx (FLOAT v));
       ctx.idx <- ctx.idx + 1
+
+    let float_codec =
+      {
+        columns = float_columns;
+        decode = float_decode;
+        bind = float_bind;
+      }
   end
 end
 
@@ -196,11 +215,15 @@ type any_expr = Any_expr : ('a, 'n) E.t -> any_expr
 type fields = (any_expr * string) list
 type 's make_scope = string -> 's
 
+type 's meta = {
+  scope : string * string -> 's;
+  fields : string -> (any_expr * string) list;
+}
+
 type ('a, 's) table = {
   table : string;
+  codec : 'a Codec.t;
   columns : (string * string) list;
-  decode : 'a Codec.decode;
-  bind : 'a Codec.bind;
   scope : 's make_scope;
   fields : (any_expr * string) list;
 }
@@ -242,7 +265,7 @@ let insert t =
     fun v ->
       let ctx = { Codec.idx = 1 } in
       Sqlite3.Rc.check (Sqlite3.reset stmt);
-      t.bind v ctx stmt;
+      t.codec.bind v ctx stmt;
       insert_work stmt
 
 let fold' decode sql ~init ~f db =
@@ -256,7 +279,7 @@ let fold' decode sql ~init ~f db =
   Sqlite3.Rc.check rc;
   acc
 
-let fold t ~init ~f = fold' t.decode (select_sql t) ~init ~f
+let fold t ~init ~f = fold' t.codec.decode (select_sql t) ~init ~f
 let iter t decode ~f = fold t decode ~init:() ~f:(fun () -> f)
 
 module Q = struct
@@ -405,7 +428,7 @@ module Q = struct
   let rec to_rel : type s a. (s, a) q -> (s, a) rel = function
     | From t ->
         {
-          decode = t.decode;
+          decode = t.codec.decode;
           scope = t.scope;
           tree = FROM t;
           fields = t.fields;
@@ -609,12 +632,23 @@ module Builtins = struct
   type float_scope = float e
   type bool_scope = bool e
 
-  let string_scope (tbl, col) = E.col tbl col string_decode
-  let int_scope (tbl, col) = E.col tbl col int_decode
-  let float_scope (tbl, col) = E.col tbl col float_decode
-  let bool_scope (tbl, col) = E.col tbl col bool_decode
-  let string_fields n = [ Any_expr (E.col "t" n string_decode), n ]
-  let int_fields n = [ Any_expr (E.col "t" n int_decode), n ]
-  let float_fields n = [ Any_expr (E.col "t" n float_decode), n ]
-  let bool_fields n = [ Any_expr (E.col "t" n bool_decode), n ]
+  let string_meta =
+    let scope (tbl, col) = E.col tbl col string_decode in
+    let fields n = [ Any_expr (E.col "t" n string_decode), n ] in
+    { scope; fields }
+
+  let int_meta =
+    let scope (tbl, col) = E.col tbl col int_decode in
+    let fields n = [ Any_expr (E.col "t" n int_decode), n ] in
+    { scope; fields }
+
+  let float_meta =
+    let fields n = [ Any_expr (E.col "t" n float_decode), n ] in
+    let scope (tbl, col) = E.col tbl col float_decode in
+    { scope; fields }
+
+  let bool_meta =
+    let fields n = [ Any_expr (E.col "t" n bool_decode), n ] in
+    let scope (tbl, col) = E.col tbl col bool_decode in
+    { scope; fields }
 end
