@@ -56,15 +56,19 @@ type 's meta = {
   fields : string -> (any_expr * string) list;
 }
 
-type ('row, 'scope, 'pk) table = {
+type db = Sqlite3.db
+
+type ('row, 'scope, 'pk, 'insert) table = {
   table : string;
   codec : 'row Codec.t;
   columns : Codec.column list;
+  unique_columns : Codec.column list option;
   primary_key_columns : Codec.column list;
   primary_key_bind : 'pk Codec.bind;
   primary_key : 'row -> 'pk;
   scope : 'scope make_scope;
   fields : fields;
+  insert : db -> ((Codec.ctx -> Sqlite3.stmt -> unit) -> unit) -> 'insert;
 }
 
 (** query DSL *)
@@ -76,7 +80,7 @@ module Q : sig
 
   type ('a, 's) t
 
-  val from : ('row, 'scope, _) table -> ('scope, 'row) t
+  val from : ('row, 'scope, _, _) table -> ('scope, 'row) t
 
   val where :
     ('scope, 'row) t -> ('scope -> bool expr) -> ('scope, 'row) t
@@ -97,8 +101,6 @@ module Q : sig
   (** FOR INTERNAL USE ONLY *)
 end
 
-type db = Sqlite3.db
-
 val init :
   ?mode:[ `NO_CREATE | `READONLY ] ->
   ?uri:bool ->
@@ -110,19 +112,25 @@ val init :
   db
 (** initialize database *)
 
-val create : ('row, _, _) table -> db -> unit
+val create : ('row, _, _, _) table -> db -> unit
 (** create table *)
 
-val insert : ('row, _, _) table -> db -> 'row -> unit
+val insert : ('row, _, _, _) table -> db -> 'row -> unit
 (** insert new row into a table *)
 
-val upsert : ('row, _, _) table -> db -> 'row -> unit
+val insert' : (_, _, _, 'insert) table -> db -> 'insert
+(** insert new row inton a table, via table specific insert function *)
+
+val upsert : ('row, _, _, _) table -> db -> 'row -> unit
 (** upsert (try insert but fallback to update if row already exists) a row into a table *)
 
-val update : ('row, _, _) table -> db -> 'row -> unit
+val upsert' : (_, _, _, 'upsert) table -> db -> 'upsert
+(** upsert (try insert but fallback to update if row already exists) a row into a table, via table specific insert function *)
+
+val update : ('row, _, _, _) table -> db -> 'row -> unit
 (** update a row in a table *)
 
-val delete : (_, _, 'pk) table -> db -> 'pk -> unit
+val delete : (_, _, 'pk, _) table -> db -> 'pk -> unit
 (** delete a row by pk *)
 
 type ('s, 'a) q = ('s, 'a) Q.t
@@ -134,11 +142,11 @@ val fold_query :
   db -> (_, 'row) q -> init:'acc -> f:('acc -> 'row -> 'acc) -> 'acc
 (** fold over query results *)
 
-val iter_table : ('row, _, _) table -> db -> f:('row -> unit) -> unit
+val iter_table : ('row, _, _, _) table -> db -> f:('row -> unit) -> unit
 (** iterate over all values of a table *)
 
 val fold_table :
-  ('row, _, _) table ->
+  ('row, _, _, _) table ->
   db ->
   init:'acc ->
   f:('acc -> 'row -> 'acc) ->
@@ -161,6 +169,7 @@ module Primitives : sig
   val int_meta : int expr meta
   val float_meta : float expr meta
   val bool_meta : bool expr meta
+  val option_bind : 'a Codec.bind -> 'a option Codec.bind
 end
 
 (** decode query results *)

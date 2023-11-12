@@ -16,14 +16,14 @@ exception Error of location * string
 let raise_errorf ~loc fmt =
   Printf.ksprintf (fun msg -> raise (Error (loc, msg))) fmt
 
-let wrap_expand f ~ctxt e =
-  try f ~ctxt e with
+let wrap_expand_expression f =
+  try f () with
   | Not_supported (loc, msg) -> pexp_errorf ~loc "%s" msg
   | Error (loc, msg) ->
       pexp_extension ~loc (Location.error_extensionf ~loc "%s" msg)
 
-let wrap_expand_structure f ~ctxt e =
-  try f ~ctxt e with
+let wrap_expand_structure f =
+  try f () with
   | Not_supported (loc, msg) ->
       [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
   | Error (loc, msg) -> [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
@@ -415,7 +415,12 @@ let primary_key =
     (fun ~attr_loc -> attr_loc)
 
 let _ =
-  let derive_table (td, { Repr.name; params; shape = _; loc }) =
+  let derive_table ~unique (td, { Repr.name; params; shape = _; loc }) =
+    let fields =
+      match td.ptype_kind with
+      | Ptype_record fs -> fs
+      | _ -> raise_errorf ~loc "not a record"
+    in
     if not (List.is_empty params) then
       not_supported ~loc "type parameters";
     let derive ?(name = name) what =
@@ -426,33 +431,70 @@ let _ =
       let id = map_loc (derive_of_label what) name in
       ptyp_constr ~loc (map_loc lident id) []
     in
-    let primary_key_project, primary_key_field, primary_key_type =
-      match td.ptype_kind with
-      | Ptype_record fs -> (
-          let pk =
-            List.filter_map fs ~f:(fun f ->
-                match Attribute.get primary_key f with
-                | None -> None
-                | Some loc ->
-                    Some
-                      ( loc,
-                        f.pld_name,
-                        estring ~loc f.pld_name.txt,
-                        f.pld_type ))
+    let ( primary_key_name,
+          primary_key_project,
+          primary_key_field,
+          primary_key_type ) =
+      let pk =
+        List.filter_map fields ~f:(fun f ->
+            match Attribute.get primary_key f with
+            | None -> None
+            | Some loc ->
+                Some
+                  ( loc,
+                    f.pld_name,
+                    estring ~loc f.pld_name.txt,
+                    f.pld_type ))
+      in
+      match pk with
+      | [] -> raise_errorf ~loc "missing [@primary_key] annotation"
+      | [ (loc, label, pk, pk_type) ] ->
+          ( label.txt,
+            [%expr
+              fun row ->
+                [%e pexp_field ~loc [%expr row] (map_loc lident label)]],
+            [%expr Some [%e pk]],
+            pk_type )
+      | _first :: (loc, _, _, _) :: _ ->
+          raise_errorf ~loc
+            "multiple [@primary_key] annotations are not allowed"
+    in
+    let optionals =
+      match primary_key_type with
+      | [%type: int] -> [ primary_key_name ]
+      | _ -> []
+    in
+    let insert =
+      let rev_fields = List.rev fields in
+      let bind =
+        List.fold_left rev_fields ~init:[%expr ()] ~f:(fun next f ->
+            let e = pexp_ident ~loc (map_loc lident f.pld_name) in
+            let bind x =
+              derive_bind#derive_of_type_expr ~loc
+                (Repr.of_core_type f.pld_type)
+                x
+            in
+            let bind =
+              if List.mem f.pld_name.txt optionals then
+                [%expr
+                  Persistent.Primitives.option_bind
+                    (fun x -> [%e bind [%expr x]])
+                    [%e e]]
+              else bind e
+            in
+            [%expr
+              [%e bind] ctx stmt;
+              [%e next]])
+      in
+      List.fold_left rev_fields
+        ~init:[%expr fun () -> bind (fun ctx stmt -> [%e bind])]
+        ~f:(fun body f ->
+          let label =
+            if List.mem f.pld_name.txt optionals then
+              Optional f.pld_name.txt
+            else Labelled f.pld_name.txt
           in
-          match pk with
-          | [] -> raise_errorf ~loc "missing [@primary_key] annotation"
-          | [ (loc, label, pk, pk_type) ] ->
-              ( [%expr
-                  fun row ->
-                    [%e
-                      pexp_field ~loc [%expr row] (map_loc lident label)]],
-                [%expr Some [%e pk]],
-                pk_type )
-          | _first :: (loc, _, _, _) :: _ ->
-              raise_errorf ~loc
-                "multiple [@primary_key] annotations are not allowed")
-      | _ -> raise_errorf ~loc "only records are supported"
+          pexp_fun ~loc label None (ppat_var ~loc f.pld_name) body)
     in
     [
       pstr_value ~loc Nonrecursive
@@ -463,6 +505,21 @@ let _ =
                 let codec = [%e derive "codec"] in
                 let meta = [%e derive "meta"] in
                 let columns = codec.Persistent.Codec.columns "" in
+                let unique_columns =
+                  [%e
+                    match unique with
+                    | None -> [%expr None]
+                    | Some unique ->
+                        [%expr
+                          let unique = [%e pexp_list ~loc unique] in
+                          Some
+                            (List.filter
+                               (fun col ->
+                                 match col.Persistent.Codec.field with
+                                 | None -> false
+                                 | Some field -> List.mem field unique)
+                               columns)]]
+                in
                 let primary_key = [%e primary_key_project] in
                 let primary_key_columns =
                   List.filter
@@ -476,34 +533,54 @@ let _ =
                       (Repr.of_core_type primary_key_type)
                       [%expr x]]
                 in
+                let insert =
+                 fun [@ocaml.warning "-27"] db bind -> [%e insert]
+                in
                 ({
                    Persistent.table = [%e estring ~loc name.txt];
                    codec;
+                   unique_columns;
                    primary_key_columns;
                    primary_key_bind;
                    primary_key;
                    fields = meta.fields "";
                    scope = meta.scope;
                    columns;
+                   insert;
                  }
                   : ( [%t ptyp_constr ~loc (map_loc lident name) []],
                       [%t derive_type "scope"],
-                      [%t primary_key_type] )
+                      [%t primary_key_type],
+                      _ )
                     Persistent.table)];
         ];
     ]
   in
-  Deriving.add "entity"
+  let args =
+    let open Deriving.Args in
+    let cols = pexp_tuple (many (pexp_ident __')) in
+    let col = map1 (pexp_ident __') ~f:List.return in
+    empty +> arg "unique" (cols ||| col)
+  in
+  Deriving.add "table"
     ~str_type_decl:
-      (Deriving.Generator.V2.make ~deps:[ codec ] Deriving.Args.empty
-         (wrap_expand_structure (fun ~ctxt (_rec_flag, type_decls) ->
-              let loc = Expansion_context.Deriver.derived_item_loc ctxt in
-              let reprs =
-                List.map type_decls ~f:(fun td ->
-                    td, Repr.of_type_declaration td)
-              in
-              let str = List.flat_map reprs ~f:derive_table in
-              [%stri [@@@ocaml.warning "-39-11"]] :: str)))
+      (Deriving.Generator.V2.make ~deps:[ codec ] args
+         (fun ~ctxt (_rec_flag, type_decls) unique ->
+           wrap_expand_structure @@ fun () ->
+           let unique =
+             Option.map
+               (List.map ~f:(function
+                 | { txt = Lident txt; loc } -> estring ~loc txt
+                 | { txt = _; loc } -> raise_errorf ~loc "not a column"))
+               unique
+           in
+           let loc = Expansion_context.Deriver.derived_item_loc ctxt in
+           let reprs =
+             List.map type_decls ~f:(fun td ->
+                 td, Repr.of_type_declaration td)
+           in
+           let str = List.flat_map reprs ~f:(derive_table ~unique) in
+           [%stri [@@@ocaml.warning "-39-11"]] :: str))
 
 module Expr_form = struct
   let expand ~ctxt:_ (e : expression) =
@@ -559,7 +636,7 @@ module Expr_form = struct
       | Pexp_letop _ | Pexp_extension _ | Pexp_unreachable ->
           pexp_errorf ~loc "this expression is not supported"
     in
-    rewrite e
+    wrap_expand_expression @@ fun () -> rewrite e
 
   let ext =
     let pattern =
@@ -568,7 +645,7 @@ module Expr_form = struct
     in
     Context_free.Rule.extension
       (Extension.V3.declare "expr" Extension.Context.expression pattern
-         (wrap_expand expand))
+         expand)
 end
 
 module Query_form = struct
@@ -777,6 +854,7 @@ module Query_form = struct
             names, e)
 
   let expand ~ctxt e =
+    wrap_expand_expression @@ fun () ->
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
     match e with
     | [%expr
@@ -795,7 +873,7 @@ module Query_form = struct
     in
     Context_free.Rule.extension
       (Extension.V3.declare "query" Extension.Context.expression pattern
-         (wrap_expand expand))
+         expand)
 end
 
 let () =

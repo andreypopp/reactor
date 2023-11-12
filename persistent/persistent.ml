@@ -31,23 +31,25 @@ module Codec = struct
       ctx.idx <- ctx.idx + 1;
       v
 
+    let option_bind v_bind v ctx stmt =
+      match v with
+      | Some v -> v_bind v ctx stmt
+      | None ->
+          let v = Sqlite3.Data.NULL in
+          Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx v);
+          ctx.idx <- ctx.idx + 1
+
     let option_codec codec =
-      let bind v ctx stmt =
-        match v with
-        | Some v -> codec.bind v ctx stmt
-        | None ->
-            let v = Sqlite3.Data.NULL in
-            Sqlite3.Rc.check (Sqlite3.bind stmt ctx.idx v);
-            ctx.idx <- ctx.idx + 1
-      in
       {
         decode = option_decode codec.decode;
         columns = codec.columns;
-        bind;
+        bind = option_bind codec.bind;
       }
 
     let bool_codec =
-      let columns column = [ { field = None; column; type_ = "INT" } ] in
+      let columns column =
+        [ { field = None; column; type_ = "INTEGER NOT NULL" } ]
+      in
       let decode row ctx =
         let v =
           match row.(ctx.idx) with
@@ -66,7 +68,9 @@ module Codec = struct
       { columns; decode; bind }
 
     let string_codec =
-      let columns column = [ { field = None; column; type_ = "TEXT" } ] in
+      let columns column =
+        [ { field = None; column; type_ = "TEXT NOT NULL" } ]
+      in
       let decode row ctx =
         let v =
           match row.(ctx.idx) with
@@ -83,7 +87,9 @@ module Codec = struct
       { columns; decode; bind }
 
     let int_codec =
-      let columns column = [ { field = None; column; type_ = "INT" } ] in
+      let columns column =
+        [ { field = None; column; type_ = "INTEGER NOT NULL" } ]
+      in
       let decode row ctx =
         let v =
           match row.(ctx.idx) with
@@ -101,7 +107,9 @@ module Codec = struct
       { columns; decode; bind }
 
     let float_codec =
-      let columns column = [ { field = None; column; type_ = "REAL" } ] in
+      let columns column =
+        [ { field = None; column; type_ = "REAL NOT NULL" } ]
+      in
       let decode row ctx =
         let v =
           match row.(ctx.idx) with
@@ -201,48 +209,60 @@ type 's meta = {
   fields : string -> fields;
 }
 
-type ('row, 'scope, 'pk) table = {
+type db = Sqlite3.db
+
+type ('row, 'scope, 'pk, 'insert) table = {
   table : string;
   codec : 'row Codec.t;
   columns : Codec.column list;
+  unique_columns : Codec.column list option;
   primary_key_columns : Codec.column list;
   primary_key_bind : 'pk Codec.bind;
   primary_key : 'row -> 'pk;
   scope : 'scope make_scope;
   fields : fields;
+  insert : db -> ((Codec.ctx -> Sqlite3.stmt -> unit) -> unit) -> 'insert;
 }
-
-type db = Sqlite3.db
 
 let init = Sqlite3.db_open
 
-let create_table_sql ~if_not_exists ~strict ~primary_key ~name ~columns =
+let create_table_sql ~if_not_exists ~strict ~primary_key ~unique ~name
+    ~columns =
   let open Containers_pp in
   let columns =
     List.map columns ~f:(fun col ->
         textf "%s %s" col.Codec.column col.type_)
   in
-  let constraints =
-    [
-      (match primary_key with
-      | [] -> None
-      | pk ->
-          Some
-            (text "PRIMARY KEY"
-            ^+ bracket2 "("
-                 (of_list ~sep:comma
-                    (fun col -> text col.Codec.column)
-                    pk)
-                 ")"));
-    ]
-    |> List.filter_map ~f:Fun.id
+  let primary_key =
+    match primary_key with
+    | [] -> []
+    | pk ->
+        [
+          text "PRIMARY KEY"
+          ^+ bracket2 "("
+               (of_list ~sep:comma (fun col -> text col.Codec.column) pk)
+               ")";
+        ]
+  in
+  let unique =
+    match unique with
+    | Some unique ->
+        (List.map ~f:(fun cols ->
+             text "UNIQUE"
+             ^+ bracket2 "("
+                  (of_list ~sep:comma
+                     (fun col -> text col.Codec.column)
+                     cols)
+                  ")"))
+          unique
+    | None -> []
   in
   group
     (text "CREATE TABLE"
     ^ (if if_not_exists then text " IF NOT EXISTS" else nil)
     ^+ text name
     ^+ bracket2 "("
-         (of_list ~sep:comma Fun.id (columns @ constraints))
+         (of_list ~sep:comma Fun.id (columns @ primary_key @ unique))
          ")"
     ^ (if strict then text " STRICT" else nil)
     ^ text ";")
@@ -254,18 +274,19 @@ let where_primary_key_sql columns =
     (fun col -> textf "%s = ?" col.Codec.column)
     columns
 
-let insert_values_sql t =
+let insert_values_sql ~or_replace ~name ~columns =
   let open Containers_pp in
   group
-    (textf "INSERT INTO %s" t.table
+    (text (if or_replace then "INSERT OR REPLACE" else "INSERT")
+    ^+ textf "INTO %s" name
     ^+ bracket2 "("
-         (of_list ~sep:comma (fun col -> text col.Codec.column) t.columns)
+         (of_list ~sep:comma (fun col -> text col.Codec.column) columns)
          ")"
     ^ group
         (newline
         ^ text "VALUES"
         ^+ bracket2 "("
-             (of_list ~sep:comma (fun _ -> text "?") t.columns)
+             (of_list ~sep:comma (fun _ -> text "?") columns)
              ")"))
 
 let update_set_sql t =
@@ -286,18 +307,7 @@ let update_sql t =
     )
 
 let upsert_sql t =
-  let open Containers_pp in
-  let insert = insert_values_sql t in
-  insert
-  ^ group
-      (newline
-      ^ text "ON CONFLICT"
-      ^+ bracket2 "("
-           (of_list ~sep:comma
-              (fun col -> text col.Codec.column)
-              t.primary_key_columns)
-           ")")
-  ^ group (newline ^ text "DO UPDATE" ^+ update_set_sql t)
+  insert_values_sql ~or_replace:true ~name:t.table ~columns:t.columns
 
 let delete_sql t =
   let open Containers_pp in
@@ -309,7 +319,9 @@ let delete_sql t =
 let create t =
   let sql =
     create_table_sql ~if_not_exists:true ~strict:true
-      ~primary_key:t.primary_key_columns ~name:t.table ~columns:t.columns
+      ~primary_key:t.primary_key_columns
+      ~unique:(Option.map List.return t.unique_columns)
+      ~name:t.table ~columns:t.columns
   in
   let sql = Containers_pp.Pretty.to_string ~width:79 sql in
   print_endline sql;
@@ -321,8 +333,7 @@ let rec step_stmt stmt =
   | OK -> step_stmt stmt
   | rc -> Sqlite3.Rc.check rc
 
-let insert t =
-  let sql = insert_values_sql t in
+let table_query ~sql ~bind =
   let sql = Containers_pp.Pretty.to_string ~width:79 sql in
   print_endline sql;
   fun db ->
@@ -330,47 +341,55 @@ let insert t =
     fun v ->
       let ctx = { Codec.idx = 1 } in
       Sqlite3.Rc.check (Sqlite3.reset stmt);
-      t.codec.bind v ctx stmt;
+      bind v ctx stmt;
       step_stmt stmt
+
+let table_query' ~sql t =
+  let sql = Containers_pp.Pretty.to_string ~width:79 sql in
+  print_endline sql;
+  fun db ->
+    let stmt = Sqlite3.prepare db sql in
+    t.insert db @@ fun k ->
+    let ctx = { Codec.idx = 1 } in
+    Sqlite3.Rc.check (Sqlite3.reset stmt);
+    k ctx stmt;
+    step_stmt stmt
+
+let insert t =
+  let sql =
+    insert_values_sql ~or_replace:false ~name:t.table ~columns:t.columns
+  in
+  let bind = t.codec.bind in
+  table_query ~sql ~bind
+
+let insert' t =
+  let sql =
+    insert_values_sql ~or_replace:false ~name:t.table ~columns:t.columns
+  in
+  table_query' ~sql t
 
 let upsert t =
   let sql = upsert_sql t in
-  let sql = Containers_pp.Pretty.to_string ~width:79 sql in
-  print_endline sql;
-  fun db ->
-    let stmt = Sqlite3.prepare db sql in
-    fun v ->
-      let ctx = { Codec.idx = 1 } in
-      Sqlite3.Rc.check (Sqlite3.reset stmt);
-      t.codec.bind v ctx stmt;
-      t.codec.bind v ctx stmt;
-      step_stmt stmt
+  let bind = t.codec.bind in
+  table_query ~sql ~bind
+
+let upsert' t =
+  let sql = upsert_sql t in
+  table_query' ~sql t
 
 let update t =
   let sql = update_sql t in
-  let sql = Containers_pp.Pretty.to_string ~width:79 sql in
-  print_endline sql;
-  fun db ->
-    let stmt = Sqlite3.prepare db sql in
-    fun v ->
-      let ctx = { Codec.idx = 1 } in
-      Sqlite3.Rc.check (Sqlite3.reset stmt);
-      let pk = t.primary_key v in
-      t.codec.bind v ctx stmt;
-      t.primary_key_bind pk ctx stmt;
-      step_stmt stmt
+  let bind v ctx stmt =
+    t.codec.bind v ctx stmt;
+    let pk = t.primary_key v in
+    t.primary_key_bind pk ctx stmt
+  in
+  table_query ~sql ~bind
 
-let delete (t : (_, _, 'pk) table) =
+let delete t =
   let sql = delete_sql t in
-  let sql = Containers_pp.Pretty.to_string ~width:79 sql in
-  print_endline sql;
-  fun db ->
-    let stmt = Sqlite3.prepare db sql in
-    fun (pk : 'pk) ->
-      let ctx = { Codec.idx = 1 } in
-      Sqlite3.Rc.check (Sqlite3.reset stmt);
-      t.primary_key_bind pk ctx stmt;
-      step_stmt stmt
+  let bind = t.primary_key_bind in
+  table_query ~sql ~bind
 
 let fold_raw sql decode db ~init ~f =
   let stmt = Sqlite3.prepare db sql in
@@ -402,7 +421,7 @@ module Q = struct
   let desc e = Desc e
 
   type (_, _) t =
-    | From : ('a, 's, _) table -> ('s, 'a) t
+    | From : ('a, 's, _, _) table -> ('s, 'a) t
     | Where : ('s, 'a) t * ('s -> bool expr) -> ('s, 'a) t
     | Order_by : ('s, 'a) t * ('s -> order list) -> ('s, 'a) t
     (* | Join : *)
