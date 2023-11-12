@@ -441,10 +441,7 @@ let _ =
                         f.pld_type ))
           in
           match pk with
-          | [] ->
-              ( [%expr fun _ -> assert false],
-                [%expr None],
-                [%type: Persistent.void] )
+          | [] -> raise_errorf ~loc "missing [@primary_key] annotation"
           | [ (loc, label, pk, pk_type) ] ->
               ( [%expr
                   fun row ->
@@ -455,10 +452,7 @@ let _ =
           | _first :: (loc, _, _, _) :: _ ->
               raise_errorf ~loc
                 "multiple [@primary_key] annotations are not allowed")
-      | _ ->
-          ( [%expr fun _ -> assert false],
-            [%expr None],
-            [%type: Persistent.void] )
+      | _ -> raise_errorf ~loc "only records are supported"
     in
     [
       pstr_value ~loc Nonrecursive

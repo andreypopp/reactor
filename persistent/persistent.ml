@@ -734,11 +734,3 @@ module Primitives = struct
     let scope (tbl, col) = E.col tbl col bool_codec.decode in
     { scope; fields }
 end
-
-type void
-
-let void_codec =
-  let columns _column = [] in
-  let decode _row _ctx = assert false in
-  let bind _v _ctx _stmt = assert false in
-  { Codec.columns; decode; bind }

@@ -195,7 +195,3 @@ module P : sig
     ('next_scope, 'next_row) q
   (** FOR INTERNAL USE ONLY *)
 end
-
-type void
-
-val void_codec : void Codec.t
