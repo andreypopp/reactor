@@ -22,7 +22,8 @@ let () =
   in
   let%query sub =
     from subscription;
-    where (subscription.user_id = 3)
+    where (subscription.user_id = 3);
+    { user_id = subscription.user_id }
   in
   let%query q =
     u = from user;
@@ -36,7 +37,7 @@ let () =
       (u.id = q.id);
     where (u.id = 2);
     q = { name = u.profile.name; is_john = u.profile.name = "John" };
-    where q.is_john
+    where (q.is_john && q.is_john)
   in
   Persistent.iter_query db q ~f:(fun (name, is_john) ->
       print_endline (Printf.sprintf "name=%s, is_john=%b" name is_john))

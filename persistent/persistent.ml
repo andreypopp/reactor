@@ -491,12 +491,12 @@ module Q = struct
     rel.decode, rel.scope, print_rel rel
 
   let from t = From t
-  let where e q = Where (q, e)
-  let order_by e q = Order_by (q, e)
+  let where q e = Where (q, e)
+  let order_by q e = Order_by (q, e)
 
   (* let join b e a = Join (a, b, e) *)
-  let left_join b e a = Left_join (a, b, e)
-  let select f q = Select (q, f)
+  let left_join a b e = Left_join (a, b, e)
+  let select q f = Select (q, f)
 
   let fold db q ~init ~f =
     let decode, _scope, sql = to_sql q in
@@ -557,18 +557,16 @@ module P = struct
         let a = decode a row ctx in
         f a
 
-  let select' make_scope p q =
-    Q.select
-      (fun scope ->
+  let select' q make_scope p =
+    Q.select q (fun scope ->
         let p = p scope in
         let fields = fields p in
         make_scope scope, fields, decode p)
-      q
 
-  let select p q = select' (fun _ _ -> ()) p q
+  let select q p = select' q (fun _ _ -> ()) p
 
   let fold q p db ~init ~f =
-    let q = select p q in
+    let q = select q p in
     let decode, _scope, sql = Q.to_sql q in
     let sql = Containers_pp.Pretty.to_string ~width:79 sql in
     print_endline sql;

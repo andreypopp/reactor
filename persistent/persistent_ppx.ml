@@ -445,9 +445,11 @@ module Expr_form = struct
       let loc = e.pexp_loc in
       match e.pexp_desc with
       | Pexp_ident { txt = Lident "="; _ } -> [%expr Persistent.E.( = )]
+      | Pexp_ident { txt = Lident "&&"; _ } -> [%expr Persistent.E.( && )]
+      | Pexp_ident { txt = Lident "||"; _ } -> [%expr Persistent.E.( || )]
       | Pexp_ident _ -> e
       | Pexp_field (e, { txt = Lident n; loc = nloc }) ->
-          pexp_send ~loc (rewrite e) { txt = n; loc = nloc }
+          pexp_send ~loc:nloc (rewrite e) { txt = n; loc = nloc }
       | Pexp_apply (e, args) ->
           pexp_apply ~loc (rewrite e)
             (List.map args ~f:(fun (l, e) -> l, rewrite e))
@@ -504,8 +506,9 @@ module Expr_form = struct
 end
 
 module Query_form = struct
-  let rec expand' ?names ~ctxt e =
+  let rec expand' ?prev ?names ~ctxt e =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
+    let prev = Option.value prev ~default:[%expr ()] in
     let rec unroll acc e =
       match e.pexp_desc with
       | Pexp_sequence (a, b) -> unroll (a :: acc) b
@@ -519,7 +522,7 @@ module Query_form = struct
         fun [@ocaml.warning "-27"] [%p names] ->
           [%e Expr_form.expand ~ctxt e]]
     in
-    let rewrite names q =
+    let rewrite names prev q =
       let loc = q.pexp_loc in
       match q with
       | [%expr from [%e? id]] ->
@@ -533,7 +536,9 @@ module Query_form = struct
           in
           names, [%expr Persistent.Q.from [%e id]]
       | [%expr where [%e? e]] ->
-          names, [%expr Persistent.Q.where [%e pexp_slot ~loc names e]]
+          ( names,
+            [%expr
+              Persistent.Q.where [%e prev] [%e pexp_slot ~loc names e]] )
       | [%expr order_by [%e? fs]] ->
           let fs =
             let fs =
@@ -550,13 +555,16 @@ module Query_form = struct
           in
           let e = pexp_list ~loc fs in
           ( names,
-            [%expr Persistent.Q.order_by [%e pexp_slot' ~loc names e]] )
+            [%expr
+              Persistent.Q.order_by [%e prev] [%e pexp_slot' ~loc names e]]
+          )
       | [%expr left_join [%e? q] [%e? e]] ->
           let qnames, q = expand' ~ctxt q in
           let names = [%pat? [%p names], [%p qnames]] in
           ( names,
             [%expr
-              Persistent.Q.left_join [%e q] [%e pexp_slot ~loc names e]] )
+              Persistent.Q.left_join [%e prev] [%e q]
+                [%e pexp_slot ~loc names e]] )
       | { pexp_desc = Pexp_tuple xs; _ } ->
           let xs =
             List.map xs ~f:(function
@@ -599,7 +607,7 @@ module Query_form = struct
           in
           let e =
             [%expr
-              Persistent.P.select' [%e make_scope]
+              Persistent.P.select' [%e prev] [%e make_scope]
                 [%e pexp_slot' ~loc names e]]
           in
           [%pat? here], e
@@ -665,7 +673,7 @@ module Query_form = struct
           in
           let e =
             [%expr
-              Persistent.P.select' [%e make_scope]
+              Persistent.P.select' [%e prev] [%e make_scope]
                 [%e pexp_slot' ~loc names e]]
           in
           [%pat? here], e
@@ -684,7 +692,7 @@ module Query_form = struct
                 ppat_var ~loc { txt; loc }
             | _ -> raise_errorf ~loc "simple identifier expected"
           in
-          let _names, rhs = expand' ~ctxt ~names rhs in
+          let _names, rhs = expand' ~ctxt ~prev ~names rhs in
           name, rhs
       | _ -> raise_errorf ~loc "unknown query form"
     in
@@ -697,11 +705,10 @@ module Query_form = struct
         let names =
           match names with Some names -> names | None -> [%pat? ()]
         in
-        List.fold_left qs ~init:(rewrite names q)
+        List.fold_left qs ~init:(rewrite names prev q)
           ~f:(fun (names, prev) e ->
-            let loc = prev.pexp_loc in
-            let names, e = rewrite names e in
-            names, [%expr [%e prev] |> [%e e]])
+            let names, e = rewrite names prev e in
+            names, e)
 
   let expand ~ctxt e =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
