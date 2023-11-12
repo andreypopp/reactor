@@ -145,7 +145,7 @@ val fold_table :
   'acc
 (** fold over all values of a table *)
 
-module Builtins : sig
+module Primitives : sig
   val bool_codec : bool Codec.t
   val string_codec : string Codec.t
   val int_codec : int Codec.t

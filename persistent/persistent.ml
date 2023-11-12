@@ -20,7 +20,7 @@ module Codec = struct
   and 'a decode = Sqlite3.Data.t array -> ctx -> 'a
   and 'a bind = 'a -> ctx -> Sqlite3.stmt -> unit
 
-  module Builtins = struct
+  module Primitives = struct
     let option_decode decode row ctx =
       let v =
         (* TODO: this is wrong, this way decoder can still can succeed *)
@@ -122,7 +122,7 @@ end
 type 's opt = Opt of 's
 
 module E = struct
-  open Codec.Builtins
+  open Codec.Primitives
 
   type not_null = private NOT_NULL
   type null = private NULL
@@ -599,7 +599,7 @@ module Q = struct
         in
         let decode row ctx =
           let a = a.decode row ctx in
-          let b = Codec.Builtins.option_decode b.decode row ctx in
+          let b = Codec.Primitives.option_decode b.decode row ctx in
           a, b
         in
         {
@@ -706,8 +706,8 @@ module P = struct
   let iter q p db ~f = fold q p db ~init:() ~f:(fun () row -> f row)
 end
 
-module Builtins = struct
-  include Codec.Builtins
+module Primitives = struct
+  include Codec.Primitives
 
   type string_scope = string expr
   type int_scope = int expr
