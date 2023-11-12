@@ -3,14 +3,18 @@ open Persistent.Builtins
 type profile = { name : string; age : int } [@@deriving codec]
 
 type user = {
-  id : int;
+  id : int; [@primary_key]
   created_at : float;
   profile : profile;
   pair : int * int;
 }
 [@@deriving codec, entity]
 
-type subscription = { id : int; user_id : int; name : string }
+type subscription = {
+  id : int; [@primary_key]
+  user_id : int;
+  name : string;
+}
 [@@deriving codec, entity]
 
 let () =
@@ -20,6 +24,8 @@ let () =
     Persistent.create subscription db;
     db
   in
+  Persistent.delete subscription db 2;
+  Persistent.insert subscription db { user_id = 1; name = "aaa"; id = 2 };
   let%query sub =
     from subscription;
     where (subscription.user_id = 3);

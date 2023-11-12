@@ -3,11 +3,12 @@ module Codec : sig
   type ctx
 
   type 'a t = {
-    columns : string -> (string * string) list;
+    columns : string -> column list;
     decode : 'a decode;
     bind : 'a bind;
   }
 
+  and column = { field : string option; column : string; type_ : string }
   and 'a decode = Sqlite3.Data.t array -> ctx -> 'a
   and 'a bind = 'a -> ctx -> Sqlite3.stmt -> unit
 end
@@ -55,11 +56,13 @@ type 's meta = {
   fields : string -> (any_expr * string) list;
 }
 
-type ('a, 's) table = {
+type ('row, 'scope, 'pk) table = {
   table : string;
-  codec : 'a Codec.t;
-  columns : (string * string) list;
-  scope : 's make_scope;
+  codec : 'row Codec.t;
+  columns : Codec.column list;
+  primary_key_columns : Codec.column list;
+  primary_key_bind : 'pk Codec.bind;
+  scope : 'scope make_scope;
   fields : fields;
 }
 
@@ -72,7 +75,7 @@ module Q : sig
 
   type ('a, 's) t
 
-  val from : ('row, 'scope) table -> ('scope, 'row) t
+  val from : ('row, 'scope, _) table -> ('scope, 'row) t
 
   val where :
     ('scope, 'row) t -> ('scope -> bool expr) -> ('scope, 'row) t
@@ -106,11 +109,14 @@ val init :
   db
 (** initialize database *)
 
-val create : ('row, _) table -> db -> unit
+val create : ('row, _, _) table -> db -> unit
 (** create table *)
 
-val insert : ('row, _) table -> db -> 'row -> unit
+val insert : ('row, _, _) table -> db -> 'row -> unit
 (** insert new row into a table *)
+
+val delete : (_, _, 'pk) table -> db -> 'pk -> unit
+(** delete a row by pk *)
 
 type ('s, 'a) q = ('s, 'a) Q.t
 
@@ -121,11 +127,15 @@ val fold_query :
   db -> (_, 'row) q -> init:'acc -> f:('acc -> 'row -> 'acc) -> 'acc
 (** fold over query results *)
 
-val iter_table : ('row, _) table -> db -> f:('row -> unit) -> unit
+val iter_table : ('row, _, _) table -> db -> f:('row -> unit) -> unit
 (** iterate over all values of a table *)
 
 val fold_table :
-  ('row, _) table -> db -> init:'acc -> f:('acc -> 'row -> 'acc) -> 'acc
+  ('row, _, _) table ->
+  db ->
+  init:'acc ->
+  f:('acc -> 'row -> 'acc) ->
+  'acc
 (** fold over all values of a table *)
 
 module Builtins : sig
@@ -178,3 +188,7 @@ module P : sig
     ('next_scope, 'next_row) q
   (** FOR INTERNAL USE ONLY *)
 end
+
+type void
+
+val void_codec : void Codec.t

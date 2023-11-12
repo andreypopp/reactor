@@ -1,15 +1,22 @@
 open Printf
 open ContainersLabels
 
+module Containers_pp = struct
+  include Containers_pp
+
+  let comma = text "," ^ newline
+end
+
 module Codec = struct
   type ctx = { mutable idx : int }
 
   type 'a t = {
-    columns : string -> (string * string) list;
+    columns : string -> column list;
     decode : 'a decode;
     bind : 'a bind;
   }
 
+  and column = { field : string option; column : string; type_ : string }
   and 'a decode = Sqlite3.Data.t array -> ctx -> 'a
   and 'a bind = 'a -> ctx -> Sqlite3.stmt -> unit
 
@@ -40,7 +47,7 @@ module Codec = struct
       }
 
     let bool_codec =
-      let columns name = [ name, "INT" ] in
+      let columns column = [ { field = None; column; type_ = "INT" } ] in
       let decode row ctx =
         let v =
           match row.(ctx.idx) with
@@ -59,7 +66,7 @@ module Codec = struct
       { columns; decode; bind }
 
     let string_codec =
-      let columns name = [ name, "TEXT" ] in
+      let columns column = [ { field = None; column; type_ = "TEXT" } ] in
       let decode row ctx =
         let v =
           match row.(ctx.idx) with
@@ -76,7 +83,7 @@ module Codec = struct
       { columns; decode; bind }
 
     let int_codec =
-      let columns name = [ name, "INT" ] in
+      let columns column = [ { field = None; column; type_ = "INT" } ] in
       let decode row ctx =
         let v =
           match row.(ctx.idx) with
@@ -94,7 +101,7 @@ module Codec = struct
       { columns; decode; bind }
 
     let float_codec =
-      let columns name = [ name, "FLOAT" ] in
+      let columns column = [ { field = None; column; type_ = "REAL" } ] in
       let decode row ctx =
         let v =
           match row.(ctx.idx) with
@@ -194,11 +201,13 @@ type 's meta = {
   fields : string -> fields;
 }
 
-type ('a, 's) table = {
+type ('row, 'scope, 'pk) table = {
   table : string;
-  codec : 'a Codec.t;
-  columns : (string * string) list;
-  scope : 's make_scope;
+  codec : 'row Codec.t;
+  columns : Codec.column list;
+  primary_key_columns : Codec.column list;
+  primary_key_bind : 'pk Codec.bind;
+  scope : 'scope make_scope;
   fields : fields;
 }
 
@@ -206,13 +215,65 @@ type db = Sqlite3.db
 
 let init = Sqlite3.db_open
 
+let create_table_sql ~if_not_exists ~strict ~primary_key ~name ~columns =
+  let open Containers_pp in
+  let columns =
+    List.map columns ~f:(fun col ->
+        textf "%s %s" col.Codec.column col.type_)
+  in
+  let constraints =
+    [
+      (match primary_key with
+      | [] -> None
+      | pk ->
+          Some
+            (text "PRIMARY KEY"
+            ^+ bracket2 "("
+                 (of_list ~sep:comma
+                    (fun col -> text col.Codec.column)
+                    pk)
+                 ")"));
+    ]
+    |> List.filter_map ~f:Fun.id
+  in
+  group
+    (text "CREATE TABLE"
+    ^ (if if_not_exists then text " IF NOT EXISTS" else nil)
+    ^+ text name
+    ^+ bracket2 "("
+         (of_list ~sep:comma Fun.id (columns @ constraints))
+         ")"
+    ^ (if strict then text " STRICT" else nil)
+    ^ text ";")
+
+let insert_values_sql t =
+  let open Containers_pp in
+  group
+    (textf "INSERT INTO %s" t.table
+    ^ bracket2 "("
+        (of_list ~sep:comma (fun col -> text col.Codec.column) t.columns)
+        ")"
+    ^+ text "VALUES"
+    ^ bracket2 "(" (of_list ~sep:comma (fun _ -> text "?") t.columns) ");"
+    )
+
+let delete_sql t =
+  let open Containers_pp in
+  group
+    (textf "DELETE FROM %s" t.table
+    ^/ text "WHERE"
+    ^+ of_list
+         ~sep:(newline ^ text "AND" ^ sp)
+         (fun col -> textf "%s = ?" col.Codec.column)
+         t.primary_key_columns)
+
 let create t =
   let sql =
-    Printf.sprintf "CREATE TABLE IF NOT EXISTS %s(%s)" t.table
-      (t.columns
-      |> List.map ~f:(fun (n, t) -> Printf.sprintf "%s %s" n t)
-      |> String.concat ~sep:",")
+    create_table_sql ~if_not_exists:true ~strict:true
+      ~primary_key:t.primary_key_columns ~name:t.table ~columns:t.columns
   in
+  let sql = Containers_pp.Pretty.to_string ~width:79 sql in
+  print_endline sql;
   fun db -> Sqlite3.Rc.check (Sqlite3.exec db sql)
 
 let rec insert_work stmt =
@@ -222,17 +283,27 @@ let rec insert_work stmt =
   | rc -> Sqlite3.Rc.check rc
 
 let insert t =
-  let sql =
-    Printf.sprintf "INSERT INTO %s(%s) VALUES(%s)" t.table
-      (t.columns |> List.map ~f:fst |> String.concat ~sep:", ")
-      (t.columns |> List.map ~f:(fun _ -> "?") |> String.concat ~sep:", ")
-  in
+  let sql = insert_values_sql t in
+  let sql = Containers_pp.Pretty.to_string ~width:79 sql in
+  print_endline sql;
   fun db ->
     let stmt = Sqlite3.prepare db sql in
     fun v ->
       let ctx = { Codec.idx = 1 } in
       Sqlite3.Rc.check (Sqlite3.reset stmt);
       t.codec.bind v ctx stmt;
+      insert_work stmt
+
+let delete (t : (_, _, 'pk) table) =
+  let sql = delete_sql t in
+  let sql = Containers_pp.Pretty.to_string ~width:79 sql in
+  print_endline sql;
+  fun db ->
+    let stmt = Sqlite3.prepare db sql in
+    fun (pk : 'pk) ->
+      let ctx = { Codec.idx = 1 } in
+      Sqlite3.Rc.check (Sqlite3.reset stmt);
+      t.primary_key_bind pk ctx stmt;
       insert_work stmt
 
 let fold_raw sql decode db ~init ~f =
@@ -249,7 +320,9 @@ let fold_raw sql decode db ~init ~f =
 let fold_table t db ~init ~f =
   let sql =
     Printf.sprintf "SELECT %s FROM %s"
-      (t.columns |> List.map ~f:fst |> String.concat ~sep:", ")
+      (t.columns
+      |> List.map ~f:(fun col -> col.Codec.column)
+      |> String.concat ~sep:", ")
       t.table
   in
   fold_raw sql t.codec.decode db ~f ~init
@@ -263,7 +336,7 @@ module Q = struct
   let desc e = Desc e
 
   type (_, _) t =
-    | From : ('a, 's) table -> ('s, 'a) t
+    | From : ('a, 's, _) table -> ('s, 'a) t
     | Where : ('s, 'a) t * ('s -> bool expr) -> ('s, 'a) t
     | Order_by : ('s, 'a) t * ('s -> order list) -> ('s, 'a) t
     (* | Join : *)
@@ -291,16 +364,9 @@ module Q = struct
     | ORDER_BY : (_, _) rel * order list -> tree
     | JOIN : (_, _) rel * (_, _) rel * (_, _) E.t -> tree
 
-  module Containers_pp_aux = struct
-    open Containers_pp
-
-    let comma = text "," ^ newline
-  end
-
   let rec print_rel : type s a. (s, a) rel -> Containers_pp.t =
    fun rel ->
     let open Containers_pp in
-    let open Containers_pp_aux in
     let select =
       let fields =
         match rel.select with [] -> rel.fields | select -> select
@@ -314,7 +380,6 @@ module Q = struct
 
   and print_tree : tree -> Containers_pp.t =
     let open Containers_pp in
-    let open Containers_pp_aux in
     function
     | SUBQUERY rel -> print_from rel "t"
     | FROM t -> print_from' (text t.table) "t"
@@ -603,3 +668,11 @@ module Builtins = struct
     let scope (tbl, col) = E.col tbl col bool_codec.decode in
     { scope; fields }
 end
+
+type void
+
+let void_codec =
+  let columns _column = [] in
+  let decode _row _ctx = assert false in
+  let bind _v _ctx _stmt = assert false in
+  { Codec.columns; decode; bind }

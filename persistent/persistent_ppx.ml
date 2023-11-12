@@ -4,6 +4,30 @@ open ContainersLabels
 open Ppx_deriving_schema
 open Deriving_helper
 
+let pexp_errorf ~loc fmt =
+  let open Ast_builder.Default in
+  Printf.ksprintf
+    (fun msg ->
+      pexp_extension ~loc (Location.error_extensionf ~loc "%s" msg))
+    fmt
+
+exception Error of location * string
+
+let raise_errorf ~loc fmt =
+  Printf.ksprintf (fun msg -> raise (Error (loc, msg))) fmt
+
+let wrap_expand f ~ctxt e =
+  try f ~ctxt e with
+  | Not_supported (loc, msg) -> pexp_errorf ~loc "%s" msg
+  | Error (loc, msg) ->
+      pexp_extension ~loc (Location.error_extensionf ~loc "%s" msg)
+
+let wrap_expand_structure f ~ctxt e =
+  try f ~ctxt e with
+  | Not_supported (loc, msg) ->
+      [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
+  | Error (loc, msg) -> [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
+
 class virtual deriving_type =
   object (self)
     method virtual name : string
@@ -250,7 +274,9 @@ let derive_columns =
     inherit! defined_via
     method via_name = "codec"
     method name = "columns"
-    method t ~loc _name _t = [%type: string -> (string * string) list]
+
+    method t ~loc _name _t =
+      [%type: string -> Persistent.Codec.column list]
 
     method! derive_of_tuple ~loc ts x =
       with_genname_idx ~loc x @@ fun genname ->
@@ -268,11 +294,16 @@ let derive_columns =
       with_genname_field ~loc x @@ fun genname ->
       let es =
         List.map fs ~f:(fun ((n : label loc), t) ->
-            let n = estring ~loc:n.loc n.txt in
+            let loc = n.loc in
+            let n = estring ~loc n.txt in
+            let es =
+              self#derive_of_type_expr ~loc t [%expr [%e genname] [%e n]]
+            in
             [%expr
-              [%e
-                self#derive_of_type_expr ~loc t
-                  [%expr [%e genname] [%e n]]]])
+              List.map
+                (fun col ->
+                  { col with Persistent.Codec.field = Some [%e n] })
+                [%e es]])
       in
       [%expr List.flatten [%e pexp_list ~loc es]]
   end
@@ -377,13 +408,41 @@ let codec =
                with Not_supported (loc, msg) ->
                  [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ])))
 
+let primary_key =
+  Attribute.declare_with_attr_loc "persistent.primary_key"
+    Attribute.Context.label_declaration
+    Ast_pattern.(pstr nil)
+    (fun ~attr_loc -> attr_loc)
+
 let _ =
-  let derive_table ({ name; params; shape = _; loc } : Repr.type_decl) =
+  let derive_table (td, { Repr.name; params; shape = _; loc }) =
     if not (List.is_empty params) then
       not_supported ~loc "type parameters";
-    let derive what =
+    let derive ?(name = name) what =
       let id = map_loc (derive_of_label what) name in
       pexp_ident ~loc (map_loc lident id)
+    in
+    let derive_type what =
+      let id = map_loc (derive_of_label what) name in
+      ptyp_constr ~loc (map_loc lident id) []
+    in
+    let primary_key, primary_key_type =
+      match td.ptype_kind with
+      | Ptype_record fs -> (
+          let pk =
+            List.filter_map fs ~f:(fun f ->
+                match Attribute.get primary_key f with
+                | None -> None
+                | Some loc ->
+                    Some (loc, estring ~loc f.pld_name.txt, f.pld_type))
+          in
+          match pk with
+          | [] -> [%expr None], [%type: Persistent.void]
+          | [ (loc, pk, pk_type) ] -> [%expr Some [%e pk]], pk_type
+          | _first :: (loc, _, _) :: _ ->
+              raise_errorf ~loc
+                "multiple [@primary_key] annotations are not allowed")
+      | _ -> [%expr None], [%type: unit]
     in
     [
       pstr_value ~loc Nonrecursive
@@ -393,51 +452,46 @@ let _ =
               [%expr
                 let codec = [%e derive "codec"] in
                 let meta = [%e derive "meta"] in
-                {
-                  Persistent.table = [%e estring ~loc name.txt];
-                  codec;
-                  fields = meta.fields "";
-                  scope = meta.scope;
-                  columns = codec.Persistent.Codec.columns "";
-                }];
+                let columns = codec.Persistent.Codec.columns "" in
+                let primary_key_columns =
+                  List.filter
+                    (fun col ->
+                      col.Persistent.Codec.field = [%e primary_key])
+                    columns
+                in
+                let primary_key_bind x =
+                  [%e
+                    derive_bind#derive_of_type_expr ~loc
+                      (Repr.of_core_type primary_key_type)
+                      [%expr x]]
+                in
+                ({
+                   Persistent.table = [%e estring ~loc name.txt];
+                   codec;
+                   primary_key_columns;
+                   primary_key_bind;
+                   fields = meta.fields "";
+                   scope = meta.scope;
+                   columns;
+                 }
+                  : ( [%t ptyp_constr ~loc (map_loc lident name) []],
+                      [%t derive_type "scope"],
+                      [%t primary_key_type] )
+                    Persistent.table)];
         ];
     ]
   in
   Deriving.add "entity"
     ~str_type_decl:
       (Deriving.Generator.V2.make ~deps:[ codec ] Deriving.Args.empty
-         (fun ~ctxt (_rec_flag, type_decls) ->
-           let loc = Expansion_context.Deriver.derived_item_loc ctxt in
-           match List.map type_decls ~f:Repr.of_type_declaration with
-           | exception Not_supported (loc, msg) ->
-               [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
-           | reprs -> (
-               try
-                 let str = List.flat_map reprs ~f:derive_table in
-                 [%stri [@@@ocaml.warning "-39-11"]] :: str
-               with Not_supported (loc, msg) ->
-                 [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ])))
-
-let pexp_errorf ~loc fmt =
-  let open Ast_builder.Default in
-  Printf.ksprintf
-    (fun msg ->
-      pexp_extension ~loc (Location.error_extensionf ~loc "%s" msg))
-    fmt
-
-exception Error of expression
-
-let raise_errorf ~loc fmt =
-  let open Ast_builder.Default in
-  Printf.ksprintf
-    (fun msg ->
-      let expr =
-        pexp_extension ~loc (Location.error_extensionf ~loc "%s" msg)
-      in
-      raise (Error expr))
-    fmt
-
-let wrap_expand f ~ctxt e = try f ~ctxt e with Error e -> e
+         (wrap_expand_structure (fun ~ctxt (_rec_flag, type_decls) ->
+              let loc = Expansion_context.Deriver.derived_item_loc ctxt in
+              let reprs =
+                List.map type_decls ~f:(fun td ->
+                    td, Repr.of_type_declaration td)
+              in
+              let str = List.flat_map reprs ~f:derive_table in
+              [%stri [@@@ocaml.warning "-39-11"]] :: str)))
 
 module Expr_form = struct
   let expand ~ctxt:_ (e : expression) =
