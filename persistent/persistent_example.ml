@@ -25,7 +25,7 @@ let () =
     db
   in
   Persistent.delete subscription db 2;
-  Persistent.insert subscription db { user_id = 1; name = "aaa"; id = 2 };
+  Persistent.upsert subscription db { user_id = 1; name = "aaa"; id = 2 };
   let%query sub =
     from subscription;
     where (subscription.user_id = 3);

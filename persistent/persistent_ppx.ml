@@ -426,7 +426,7 @@ let _ =
       let id = map_loc (derive_of_label what) name in
       ptyp_constr ~loc (map_loc lident id) []
     in
-    let primary_key, primary_key_type =
+    let primary_key_project, primary_key_field, primary_key_type =
       match td.ptype_kind with
       | Ptype_record fs -> (
           let pk =
@@ -434,15 +434,31 @@ let _ =
                 match Attribute.get primary_key f with
                 | None -> None
                 | Some loc ->
-                    Some (loc, estring ~loc f.pld_name.txt, f.pld_type))
+                    Some
+                      ( loc,
+                        f.pld_name,
+                        estring ~loc f.pld_name.txt,
+                        f.pld_type ))
           in
           match pk with
-          | [] -> [%expr None], [%type: Persistent.void]
-          | [ (loc, pk, pk_type) ] -> [%expr Some [%e pk]], pk_type
-          | _first :: (loc, _, _) :: _ ->
+          | [] ->
+              ( [%expr fun _ -> assert false],
+                [%expr None],
+                [%type: Persistent.void] )
+          | [ (loc, label, pk, pk_type) ] ->
+              ( [%expr
+                  fun row ->
+                    [%e
+                      pexp_field ~loc [%expr row] (map_loc lident label)]],
+                [%expr Some [%e pk]],
+                pk_type )
+          | _first :: (loc, _, _, _) :: _ ->
               raise_errorf ~loc
                 "multiple [@primary_key] annotations are not allowed")
-      | _ -> [%expr None], [%type: unit]
+      | _ ->
+          ( [%expr fun _ -> assert false],
+            [%expr None],
+            [%type: Persistent.void] )
     in
     [
       pstr_value ~loc Nonrecursive
@@ -453,10 +469,11 @@ let _ =
                 let codec = [%e derive "codec"] in
                 let meta = [%e derive "meta"] in
                 let columns = codec.Persistent.Codec.columns "" in
+                let primary_key = [%e primary_key_project] in
                 let primary_key_columns =
                   List.filter
                     (fun col ->
-                      col.Persistent.Codec.field = [%e primary_key])
+                      col.Persistent.Codec.field = [%e primary_key_field])
                     columns
                 in
                 let primary_key_bind x =
@@ -470,6 +487,7 @@ let _ =
                    codec;
                    primary_key_columns;
                    primary_key_bind;
+                   primary_key;
                    fields = meta.fields "";
                    scope = meta.scope;
                    columns;

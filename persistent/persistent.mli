@@ -62,6 +62,7 @@ type ('row, 'scope, 'pk) table = {
   columns : Codec.column list;
   primary_key_columns : Codec.column list;
   primary_key_bind : 'pk Codec.bind;
+  primary_key : 'row -> 'pk;
   scope : 'scope make_scope;
   fields : fields;
 }
@@ -114,6 +115,12 @@ val create : ('row, _, _) table -> db -> unit
 
 val insert : ('row, _, _) table -> db -> 'row -> unit
 (** insert new row into a table *)
+
+val upsert : ('row, _, _) table -> db -> 'row -> unit
+(** upsert (try insert but fallback to update if row already exists) a row into a table *)
+
+val update : ('row, _, _) table -> db -> 'row -> unit
+(** update a row in a table *)
 
 val delete : (_, _, 'pk) table -> db -> 'pk -> unit
 (** delete a row by pk *)

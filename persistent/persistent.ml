@@ -207,6 +207,7 @@ type ('row, 'scope, 'pk) table = {
   columns : Codec.column list;
   primary_key_columns : Codec.column list;
   primary_key_bind : 'pk Codec.bind;
+  primary_key : 'row -> 'pk;
   scope : 'scope make_scope;
   fields : fields;
 }
@@ -246,26 +247,64 @@ let create_table_sql ~if_not_exists ~strict ~primary_key ~name ~columns =
     ^ (if strict then text " STRICT" else nil)
     ^ text ";")
 
+let where_primary_key_sql columns =
+  let open Containers_pp in
+  of_list
+    ~sep:(newline ^ text "AND" ^ sp)
+    (fun col -> textf "%s = ?" col.Codec.column)
+    columns
+
 let insert_values_sql t =
   let open Containers_pp in
   group
     (textf "INSERT INTO %s" t.table
-    ^ bracket2 "("
-        (of_list ~sep:comma (fun col -> text col.Codec.column) t.columns)
-        ")"
-    ^+ text "VALUES"
-    ^ bracket2 "(" (of_list ~sep:comma (fun _ -> text "?") t.columns) ");"
+    ^+ bracket2 "("
+         (of_list ~sep:comma (fun col -> text col.Codec.column) t.columns)
+         ")"
+    ^ group
+        (newline
+        ^ text "VALUES"
+        ^+ bracket2 "("
+             (of_list ~sep:comma (fun _ -> text "?") t.columns)
+             ")"))
+
+let update_set_sql t =
+  let open Containers_pp in
+  text "SET"
+  ^ nest 2
+      (newline
+      ^ of_list ~sep:comma
+          (fun col -> textf "%s = ?" col.Codec.column)
+          t.columns)
+
+let update_sql t =
+  let open Containers_pp in
+  group
+    (textf "UPDATE %s" t.table
+    ^+ update_set_sql t
+    ^/ group (text "WHERE" ^+ where_primary_key_sql t.primary_key_columns)
     )
+
+let upsert_sql t =
+  let open Containers_pp in
+  let insert = insert_values_sql t in
+  insert
+  ^ group
+      (newline
+      ^ text "ON CONFLICT"
+      ^+ bracket2 "("
+           (of_list ~sep:comma
+              (fun col -> text col.Codec.column)
+              t.primary_key_columns)
+           ")")
+  ^ group (newline ^ text "DO UPDATE" ^+ update_set_sql t)
 
 let delete_sql t =
   let open Containers_pp in
   group
     (textf "DELETE FROM %s" t.table
-    ^/ text "WHERE"
-    ^+ of_list
-         ~sep:(newline ^ text "AND" ^ sp)
-         (fun col -> textf "%s = ?" col.Codec.column)
-         t.primary_key_columns)
+    ^/ group (text "WHERE" ^+ where_primary_key_sql t.primary_key_columns)
+    )
 
 let create t =
   let sql =
@@ -276,10 +315,10 @@ let create t =
   print_endline sql;
   fun db -> Sqlite3.Rc.check (Sqlite3.exec db sql)
 
-let rec insert_work stmt =
+let rec step_stmt stmt =
   match Sqlite3.step stmt with
   | Sqlite3.Rc.DONE -> ()
-  | OK -> insert_work stmt
+  | OK -> step_stmt stmt
   | rc -> Sqlite3.Rc.check rc
 
 let insert t =
@@ -292,7 +331,34 @@ let insert t =
       let ctx = { Codec.idx = 1 } in
       Sqlite3.Rc.check (Sqlite3.reset stmt);
       t.codec.bind v ctx stmt;
-      insert_work stmt
+      step_stmt stmt
+
+let upsert t =
+  let sql = upsert_sql t in
+  let sql = Containers_pp.Pretty.to_string ~width:79 sql in
+  print_endline sql;
+  fun db ->
+    let stmt = Sqlite3.prepare db sql in
+    fun v ->
+      let ctx = { Codec.idx = 1 } in
+      Sqlite3.Rc.check (Sqlite3.reset stmt);
+      t.codec.bind v ctx stmt;
+      t.codec.bind v ctx stmt;
+      step_stmt stmt
+
+let update t =
+  let sql = update_sql t in
+  let sql = Containers_pp.Pretty.to_string ~width:79 sql in
+  print_endline sql;
+  fun db ->
+    let stmt = Sqlite3.prepare db sql in
+    fun v ->
+      let ctx = { Codec.idx = 1 } in
+      Sqlite3.Rc.check (Sqlite3.reset stmt);
+      let pk = t.primary_key v in
+      t.codec.bind v ctx stmt;
+      t.primary_key_bind pk ctx stmt;
+      step_stmt stmt
 
 let delete (t : (_, _, 'pk) table) =
   let sql = delete_sql t in
@@ -304,7 +370,7 @@ let delete (t : (_, _, 'pk) table) =
       let ctx = { Codec.idx = 1 } in
       Sqlite3.Rc.check (Sqlite3.reset stmt);
       t.primary_key_bind pk ctx stmt;
-      insert_work stmt
+      step_stmt stmt
 
 let fold_raw sql decode db ~init ~f =
   let stmt = Sqlite3.prepare db sql in
