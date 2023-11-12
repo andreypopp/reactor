@@ -187,7 +187,7 @@ type 'a expr = 'a E.expr
 type 'a expr_nullable = 'a E.expr_nullable
 type any_expr = Any_expr : ('a, 'n) E.t -> any_expr
 type fields = (any_expr * string) list
-type 's make_scope = string -> 's
+type 's make_scope = string * string -> 's
 
 type 's meta = {
   scope : string * string -> 's;
@@ -281,7 +281,6 @@ module Q = struct
     scope : 's make_scope;
     fields : (any_expr * string) list;
     mutable select : (any_expr * string) list;
-    default_select : string;
     decode : 'a Codec.decode;
   }
 
@@ -303,12 +302,12 @@ module Q = struct
     let open Containers_pp in
     let open Containers_pp_aux in
     let select =
-      match rel.select with
-      | [] -> text rel.default_select
-      | select ->
-          of_list ~sep:comma
-            (fun (Any_expr e, n) -> textf "%s AS %s" (E.to_sql e) n)
-            select
+      let fields =
+        match rel.select with [] -> rel.fields | select -> select
+      in
+      of_list ~sep:comma
+        (fun (Any_expr e, n) -> textf "%s AS %s" (E.to_sql e) n)
+        fields
     in
     group (text "SELECT" ^ nest 2 (newline ^ select))
     ^/ print_tree rel.tree
@@ -395,8 +394,14 @@ module Q = struct
         mark "b" b used_select used;
         trim_select b
 
-  let forward_fields t fs =
-    List.map fs ~f:(fun (Any_expr e, n) -> Any_expr (E.as_col t n e), n)
+  let forward_fields ?prefix t fs =
+    List.map fs ~f:(fun (Any_expr e, n) ->
+        let n' =
+          match prefix with
+          | None -> n
+          | Some prefix -> sprintf "%s_%s" prefix n
+        in
+        Any_expr (E.as_col t n e), n')
 
   let rec to_rel : type s a. (s, a) t -> (s, a) rel = function
     | From t ->
@@ -406,28 +411,25 @@ module Q = struct
           tree = FROM t;
           fields = t.fields;
           select = [];
-          default_select = "*";
         }
     | Where (q, e) ->
         let inner = to_rel q in
-        let e = e (inner.scope "t") in
+        let e = e (inner.scope ("t", "")) in
         {
           decode = inner.decode;
           scope = inner.scope;
           tree = WHERE (inner, e);
           fields = forward_fields "t" inner.fields;
           select = [];
-          default_select = "t.*";
         }
     | Order_by (q, e) ->
         let inner = to_rel q in
         {
           decode = inner.decode;
           scope = inner.scope;
-          tree = ORDER_BY (inner, e (inner.scope "t"));
+          tree = ORDER_BY (inner, e (inner.scope ("t", "")));
           fields = forward_fields "t" inner.fields;
           select = [];
-          default_select = "t.*";
         }
     (* | Join (a, b, e) -> *)
     (*     let a = to_rel a in *)
@@ -451,8 +453,19 @@ module Q = struct
     | Left_join (a, b, e) ->
         let a = to_rel a in
         let b = to_rel b in
-        let a_scope, b_scope = a.scope "a", b.scope "b" in
-        let scope s = a.scope s, Opt (b.scope s) in
+        let inner_scope = a.scope ("a", ""), b.scope ("b", "") in
+        let concat_prefix a b =
+          match a, b with
+          | "", "" -> ""
+          | "", p -> p
+          | p, "" -> p
+          | a, b -> sprintf "%s_%s" a b
+        in
+
+        let scope (t, p) =
+          ( a.scope (t, concat_prefix p "a"),
+            Opt (b.scope (t, concat_prefix p "b")) )
+        in
         let decode row ctx =
           let a = a.decode row ctx in
           let b = Codec.Builtins.option_decode b.decode row ctx in
@@ -461,23 +474,16 @@ module Q = struct
         {
           decode;
           scope;
-          tree = JOIN (a, b, e (a_scope, b_scope));
+          tree = JOIN (a, b, e inner_scope);
           select = [];
           fields =
-            forward_fields "a" a.fields @ forward_fields "b" b.fields;
-          default_select = "a.*, b.*";
+            forward_fields ~prefix:"a" "a" a.fields
+            @ forward_fields ~prefix:"b" "b" b.fields;
         }
     | Select (q, f) ->
         let inner = to_rel q in
-        let scope, fields, decode = f (inner.scope "t") in
-        {
-          decode;
-          scope;
-          tree = SUBQUERY inner;
-          fields;
-          select = fields;
-          default_select = "t.*";
-        }
+        let scope, fields, decode = f (inner.scope ("t", "")) in
+        { decode; scope; tree = SUBQUERY inner; fields; select = fields }
 
   let to_sql q =
     let rel = to_rel q in

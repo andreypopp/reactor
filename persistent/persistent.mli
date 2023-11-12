@@ -48,7 +48,7 @@ type 'a expr = 'a E.expr
 type 'a expr_nullable = 'a E.expr_nullable
 type any_expr = Any_expr : (_, _) E.t -> any_expr
 type fields = (any_expr * string) list
-type 's make_scope = string -> 's
+type 's make_scope = string * string -> 's
 
 type 's meta = {
   scope : string * string -> 's;

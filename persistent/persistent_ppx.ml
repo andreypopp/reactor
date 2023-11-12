@@ -397,7 +397,7 @@ let _ =
                   Persistent.table = [%e estring ~loc name.txt];
                   codec;
                   fields = meta.fields "";
-                  scope = (fun t -> meta.scope (t, ""));
+                  scope = meta.scope;
                   columns = codec.Persistent.Codec.columns "";
                 }];
         ];
@@ -504,24 +504,19 @@ module Expr_form = struct
 end
 
 module Query_form = struct
-  let rec expand' ?(names = []) ~ctxt e =
+  let rec expand' ?names ~ctxt e =
+    let loc = Expansion_context.Extension.extension_point_loc ctxt in
     let rec unroll acc e =
       match e.pexp_desc with
       | Pexp_sequence (a, b) -> unroll (a :: acc) b
-      | _ -> List.rev (e :: acc)
-    in
-    let ppat_scope ~loc = function
-      | [] -> [%pat? here]
-      | [ x ] -> x
-      | xs -> ppat_tuple ~loc xs
+      | _ -> e :: acc
     in
     let pexp_slot' ~loc names e =
-      [%expr
-        fun [@ocaml.warning "-27"] [%p ppat_scope ~loc names] -> [%e e]]
+      [%expr fun [@ocaml.warning "-27"] [%p names] -> [%e e]]
     in
     let pexp_slot ~loc names e =
       [%expr
-        fun [@ocaml.warning "-27"] [%p ppat_scope ~loc names] ->
+        fun [@ocaml.warning "-27"] [%p names] ->
           [%e Expr_form.expand ~ctxt e]]
     in
     let rewrite names q =
@@ -531,7 +526,7 @@ module Query_form = struct
           let names =
             match id.pexp_desc with
             | Pexp_ident { txt = Lident txt; loc } ->
-                [ ppat_var ~loc { txt; loc } ]
+                ppat_var ~loc { txt; loc }
             | _ ->
                 raise_errorf ~loc:id.pexp_loc
                   "only identifiers are allowed"
@@ -558,7 +553,7 @@ module Query_form = struct
             [%expr Persistent.Q.order_by [%e pexp_slot' ~loc names e]] )
       | [%expr left_join [%e? q] [%e? e]] ->
           let qnames, q = expand' ~ctxt q in
-          let names = names @ qnames in
+          let names = [%pat? [%p names], [%p qnames]] in
           ( names,
             [%expr
               Persistent.Q.left_join [%e q] [%e pexp_slot ~loc names e]] )
@@ -575,7 +570,8 @@ module Query_form = struct
                   let n = estring ~loc (Printf.sprintf "c%i" i) in
                   [%expr Persistent.E.as_col t [%e n] [%e e]])
             in
-            pexp_slot' ~loc names [%expr fun t -> [%e pexp_tuple ~loc xs]]
+            pexp_slot' ~loc names
+              [%expr fun (t, _p) -> [%e pexp_tuple ~loc xs]]
           in
           let ps, e = gen_tuple ~loc "col" (List.length xs) in
           let x, xs =
@@ -606,7 +602,7 @@ module Query_form = struct
               Persistent.P.select' [%e make_scope]
                 [%e pexp_slot' ~loc names e]]
           in
-          [ [%pat? here] ], e
+          [%pat? here], e
       | { pexp_desc = Pexp_record (fs, None); _ } ->
           let fs =
             List.map fs ~f:(fun (n, x) ->
@@ -636,7 +632,7 @@ module Query_form = struct
             in
             pexp_slot' ~loc names
               [%expr
-                fun t ->
+                fun (t, _p) ->
                   [%e
                     pexp_object ~loc
                       (class_structure ~self:(ppat_any ~loc) ~fields)]]
@@ -672,15 +668,15 @@ module Query_form = struct
               Persistent.P.select' [%e make_scope]
                 [%e pexp_slot' ~loc names e]]
           in
-          [ [%pat? here] ], e
-      | { pexp_desc = Pexp_ident id; _ } ->
+          [%pat? here], e
+      | { pexp_desc = Pexp_ident id; _ } as q ->
           let name =
             match id.txt with
             | Lident txt | Ldot (_, txt) ->
                 ppat_var ~loc { txt; loc = id.loc }
             | Lapply _ -> raise_errorf ~loc "cannot query this"
           in
-          [ name ], e
+          name, q
       | [%expr [%e? name] = [%e? rhs]] ->
           let name =
             match name.pexp_desc with
@@ -689,15 +685,18 @@ module Query_form = struct
             | _ -> raise_errorf ~loc "simple identifier expected"
           in
           let _names, rhs = expand' ~ctxt ~names rhs in
-          [ name ], rhs
+          name, rhs
       | _ -> raise_errorf ~loc "unknown query form"
     in
-    match unroll [] e with
+    match List.rev (unroll [] e) with
     | [] ->
         raise_errorf
           ~loc:(Expansion_context.Extension.extension_point_loc ctxt)
           "empty query"
     | q :: qs ->
+        let names =
+          match names with Some names -> names | None -> [%pat? ()]
+        in
         List.fold_left qs ~init:(rewrite names q)
           ~f:(fun (names, prev) e ->
             let loc = prev.pexp_loc in

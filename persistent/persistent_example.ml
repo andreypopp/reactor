@@ -10,7 +10,7 @@ type user = {
 }
 [@@deriving codec, entity]
 
-type subscription = { user_id : int; name : string }
+type subscription = { id : int; user_id : int; name : string }
 [@@deriving codec, entity]
 
 let () =
@@ -29,6 +29,12 @@ let () =
     where (u.id = 3);
     order_by (desc u.created_at);
     left_join sub (u.id = sub.user_id);
+    where (u.id = 2);
+    left_join
+      (sub;
+       q = { id = sub.user_id })
+      (u.id = q.id);
+    where (u.id = 2);
     q = { name = u.profile.name; is_john = u.profile.name = "John" };
     where q.is_john
   in
