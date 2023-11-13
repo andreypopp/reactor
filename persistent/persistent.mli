@@ -79,21 +79,30 @@ module Q : sig
 
   type ('a, 's) t
 
-  val from : ('row, 'scope, _) table -> ('scope, 'row) t
+  val from : ?n:string -> ('row, 'scope, _) table -> ('scope, 'row) t
 
   val where :
-    ('scope, 'row) t -> ('scope -> bool expr) -> ('scope, 'row) t
+    ?n:string ->
+    ('scope, 'row) t ->
+    ('scope -> bool expr) ->
+    ('scope, 'row) t
 
   val order_by :
-    ('scope, 'row) t -> ('scope -> order list) -> ('scope, 'row) t
+    ?n:string ->
+    ('scope, 'row) t ->
+    ('scope -> order list) ->
+    ('scope, 'row) t
 
   val left_join :
+    ?na:string ->
+    ?nb:string ->
     ('scope_a, 'row_a) t ->
     ('scope_b, 'row_b) t ->
     ('scope_a * 'scope_b -> bool expr) ->
     ('scope_a * 'scope_b opt, 'row_a * 'row_b option) t
 
   val select :
+    ?n:string ->
     ('scope, _) t ->
     ('scope -> 'next_scope make_scope * fields * 'value Codec.decode) ->
     ('next_scope, 'value) t
@@ -188,7 +197,10 @@ module P : sig
   val decode : 'a t -> 'a Codec.decode
 
   val select :
-    ('scope, 'row) q -> ('scope -> 'next_row t) -> (unit, 'next_row) q
+    ?n:string ->
+    ('scope, 'row) q ->
+    ('scope -> 'next_row t) ->
+    (unit, 'next_row) q
 
   val fold :
     ('scope, 'c) q ->
@@ -201,6 +213,7 @@ module P : sig
   val iter : ('a, 'c) q -> ('a -> 'b t) -> db -> f:('b -> unit) -> unit
 
   val select' :
+    ?n:string ->
     ('scope, 'row) q ->
     ('scope -> 'next_scope make_scope) ->
     ('scope -> 'next_row t) ->

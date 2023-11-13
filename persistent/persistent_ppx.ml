@@ -288,7 +288,7 @@ let derive_columns =
                 self#derive_of_type_expr ~loc t
                   [%expr [%e genname] [%e i]]]])
       in
-      [%expr List.flatten [%e pexp_list ~loc es]]
+      [%expr Stdlib.List.flatten [%e pexp_list ~loc es]]
 
     method! derive_of_record ~loc fs x =
       with_genname_field ~loc x @@ fun genname ->
@@ -300,12 +300,12 @@ let derive_columns =
               self#derive_of_type_expr ~loc t [%expr [%e genname] [%e n]]
             in
             [%expr
-              List.map
+              Stdlib.List.map
                 (fun col ->
                   { col with Persistent.Codec.field = Some [%e n] })
                 [%e es]])
       in
-      [%expr List.flatten [%e pexp_list ~loc es]]
+      [%expr Stdlib.List.flatten [%e pexp_list ~loc es]]
   end
 
 let derive_fields =
@@ -328,7 +328,7 @@ let derive_fields =
                 self#derive_of_type_expr ~loc t
                   [%expr [%e genname] [%e i]]]])
       in
-      [%expr List.flatten [%e pexp_list ~loc es]]
+      [%expr Stdlib.List.flatten [%e pexp_list ~loc es]]
 
     method! derive_of_record ~loc fs x =
       with_genname_field ~loc x @@ fun genname ->
@@ -340,7 +340,7 @@ let derive_fields =
                 self#derive_of_type_expr ~loc t
                   [%expr [%e genname] [%e n]]]])
       in
-      [%expr List.flatten [%e pexp_list ~loc es]]
+      [%expr Stdlib.List.flatten [%e pexp_list ~loc es]]
   end
 
 let codec =
@@ -541,16 +541,17 @@ let _ =
                         [%expr
                           let unique = [%e pexp_list ~loc unique] in
                           Some
-                            (List.filter
+                            (Stdlib.List.filter
                                (fun col ->
                                  match col.Persistent.Codec.field with
                                  | None -> false
-                                 | Some field -> List.mem field unique)
+                                 | Some field ->
+                                     Stdlib.List.mem field unique)
                                columns)]]
                 in
                 let primary_key = [%e primary_key_project] in
                 let primary_key_columns =
-                  List.filter
+                  Stdlib.List.filter
                     (fun col ->
                       col.Persistent.Codec.field = [%e primary_key_field])
                     columns
