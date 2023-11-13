@@ -414,8 +414,23 @@ let primary_key =
     Ast_pattern.(pstr nil)
     (fun ~attr_loc -> attr_loc)
 
+let table_args =
+  let open Deriving.Args in
+  let cols = pexp_tuple (many (pexp_ident __')) in
+  let col = map1 (pexp_ident __') ~f:List.return in
+  empty +> arg "unique" (cols ||| col) +> arg "name" (estring __)
+
 let _ =
-  let derive_table ~unique (td, { Repr.name; params; shape = _; loc }) =
+  let derive_table ~name:table_name ~unique
+      (td, { Repr.name; params; shape = _; loc }) =
+    let table_name =
+      match table_name, name.txt with
+      | None, "t" ->
+          raise_errorf ~loc
+            "missing table name, specify with ~name argument"
+      | None, txt -> { loc = name.loc; txt }
+      | Some txt, _ -> { loc = name.loc; txt }
+    in
     let fields =
       match td.ptype_kind with
       | Ptype_record fs -> fs
@@ -547,7 +562,8 @@ let _ =
                       [%expr x]]
                 in
                 ({
-                   Persistent.table = [%e estring ~loc name.txt];
+                   Persistent.table =
+                     [%e estring ~loc:table_name.loc table_name.txt];
                    codec;
                    unique_columns;
                    primary_key_columns;
@@ -576,16 +592,10 @@ let _ =
       [%stri let [%p derive_pat "update"] = Persistent.update [%e table]];
     ]
   in
-  let args =
-    let open Deriving.Args in
-    let cols = pexp_tuple (many (pexp_ident __')) in
-    let col = map1 (pexp_ident __') ~f:List.return in
-    empty +> arg "unique" (cols ||| col)
-  in
   Deriving.add "table"
     ~str_type_decl:
-      (Deriving.Generator.V2.make ~deps:[ codec ] args
-         (fun ~ctxt (_rec_flag, type_decls) unique ->
+      (Deriving.Generator.V2.make ~deps:[ codec ] table_args
+         (fun ~ctxt (_rec_flag, type_decls) unique name ->
            wrap_expand_structure @@ fun () ->
            let unique =
              Option.map
@@ -599,7 +609,9 @@ let _ =
              List.map type_decls ~f:(fun td ->
                  td, Repr.of_type_declaration td)
            in
-           let str = List.flat_map reprs ~f:(derive_table ~unique) in
+           let str =
+             List.flat_map reprs ~f:(derive_table ~name ~unique)
+           in
            [%stri [@@@ocaml.warning "-39-11"]] :: str))
 
 module Expr_form = struct
@@ -692,6 +704,8 @@ module Query_form = struct
           let names =
             match id.pexp_desc with
             | Pexp_ident { txt = Lident txt; loc } ->
+                ppat_var ~loc { txt; loc }
+            | Pexp_ident { txt = Ldot (_, txt); loc } ->
                 ppat_var ~loc { txt; loc }
             | _ ->
                 raise_errorf ~loc:id.pexp_loc

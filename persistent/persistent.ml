@@ -330,7 +330,6 @@ let create t =
       ~name:t.table ~columns:t.columns
   in
   let sql = Containers_pp.Pretty.to_string ~width:79 sql in
-  print_endline sql;
   fun db -> Sqlite3.Rc.check (Sqlite3.exec db sql)
 
 let rec step_stmt stmt =
@@ -341,7 +340,6 @@ let rec step_stmt stmt =
 
 let make_query_with ~sql f =
   let sql = Containers_pp.Pretty.to_string ~width:79 sql in
-  print_endline sql;
   fun db ->
     let stmt = Sqlite3.prepare db sql in
     let ctx = { Codec.idx = 1 } in
@@ -626,7 +624,6 @@ module Q = struct
   let fold db q ~init ~f =
     let decode, _scope, sql = to_sql q in
     let sql = Containers_pp.Pretty.to_string ~width:79 sql in
-    print_endline sql;
     fold_raw sql decode db ~init ~f
 
   let iter db q ~f = fold db q ~init:() ~f:(fun () row -> f row)
@@ -694,7 +691,6 @@ module P = struct
     let q = select q p in
     let decode, _scope, sql = Q.to_sql q in
     let sql = Containers_pp.Pretty.to_string ~width:79 sql in
-    print_endline sql;
     fold_raw sql decode db ~init ~f
 
   let iter q p db ~f = fold q p db ~init:() ~f:(fun () row -> f row)

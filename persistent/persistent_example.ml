@@ -2,40 +2,40 @@ open Persistent.Primitives
 
 type profile = { name : string; age : int } [@@deriving codec]
 
-type user = {
-  id : int; [@primary_key]
-  created_at : float;
-  profile : profile;
-  pair : int * int;
-}
-[@@deriving codec, table]
+module User = struct
+  type t = {
+    id : int; [@primary_key]
+    created_at : float;
+    profile : profile;
+    pair : int * int;
+  }
+  [@@deriving codec, table ~name:"user"]
+end
 
 type subscription_id = { user_id : int; id : int } [@@deriving codec]
 
-type subscription = {
-  id : int; [@primary_key]
-  user_id : int;
-  name : string;
-}
-[@@deriving codec, table ~unique:user_id]
+module Subscription = struct
+  type t = { id : int; [@primary_key] user_id : int; name : string }
+  [@@deriving codec, table ~name:"subscription" ~unique:user_id]
+end
 
 let () =
   let db =
     let db = Persistent.init "./persistent.db" in
-    Persistent.create user db;
-    Persistent.create subscription db;
+    Persistent.create User.t db;
+    Persistent.create Subscription.t db;
     db
   in
-  subscription_delete db 2;
-  user_upsert db ~created_at:5.0
+  Subscription.delete db 2;
+  User.upsert db ~created_at:5.0
     ~profile:{ name = "aaaaaa"; age = 34 }
     ~pair:(1, 2) ();
   let%query sub =
-    from subscription;
+    subscription = from Subscription.t;
     where (subscription.user_id = 3)
   in
   let%query q =
-    u = from user;
+    u = from User.t;
     where (u.id = 3);
     order_by (desc u.created_at);
     left_join sub (u.id = sub.user_id);
