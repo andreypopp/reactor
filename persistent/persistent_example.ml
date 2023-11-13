@@ -20,8 +20,8 @@ end
 module Submodule = struct
   let sub =
     let%query sub =
-      subscription = from Subscription.t;
-      where (subscription.user_id = 3)
+      from Subscription.t;
+      where (t.user_id = 3)
     in
     sub
 end

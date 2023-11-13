@@ -705,11 +705,8 @@ module Query_form = struct
     match id.pexp_desc with
     | Pexp_ident { txt = Lident txt; loc } ->
         ppat_var ~loc { txt; loc }, estring ~loc txt
-    | Pexp_ident { txt = Ldot (lid, txt); loc } -> (
-        ( ppat_var ~loc { txt; loc },
-          match txt with
-          | "t" -> estring ~loc (Longident.last_exn lid)
-          | _ -> estring ~loc txt ))
+    | Pexp_ident { txt = Ldot (_, txt); loc } ->
+        ppat_var ~loc { txt; loc }, estring ~loc txt
     | _ -> raise_errorf ~loc:id.pexp_loc "only identifiers are allowed"
 
   let rec expand' ~ctxt e =
@@ -875,11 +872,9 @@ module Query_form = struct
           let name, alias' = name_of q in
           name, Some (Option.value alias ~default:alias'), q
       | [%expr [%e? name] = [%e? rhs]] ->
+          let _name, _alias, rhs = rewrite ~alias names prev rhs in
           let name, alias = name_of name in
-          let _name, alias, rhs =
-            rewrite ~alias:(Some alias) names prev rhs
-          in
-          name, alias, rhs
+          name, Some alias, rhs
       | _ -> raise_errorf ~loc "unknown query form"
     in
     match List.rev (unroll [] e) with
