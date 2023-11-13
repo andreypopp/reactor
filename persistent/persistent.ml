@@ -221,6 +221,20 @@ module E = struct
       cols = ov.cols @ v.cols;
     }
 
+  let iif' c t =
+    {
+      sql = sprintf "iif(%s, %s, NULL)" c.sql t.sql;
+      decode = t.decode;
+      cols = t.cols;
+    }
+
+  let iif c t e =
+    {
+      sql = sprintf "iif(%s, %s, %s)" c.sql t.sql e.sql;
+      decode = t.decode;
+      cols = t.cols @ e.cols;
+    }
+
   let col_sql t n =
     let b = Buffer.create (String.length t + String.length n + 5) in
     Buffer.add_char b '"';

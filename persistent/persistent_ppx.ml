@@ -28,6 +28,29 @@ let wrap_expand_structure f =
       [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
   | Error (loc, msg) -> [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
 
+let ext_structure_item ~name expand =
+  let pattern =
+    let open Ast_pattern in
+    let extractor_in_let =
+      pstr_value drop (value_binding ~pat:__ ~expr:__ ^:: nil)
+    in
+    pstr @@ extractor_in_let ^:: nil
+  in
+  let expand ~ctxt pat expr =
+    let loc = Expansion_context.Extension.extension_point_loc ctxt in
+    let rec rewrite e =
+      match e.pexp_desc with
+      | Pexp_fun (lab, default, pat, e) ->
+          pexp_fun ~loc:e.pexp_loc lab default pat (rewrite e)
+      | _ -> expand ~ctxt e
+    in
+    let expr = rewrite expr in
+    [%stri let [%p pat] = [%e expr]]
+  in
+  Context_free.Rule.extension
+    (Extension.V3.declare name Extension.Context.structure_item pattern
+       expand)
+
 class virtual deriving_type =
   object (self)
     method virtual name : string
@@ -644,19 +667,26 @@ module Expr_form = struct
           [%expr Persistent.E.string [%e e]]
       | Pexp_constant (Pconst_float (_, _)) ->
           [%expr Persistent.E.float [%e e]]
+      | Pexp_construct ({ txt = Lident "true"; loc }, None) ->
+          [%expr Persistent.E.bool true]
+      | Pexp_construct ({ txt = Lident "false"; loc }, None) ->
+          [%expr Persistent.E.bool false]
+      | Pexp_ifthenelse (c, t, None) ->
+          [%expr Persistent.E.iif' [%e rewrite c] [%e rewrite t]]
+      | Pexp_ifthenelse (c, t, Some e) ->
+          [%expr
+            Persistent.E.iif [%e rewrite c] [%e rewrite t] [%e rewrite e]]
       | Pexp_field _
       | Pexp_let (_, _, _)
       | Pexp_function _
       | Pexp_fun (_, _, _, _)
       | Pexp_match (_, _)
       | Pexp_try (_, _)
-      | Pexp_tuple _
-      | Pexp_construct (_, _)
+      | Pexp_tuple _ | Pexp_construct _
       | Pexp_variant (_, _)
       | Pexp_record (_, _)
       | Pexp_setfield (_, _, _)
       | Pexp_array _
-      | Pexp_ifthenelse (_, _, _)
       | Pexp_sequence (_, _)
       | Pexp_while (_, _)
       | Pexp_for (_, _, _, _, _)
@@ -687,6 +717,8 @@ module Expr_form = struct
     Context_free.Rule.extension
       (Extension.V3.declare "expr" Extension.Context.expression pattern
          expand)
+
+  let ext' = ext_structure_item ~name:"expr" expand
 end
 
 module Query_form = struct
@@ -875,6 +907,15 @@ module Query_form = struct
           let _name, _alias, rhs = rewrite ~alias names prev rhs in
           let name, alias = name_of name in
           name, Some alias, rhs
+      | [%expr
+          let [%p? pat] = [%e? ocamlish] in
+          [%e? next]] ->
+          let name, alias, next = rewrite ~alias names prev next in
+          ( name,
+            alias,
+            [%expr
+              let [%p pat] = [%e ocamlish] in
+              [%e next]] )
       | _ -> raise_errorf ~loc "unknown query form"
     in
     match List.rev (unroll [] e) with
@@ -913,9 +954,12 @@ module Query_form = struct
     Context_free.Rule.extension
       (Extension.V3.declare "query" Extension.Context.expression pattern
          expand)
+
+  let ext' = ext_structure_item ~name:"query" expand
 end
 
 let () =
   Driver.register_transformation
-    ~rules:[ Expr_form.ext; Query_form.ext ]
+    ~rules:
+      [ Expr_form.ext; Expr_form.ext'; Query_form.ext; Query_form.ext' ]
     "persistent_ppx"
