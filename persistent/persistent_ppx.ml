@@ -682,40 +682,44 @@ module Expr_form = struct
 end
 
 module Query_form = struct
+  let rec unroll acc e =
+    match e.pexp_desc with
+    | Pexp_sequence (a, b) -> unroll (a :: acc) b
+    | _ -> e :: acc
+
+  let pexp_slot' ~loc names e =
+    [%expr fun [@ocaml.warning "-27"] [%p names] -> [%e e]]
+
+  let pexp_opt ~loc e =
+    match e with None -> [%expr None] | Some e -> [%expr Some [%e e]]
+
+  let name_of id =
+    match id.pexp_desc with
+    | Pexp_ident { txt = Lident txt; loc } ->
+        ppat_var ~loc { txt; loc }, estring ~loc txt
+    | Pexp_ident { txt = Ldot (lid, txt); loc } -> (
+        ( ppat_var ~loc { txt; loc },
+          match txt with
+          | "t" -> estring ~loc (Longident.last_exn lid)
+          | _ -> estring ~loc txt ))
+    | _ -> raise_errorf ~loc:id.pexp_loc "only identifiers are allowed"
+
   let rec expand' ~ctxt e =
-    let loc = Expansion_context.Extension.extension_point_loc ctxt in
-    let rec unroll acc e =
-      match e.pexp_desc with
-      | Pexp_sequence (a, b) -> unroll (a :: acc) b
-      | _ -> e :: acc
-    in
-    let pexp_slot' ~loc names e =
-      [%expr fun [@ocaml.warning "-27"] [%p names] -> [%e e]]
-    in
-    let pexp_slot ~loc names e =
-      [%expr
-        fun [@ocaml.warning "-27"] [%p names] ->
-          [%e Expr_form.expand ~ctxt e]]
-    in
-    let rec rewrite names prev q =
+    let rec rewrite ~alias names prev q =
       let loc = q.pexp_loc in
       match q with
       | [%expr from [%e? id]] ->
-          let names =
-            match id.pexp_desc with
-            | Pexp_ident { txt = Lident txt; loc } ->
-                ppat_var ~loc { txt; loc }
-            | Pexp_ident { txt = Ldot (_, txt); loc } ->
-                ppat_var ~loc { txt; loc }
-            | _ ->
-                raise_errorf ~loc:id.pexp_loc
-                  "only identifiers are allowed"
-          in
-          names, [%expr Persistent.Q.from [%e id]]
+          let names, alias' = name_of id in
+          let alias = Option.value alias ~default:alias' in
+          ( names,
+            Some alias,
+            [%expr Persistent.Q.from ~n:[%e alias] [%e id]] )
       | [%expr where [%e? e]] ->
           ( names,
+            alias,
             [%expr
-              Persistent.Q.where [%e prev] [%e pexp_slot ~loc names e]] )
+              Persistent.Q.where ?n:[%e pexp_opt ~loc alias] [%e prev]
+                [%e pexp_slot' ~loc names (Expr_form.expand ~ctxt e)]] )
       | [%expr order_by [%e? fs]] ->
           let fs =
             let fs =
@@ -732,16 +736,21 @@ module Query_form = struct
           in
           let e = pexp_list ~loc fs in
           ( names,
+            alias,
             [%expr
-              Persistent.Q.order_by [%e prev] [%e pexp_slot' ~loc names e]]
-          )
+              Persistent.Q.order_by ?n:[%e pexp_opt ~loc alias] [%e prev]
+                [%e pexp_slot' ~loc names e]] )
       | [%expr left_join [%e? q] [%e? e]] ->
-          let qnames, q = expand' ~ctxt q in
+          let aalias = alias in
+          let qnames, balias, q = expand' ~ctxt q in
           let names = [%pat? [%p names], [%p qnames]] in
+          let alias = Some [%expr "q"] in
           ( names,
+            alias,
             [%expr
-              Persistent.Q.left_join [%e prev] [%e q]
-                [%e pexp_slot ~loc names e]] )
+              Persistent.Q.left_join ?na:[%e pexp_opt ~loc aalias]
+                ?nb:[%e pexp_opt ~loc balias] [%e prev] [%e q]
+                [%e pexp_slot' ~loc names (Expr_form.expand ~ctxt e)]] )
       | { pexp_desc = Pexp_tuple xs; _ } ->
           let xs =
             List.map xs ~f:(function
@@ -784,10 +793,10 @@ module Query_form = struct
           in
           let e =
             [%expr
-              Persistent.P.select' [%e prev] [%e make_scope]
-                [%e pexp_slot' ~loc names e]]
+              Persistent.P.select' ?n:[%e pexp_opt ~loc alias] [%e prev]
+                [%e make_scope] [%e pexp_slot' ~loc names e]]
           in
-          [%pat? here], e
+          [%pat? here], alias, e
       | { pexp_desc = Pexp_record (fs, None); _ } ->
           let fs =
             List.map fs ~f:(fun (n, x) ->
@@ -850,27 +859,19 @@ module Query_form = struct
           in
           let e =
             [%expr
-              Persistent.P.select' [%e prev] [%e make_scope]
-                [%e pexp_slot' ~loc names e]]
+              Persistent.P.select' ?n:[%e pexp_opt ~loc alias] [%e prev]
+                [%e make_scope] [%e pexp_slot' ~loc names e]]
           in
-          [%pat? here], e
-      | { pexp_desc = Pexp_ident id; _ } as q ->
-          let name =
-            match id.txt with
-            | Lident txt | Ldot (_, txt) ->
-                ppat_var ~loc { txt; loc = id.loc }
-            | Lapply _ -> raise_errorf ~loc "cannot query this"
-          in
-          name, q
+          [%pat? here], alias, e
+      | { pexp_desc = Pexp_ident _; _ } as q ->
+          let name, alias' = name_of q in
+          name, Some (Option.value alias ~default:alias'), q
       | [%expr [%e? name] = [%e? rhs]] ->
-          let name =
-            match name.pexp_desc with
-            | Pexp_ident { txt = Lident txt; loc } ->
-                ppat_var ~loc { txt; loc }
-            | _ -> raise_errorf ~loc "simple identifier expected"
+          let name, alias = name_of name in
+          let _name, alias, rhs =
+            rewrite ~alias:(Some alias) names prev rhs
           in
-          let _names, rhs = rewrite names prev rhs in
-          name, rhs
+          name, alias, rhs
       | _ -> raise_errorf ~loc "unknown query form"
     in
     match List.rev (unroll [] e) with
@@ -879,11 +880,12 @@ module Query_form = struct
           ~loc:(Expansion_context.Extension.extension_point_loc ctxt)
           "empty query"
     | q :: qs ->
+        let loc = Expansion_context.Extension.extension_point_loc ctxt in
         List.fold_left qs
-          ~init:(rewrite [%pat? ()] [%expr ()] q)
-          ~f:(fun (names, prev) e ->
-            let names, e = rewrite names prev e in
-            names, e)
+          ~init:(rewrite ~alias:None [%pat? ()] [%expr ()] q)
+          ~f:(fun (names, alias, prev) e ->
+            let names, alias, e = rewrite ~alias names prev e in
+            names, alias, e)
 
   let expand ~ctxt e =
     wrap_expand_expression @@ fun () ->
@@ -892,11 +894,13 @@ module Query_form = struct
     | [%expr
         let [%p? p] = [%e? e] in
         [%e? body]] ->
-        let e = snd (expand' ~ctxt e) in
+        let _, _, e = expand' ~ctxt e in
         [%expr
           let [%p p] = [%e e] in
           [%e body]]
-    | e -> snd (expand' ~ctxt e)
+    | e ->
+        let _, _, e = expand' ~ctxt e in
+        e
 
   let ext =
     let pattern =

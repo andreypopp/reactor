@@ -17,6 +17,15 @@ module Subscription = struct
   [@@deriving codec, table ~name:"subscription" ~unique:user_id]
 end
 
+module Submodule = struct
+  let sub =
+    let%query sub =
+      subscription = from Subscription.t;
+      where (subscription.user_id = 3)
+    in
+    sub
+end
+
 let () =
   let db =
     let db = Persistent.init "./persistent.db" in
@@ -28,18 +37,14 @@ let () =
   User.upsert db ~created_at:5.0
     ~profile:{ name = "aaaaaa"; age = 34 }
     ~pair:(1, 2) ();
-  let%query sub =
-    subscription = from Subscription.t;
-    where (subscription.user_id = 3)
-  in
   let%query q =
     u = from User.t;
     where (u.id = 3);
     order_by (desc u.created_at);
-    left_join sub (u.id = sub.user_id);
+    left_join Submodule.sub (u.id = sub.user_id);
     where (u.id = 2);
     left_join
-      (sub;
+      (Submodule.sub;
        q = { id = sub.user_id })
       (u.id = q.id);
     where (u.id = 2);
