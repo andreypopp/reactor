@@ -43,7 +43,7 @@ let () =
        q = { id = sub.user_id })
       (u.id = q.id);
     where (u.id = 2);
-    q = { name = u.profile.name; is_john = u.profile.name = "John" };
+    q = { name = u.profile.name; is_john = u.profile.name = "Jo.'hn" };
     where (q.is_john && q.is_john)
   in
   Persistent.iter_query db q ~f:(fun (name, is_john) ->

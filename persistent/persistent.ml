@@ -127,6 +127,46 @@ module Codec = struct
   end
 end
 
+module Esc = struct
+  let add ~escape_singleq ~escape_doubleq b s =
+    let len = String.length s in
+    let max_idx = len - 1 in
+    let flush b start i =
+      if start < len then Buffer.add_substring b s start (i - start)
+    in
+    let rec loop start i =
+      if i > max_idx then flush b start i
+      else
+        let next = i + 1 in
+        match String.get s i with
+        | '\'' ->
+            if escape_singleq then (
+              flush b start i;
+              Buffer.add_string b "''";
+              loop next next)
+            else loop start next
+        | '"' ->
+            if escape_doubleq then (
+              flush b start i;
+              Buffer.add_string b "\"\"";
+              loop next next)
+            else loop start next
+        | _ -> loop start next
+    in
+    loop 0 0
+
+  let make escape s =
+    let b = Buffer.create (String.length s) in
+    escape b s;
+    Buffer.contents b
+
+  let id = make (add ~escape_singleq:false ~escape_doubleq:true)
+  let render_id v = sprintf {|"%s"|} (id v)
+  let print_id v = Containers_pp.text (render_id v)
+  let render_col col = render_id col.Codec.column
+  let print_col col = print_id col.Codec.column
+end
+
 type 's opt = Opt of 's
 
 module E = struct
@@ -153,11 +193,12 @@ module E = struct
     { sql = string_of_bool v; decode = bool_codec.decode; cols = [] }
 
   let string v =
-    {
-      sql = Printf.sprintf "'%s'" v;
-      decode = string_codec.decode;
-      cols = [];
-    }
+    let b = Buffer.create (String.length v + 2) in
+    Buffer.add_char b '\'';
+    Esc.add ~escape_singleq:true ~escape_doubleq:false b v;
+    Buffer.add_char b '\'';
+    let sql = Buffer.contents b in
+    { sql; decode = string_codec.decode; cols = [] }
 
   let make_binop decode op a b =
     {
@@ -180,15 +221,24 @@ module E = struct
       cols = ov.cols @ v.cols;
     }
 
+  let col_sql t n =
+    let b = Buffer.create (String.length t + String.length n + 5) in
+    Buffer.add_char b '"';
+    Esc.add ~escape_singleq:false ~escape_doubleq:true b t;
+    Buffer.add_char b '"';
+    Buffer.add_char b '.';
+    Buffer.add_char b '"';
+    Esc.add ~escape_singleq:false ~escape_doubleq:true b n;
+    Buffer.add_char b '"';
+    Buffer.contents b
+
   let col t col decode =
-    { sql = sprintf "%s.%s" t col; decode; cols = [ t, col ] }
+    { sql = col_sql t col; decode; cols = [ t, col ] }
 
   let col_opt t col decode =
-    { sql = sprintf "%s.%s" t col; decode; cols = [ t, col ] }
+    { sql = col_sql t col; decode; cols = [ t, col ] }
 
-  let as_col t col e =
-    { e with sql = sprintf "%s.%s" t col; cols = [ t, col ] }
-
+  let as_col t col e = { e with sql = col_sql t col; cols = [ t, col ] }
   let to_sql e = e.sql
   let decode e = e.decode
   let decode_opt e = option_decode e.decode
@@ -231,7 +281,7 @@ module Sql = struct
     let open Containers_pp in
     let columns =
       List.map columns ~f:(fun col ->
-          textf "%s %s" col.Codec.column col.type_)
+          textf {|%s %s|} (Esc.render_col col) col.type_)
     in
     let primary_key =
       match primary_key with
@@ -239,11 +289,7 @@ module Sql = struct
       | pk ->
           [
             text "PRIMARY KEY"
-            ^+ bracket2 "("
-                 (of_list ~sep:comma
-                    (fun col -> text col.Codec.column)
-                    pk)
-                 ")";
+            ^+ bracket2 "(" (of_list ~sep:comma Esc.print_col pk) ")";
           ]
     in
     let unique =
@@ -251,18 +297,14 @@ module Sql = struct
       | Some unique ->
           (List.map ~f:(fun cols ->
                text "UNIQUE"
-               ^+ bracket2 "("
-                    (of_list ~sep:comma
-                       (fun col -> text col.Codec.column)
-                       cols)
-                    ")"))
+               ^+ bracket2 "(" (of_list ~sep:comma Esc.print_col cols) ")"))
             unique
       | None -> []
     in
     group
       (text "CREATE TABLE"
       ^ (if if_not_exists then text " IF NOT EXISTS" else nil)
-      ^+ text name
+      ^+ Esc.print_id name
       ^+ bracket2 "("
            (of_list ~sep:comma Fun.id (columns @ primary_key @ unique))
            ")"
@@ -273,17 +315,15 @@ module Sql = struct
     let open Containers_pp in
     of_list
       ~sep:(newline ^ text "AND" ^ sp)
-      (fun col -> textf "%s = ?" col.Codec.column)
+      (fun col -> textf "%s = ?" (Esc.render_col col))
       columns
 
   let insert_values_sql ~or_replace ~name ~columns =
     let open Containers_pp in
     group
       (text (if or_replace then "INSERT OR REPLACE" else "INSERT")
-      ^+ textf "INTO %s" name
-      ^+ bracket2 "("
-           (of_list ~sep:comma (fun col -> text col.Codec.column) columns)
-           ")"
+      ^+ textf "INTO %s" (Esc.render_id name)
+      ^+ bracket2 "(" (of_list ~sep:comma Esc.print_col columns) ")"
       ^ group
           (newline
           ^ text "VALUES"
@@ -297,13 +337,13 @@ module Sql = struct
     ^ nest 2
         (newline
         ^ of_list ~sep:comma
-            (fun col -> textf "%s = ?" col.Codec.column)
+            (fun col -> textf "%s = ?" (Esc.render_id col.Codec.column))
             t.columns)
 
   let update_sql t =
     let open Containers_pp in
     group
-      (textf "UPDATE %s" t.table
+      (textf "UPDATE %s" (Esc.render_id t.table)
       ^+ update_set_sql t
       ^/ group
            (text "WHERE" ^+ where_primary_key_sql t.primary_key_columns))
@@ -317,7 +357,7 @@ module Sql = struct
   let delete_sql' ?where t =
     let open Containers_pp in
     group
-      (textf "DELETE FROM %s" t.table
+      (textf "DELETE FROM %s" (Esc.render_id t.table)
       ^
       match where with
       | None -> nil
@@ -345,6 +385,7 @@ let rec step_stmt stmt =
 
 let make_query_with ~sql f =
   let sql = Containers_pp.Pretty.to_string ~width:79 sql in
+  print_endline sql;
   fun db ->
     let stmt = Sqlite3.prepare db sql in
     let ctx = { Codec.idx = 1 } in
@@ -376,6 +417,7 @@ let update t =
   make_query ~sql:(Sql.update_sql t) ~bind
 
 let fold_raw sql decode db ~init ~f =
+  print_endline sql;
   let stmt = Sqlite3.prepare db sql in
   let rc, acc =
     Sqlite3.fold stmt ~init ~f:(fun acc row ->
@@ -441,7 +483,8 @@ module Q = struct
         match rel.select with [] -> rel.fields | select -> select
       in
       of_list ~sep:comma
-        (fun (Any_expr e, n) -> textf "%s AS %s" (E.to_sql e) n)
+        (fun (Any_expr e, n) ->
+          textf "%s AS %s" (E.to_sql e) (Esc.render_id n))
         fields
     in
     group (text "SELECT" ^ nest 2 (newline ^ select))
@@ -451,7 +494,7 @@ module Q = struct
     let open Containers_pp in
     function
     | SUBQUERY rel -> print_from rel "t"
-    | FROM t -> print_from' (text t.table) "t"
+    | FROM t -> print_from' (Esc.print_id t.table) "t"
     | JOIN (a, b, e) ->
         print_from a "a"
         ^/ text "LEFT JOIN"
@@ -533,7 +576,7 @@ module Q = struct
         let n' =
           match prefix with
           | None -> n
-          | Some prefix -> sprintf "%s_%s" prefix n
+          | Some prefix -> sprintf "%s.%s" prefix n
         in
         Any_expr (E.as_col t n e), n')
 
@@ -593,7 +636,7 @@ module Q = struct
           | "", "" -> ""
           | "", p -> p
           | p, "" -> p
-          | a, b -> sprintf "%s_%s" a b
+          | a, b -> sprintf "%s.%s" a b
         in
 
         let scope (t, p) =

@@ -102,7 +102,7 @@ let with_genname_field ~loc col body =
     let genname =
       match [%e col] with
       | "" -> fun n -> n
-      | prefix -> fun n -> Printf.sprintf "%s_%s" prefix n
+      | prefix -> fun n -> Printf.sprintf "%s.%s" prefix n
     in
     [%e body [%expr genname]]]
 
@@ -110,8 +110,8 @@ let with_genname_idx ~loc col body =
   [%expr
     let genname =
       match [%e col] with
-      | "" -> fun i -> Printf.sprintf "c%i" i
-      | prefix -> fun i -> Printf.sprintf "%s_c%i" prefix i
+      | "" -> fun i -> Printf.sprintf "_%i" i
+      | prefix -> fun i -> Printf.sprintf "%s._%i" prefix i
     in
     [%e body [%expr genname]]]
 
@@ -752,7 +752,7 @@ module Query_form = struct
           let make_scope =
             let xs =
               List.mapi xs ~f:(fun i (_, e) ->
-                  let n = estring ~loc (Printf.sprintf "c%i" i) in
+                  let n = estring ~loc (Printf.sprintf "_%i" i) in
                   [%expr Persistent.E.as_col t [%e n] [%e e]])
             in
             pexp_slot' ~loc names
