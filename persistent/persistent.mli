@@ -58,7 +58,7 @@ type 's meta = {
 
 type db = Sqlite3.db
 
-type ('row, 'scope, 'pk, 'insert) table = {
+type ('row, 'scope, 'pk) table = {
   table : string;
   codec : 'row Codec.t;
   columns : Codec.column list;
@@ -68,7 +68,6 @@ type ('row, 'scope, 'pk, 'insert) table = {
   primary_key : 'row -> 'pk;
   scope : 'scope make_scope;
   fields : fields;
-  insert : db -> ((Codec.ctx -> Sqlite3.stmt -> unit) -> unit) -> 'insert;
 }
 
 (** query DSL *)
@@ -80,7 +79,7 @@ module Q : sig
 
   type ('a, 's) t
 
-  val from : ('row, 'scope, _, _) table -> ('scope, 'row) t
+  val from : ('row, 'scope, _) table -> ('scope, 'row) t
 
   val where :
     ('scope, 'row) t -> ('scope -> bool expr) -> ('scope, 'row) t
@@ -112,26 +111,26 @@ val init :
   db
 (** initialize database *)
 
-val create : ('row, _, _, _) table -> db -> unit
+val create : ('row, _, _) table -> db -> unit
 (** create table *)
 
-val insert : ('row, _, _, _) table -> db -> 'row -> unit
+val insert : ('row, _, _) table -> db -> 'row -> unit
 (** insert new row into a table *)
 
-val insert' : (_, _, _, 'insert) table -> db -> 'insert
-(** insert new row inton a table, via table specific insert function *)
-
-val upsert : ('row, _, _, _) table -> db -> 'row -> unit
+val upsert : ('row, _, _) table -> db -> 'row -> unit
 (** upsert (try insert but fallback to update if row already exists) a row into a table *)
 
-val upsert' : (_, _, _, 'upsert) table -> db -> 'upsert
-(** upsert (try insert but fallback to update if row already exists) a row into a table, via table specific insert function *)
-
-val update : ('row, _, _, _) table -> db -> 'row -> unit
+val update : ('row, _, _) table -> db -> 'row -> unit
 (** update a row in a table *)
 
-val delete : (_, _, 'pk, _) table -> db -> 'pk -> unit
+val delete : (_, _, 'pk) table -> db -> 'pk -> unit
 (** delete a row by pk *)
+
+val make_query_with :
+  sql:Containers_pp.t ->
+  (ctx:Codec.ctx -> stmt:Sqlite3.stmt -> (unit -> unit) -> 'a) ->
+  db ->
+  'a
 
 type ('s, 'a) q = ('s, 'a) Q.t
 
@@ -142,11 +141,11 @@ val fold_query :
   db -> (_, 'row) q -> init:'acc -> f:('acc -> 'row -> 'acc) -> 'acc
 (** fold over query results *)
 
-val iter_table : ('row, _, _, _) table -> db -> f:('row -> unit) -> unit
+val iter_table : ('row, _, _) table -> db -> f:('row -> unit) -> unit
 (** iterate over all values of a table *)
 
 val fold_table :
-  ('row, _, _, _) table ->
+  ('row, _, _) table ->
   db ->
   init:'acc ->
   f:('acc -> 'row -> 'acc) ->
@@ -203,4 +202,11 @@ module P : sig
     ('scope -> 'next_row t) ->
     ('next_scope, 'next_row) q
   (** FOR INTERNAL USE ONLY *)
+end
+
+module Sql : sig
+  val insert_sql : ('a, 'b, 'c) table -> Containers_pp.t
+  val update_sql : ('a, 'b, 'c) table -> Containers_pp.t
+  val upsert_sql : ('a, 'b, 'c) table -> Containers_pp.t
+  val delete_sql : ('a, 'b, 'c) table -> Containers_pp.t
 end

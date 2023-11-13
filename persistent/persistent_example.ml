@@ -26,9 +26,8 @@ let () =
     Persistent.create subscription db;
     db
   in
-  (* Persistent.delete subscription db 2; *)
-  Persistent.(upsert' user db)
-    ~created_at:5.0
+  subscription_delete db 2;
+  user_upsert db ~created_at:5.0
     ~profile:{ name = "aaaaaa"; age = 34 }
     ~pair:(1, 2) ();
   let%query sub =

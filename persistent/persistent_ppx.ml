@@ -427,10 +427,15 @@ let _ =
       let id = map_loc (derive_of_label what) name in
       pexp_ident ~loc (map_loc lident id)
     in
+    let derive_pat ?(name = name) what =
+      let id = map_loc (derive_of_label what) name in
+      ppat_var ~loc id
+    in
     let derive_type what =
       let id = map_loc (derive_of_label what) name in
       ptyp_constr ~loc (map_loc lident id) []
     in
+    let table = pexp_ident ~loc (map_loc lident name) in
     let ( primary_key_name,
           primary_key_project,
           primary_key_field,
@@ -460,6 +465,7 @@ let _ =
             "multiple [@primary_key] annotations are not allowed"
     in
     let optionals =
+      (* TODO: read optionals from fields as well *)
       match primary_key_type with
       | [%type: int] -> [ primary_key_name ]
       | _ -> []
@@ -486,15 +492,22 @@ let _ =
               [%e bind] ctx stmt;
               [%e next]])
       in
-      List.fold_left rev_fields
-        ~init:[%expr fun () -> bind (fun ctx stmt -> [%e bind])]
-        ~f:(fun body f ->
-          let label =
-            if List.mem f.pld_name.txt optionals then
-              Optional f.pld_name.txt
-            else Labelled f.pld_name.txt
-          in
-          pexp_fun ~loc label None (ppat_var ~loc f.pld_name) body)
+      let body =
+        List.fold_left rev_fields
+          ~init:
+            [%expr
+              fun () ->
+                [%e bind];
+                k ()]
+          ~f:(fun body f ->
+            let label =
+              if List.mem f.pld_name.txt optionals then
+                Optional f.pld_name.txt
+              else Labelled f.pld_name.txt
+            in
+            pexp_fun ~loc label None (ppat_var ~loc f.pld_name) body)
+      in
+      [%expr fun ~ctx ~stmt k -> [%e body]]
     in
     [
       pstr_value ~loc Nonrecursive
@@ -533,9 +546,6 @@ let _ =
                       (Repr.of_core_type primary_key_type)
                       [%expr x]]
                 in
-                let insert =
-                 fun [@ocaml.warning "-27"] db bind -> [%e insert]
-                in
                 ({
                    Persistent.table = [%e estring ~loc name.txt];
                    codec;
@@ -546,14 +556,24 @@ let _ =
                    fields = meta.fields "";
                    scope = meta.scope;
                    columns;
-                   insert;
                  }
                   : ( [%t ptyp_constr ~loc (map_loc lident name) []],
                       [%t derive_type "scope"],
-                      [%t primary_key_type],
-                      _ )
+                      [%t primary_key_type] )
                     Persistent.table)];
         ];
+      [%stri
+        let [%p derive_pat "insert"] =
+          Persistent.make_query_with
+            ~sql:(Persistent.Sql.insert_sql [%e table])
+            [%e insert]];
+      [%stri
+        let [%p derive_pat "upsert"] =
+          Persistent.make_query_with
+            ~sql:(Persistent.Sql.upsert_sql [%e table])
+            [%e insert]];
+      [%stri let [%p derive_pat "delete"] = Persistent.delete [%e table]];
+      [%stri let [%p derive_pat "update"] = Persistent.update [%e table]];
     ]
   in
   let args =

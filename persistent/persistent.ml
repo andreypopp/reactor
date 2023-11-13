@@ -211,7 +211,7 @@ type 's meta = {
 
 type db = Sqlite3.db
 
-type ('row, 'scope, 'pk, 'insert) table = {
+type ('row, 'scope, 'pk) table = {
   table : string;
   codec : 'row Codec.t;
   columns : Codec.column list;
@@ -221,104 +221,110 @@ type ('row, 'scope, 'pk, 'insert) table = {
   primary_key : 'row -> 'pk;
   scope : 'scope make_scope;
   fields : fields;
-  insert : db -> ((Codec.ctx -> Sqlite3.stmt -> unit) -> unit) -> 'insert;
 }
 
 let init = Sqlite3.db_open
 
-let create_table_sql ~if_not_exists ~strict ~primary_key ~unique ~name
-    ~columns =
-  let open Containers_pp in
-  let columns =
-    List.map columns ~f:(fun col ->
-        textf "%s %s" col.Codec.column col.type_)
-  in
-  let primary_key =
-    match primary_key with
-    | [] -> []
-    | pk ->
-        [
-          text "PRIMARY KEY"
+module Sql = struct
+  let create_table_sql ~if_not_exists ~strict ~primary_key ~unique ~name
+      ~columns =
+    let open Containers_pp in
+    let columns =
+      List.map columns ~f:(fun col ->
+          textf "%s %s" col.Codec.column col.type_)
+    in
+    let primary_key =
+      match primary_key with
+      | [] -> []
+      | pk ->
+          [
+            text "PRIMARY KEY"
+            ^+ bracket2 "("
+                 (of_list ~sep:comma
+                    (fun col -> text col.Codec.column)
+                    pk)
+                 ")";
+          ]
+    in
+    let unique =
+      match unique with
+      | Some unique ->
+          (List.map ~f:(fun cols ->
+               text "UNIQUE"
+               ^+ bracket2 "("
+                    (of_list ~sep:comma
+                       (fun col -> text col.Codec.column)
+                       cols)
+                    ")"))
+            unique
+      | None -> []
+    in
+    group
+      (text "CREATE TABLE"
+      ^ (if if_not_exists then text " IF NOT EXISTS" else nil)
+      ^+ text name
+      ^+ bracket2 "("
+           (of_list ~sep:comma Fun.id (columns @ primary_key @ unique))
+           ")"
+      ^ (if strict then text " STRICT" else nil)
+      ^ text ";")
+
+  let where_primary_key_sql columns =
+    let open Containers_pp in
+    of_list
+      ~sep:(newline ^ text "AND" ^ sp)
+      (fun col -> textf "%s = ?" col.Codec.column)
+      columns
+
+  let insert_values_sql ~or_replace ~name ~columns =
+    let open Containers_pp in
+    group
+      (text (if or_replace then "INSERT OR REPLACE" else "INSERT")
+      ^+ textf "INTO %s" name
+      ^+ bracket2 "("
+           (of_list ~sep:comma (fun col -> text col.Codec.column) columns)
+           ")"
+      ^ group
+          (newline
+          ^ text "VALUES"
           ^+ bracket2 "("
-               (of_list ~sep:comma (fun col -> text col.Codec.column) pk)
-               ")";
-        ]
-  in
-  let unique =
-    match unique with
-    | Some unique ->
-        (List.map ~f:(fun cols ->
-             text "UNIQUE"
-             ^+ bracket2 "("
-                  (of_list ~sep:comma
-                     (fun col -> text col.Codec.column)
-                     cols)
-                  ")"))
-          unique
-    | None -> []
-  in
-  group
-    (text "CREATE TABLE"
-    ^ (if if_not_exists then text " IF NOT EXISTS" else nil)
-    ^+ text name
-    ^+ bracket2 "("
-         (of_list ~sep:comma Fun.id (columns @ primary_key @ unique))
-         ")"
-    ^ (if strict then text " STRICT" else nil)
-    ^ text ";")
+               (of_list ~sep:comma (fun _ -> text "?") columns)
+               ")"))
 
-let where_primary_key_sql columns =
-  let open Containers_pp in
-  of_list
-    ~sep:(newline ^ text "AND" ^ sp)
-    (fun col -> textf "%s = ?" col.Codec.column)
-    columns
-
-let insert_values_sql ~or_replace ~name ~columns =
-  let open Containers_pp in
-  group
-    (text (if or_replace then "INSERT OR REPLACE" else "INSERT")
-    ^+ textf "INTO %s" name
-    ^+ bracket2 "("
-         (of_list ~sep:comma (fun col -> text col.Codec.column) columns)
-         ")"
-    ^ group
+  let update_set_sql t =
+    let open Containers_pp in
+    text "SET"
+    ^ nest 2
         (newline
-        ^ text "VALUES"
-        ^+ bracket2 "("
-             (of_list ~sep:comma (fun _ -> text "?") columns)
-             ")"))
+        ^ of_list ~sep:comma
+            (fun col -> textf "%s = ?" col.Codec.column)
+            t.columns)
 
-let update_set_sql t =
-  let open Containers_pp in
-  text "SET"
-  ^ nest 2
-      (newline
-      ^ of_list ~sep:comma
-          (fun col -> textf "%s = ?" col.Codec.column)
-          t.columns)
+  let update_sql t =
+    let open Containers_pp in
+    group
+      (textf "UPDATE %s" t.table
+      ^+ update_set_sql t
+      ^/ group
+           (text "WHERE" ^+ where_primary_key_sql t.primary_key_columns))
 
-let update_sql t =
-  let open Containers_pp in
-  group
-    (textf "UPDATE %s" t.table
-    ^+ update_set_sql t
-    ^/ group (text "WHERE" ^+ where_primary_key_sql t.primary_key_columns)
-    )
+  let insert_sql t =
+    insert_values_sql ~or_replace:false ~name:t.table ~columns:t.columns
 
-let upsert_sql t =
-  insert_values_sql ~or_replace:true ~name:t.table ~columns:t.columns
+  let upsert_sql t =
+    insert_values_sql ~or_replace:true ~name:t.table ~columns:t.columns
 
-let delete_sql t =
-  let open Containers_pp in
-  group
-    (textf "DELETE FROM %s" t.table
-    ^/ group (text "WHERE" ^+ where_primary_key_sql t.primary_key_columns)
-    )
+  let delete_sql t =
+    let open Containers_pp in
+    group
+      (textf "DELETE FROM %s" t.table
+      ^/ group
+           (text "WHERE" ^+ where_primary_key_sql t.primary_key_columns))
+end
 
 let create t =
   let sql =
-    create_table_sql ~if_not_exists:true ~strict:true
+    Sql.create_table_sql ~if_not_exists:true ~strict:true
       ~primary_key:t.primary_key_columns
       ~unique:(Option.map List.return t.unique_columns)
       ~name:t.table ~columns:t.columns
@@ -333,63 +339,32 @@ let rec step_stmt stmt =
   | OK -> step_stmt stmt
   | rc -> Sqlite3.Rc.check rc
 
-let table_query ~sql ~bind =
+let make_query_with ~sql f =
   let sql = Containers_pp.Pretty.to_string ~width:79 sql in
   print_endline sql;
   fun db ->
     let stmt = Sqlite3.prepare db sql in
-    fun v ->
-      let ctx = { Codec.idx = 1 } in
-      Sqlite3.Rc.check (Sqlite3.reset stmt);
-      bind v ctx stmt;
-      step_stmt stmt
-
-let table_query' ~sql t =
-  let sql = Containers_pp.Pretty.to_string ~width:79 sql in
-  print_endline sql;
-  fun db ->
-    let stmt = Sqlite3.prepare db sql in
-    t.insert db @@ fun k ->
     let ctx = { Codec.idx = 1 } in
-    Sqlite3.Rc.check (Sqlite3.reset stmt);
-    k ctx stmt;
-    step_stmt stmt
+    f ~ctx ~stmt (fun () ->
+        Sqlite3.Rc.check (Sqlite3.reset stmt);
+        step_stmt stmt)
 
-let insert t =
-  let sql =
-    insert_values_sql ~or_replace:false ~name:t.table ~columns:t.columns
-  in
-  let bind = t.codec.bind in
-  table_query ~sql ~bind
+let make_query ~sql ~bind =
+  make_query_with ~sql (fun ~ctx ~stmt k v ->
+      bind v ctx stmt;
+      k ())
 
-let insert' t =
-  let sql =
-    insert_values_sql ~or_replace:false ~name:t.table ~columns:t.columns
-  in
-  table_query' ~sql t
-
-let upsert t =
-  let sql = upsert_sql t in
-  let bind = t.codec.bind in
-  table_query ~sql ~bind
-
-let upsert' t =
-  let sql = upsert_sql t in
-  table_query' ~sql t
+let insert t = make_query ~sql:(Sql.insert_sql t) ~bind:t.codec.bind
+let upsert t = make_query ~sql:(Sql.upsert_sql t) ~bind:t.codec.bind
+let delete t = make_query ~sql:(Sql.delete_sql t) ~bind:t.primary_key_bind
 
 let update t =
-  let sql = update_sql t in
   let bind v ctx stmt =
     t.codec.bind v ctx stmt;
     let pk = t.primary_key v in
     t.primary_key_bind pk ctx stmt
   in
-  table_query ~sql ~bind
-
-let delete t =
-  let sql = delete_sql t in
-  let bind = t.primary_key_bind in
-  table_query ~sql ~bind
+  make_query ~sql:(Sql.update_sql t) ~bind
 
 let fold_raw sql decode db ~init ~f =
   let stmt = Sqlite3.prepare db sql in
@@ -421,7 +396,7 @@ module Q = struct
   let desc e = Desc e
 
   type (_, _) t =
-    | From : ('a, 's, _, _) table -> ('s, 'a) t
+    | From : ('a, 's, _) table -> ('s, 'a) t
     | Where : ('s, 'a) t * ('s -> bool expr) -> ('s, 'a) t
     | Order_by : ('s, 'a) t * ('s -> order list) -> ('s, 'a) t
     (* | Join : *)
