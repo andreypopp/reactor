@@ -1,6 +1,6 @@
-(lang dune 3.11)
+(lang dune 3.10)
 
-(using melange 0.1)
+(name react_of_ocaml_example)
 
 (using dune_site 0.1)
 
@@ -14,36 +14,3 @@
 (maintainers "Andrey Popp")
 
 (license LICENSE)
-
-(package
- (name react_example)
- (depends
-  (ocaml
-   (>= 5.1))
-  (melange
-   (>= 2))
-  (dune (= "3.11.0+merlin-reader"))
-  remote
-  realm
-  dream
-  lwt
-  melange-webapi
-  dune-site
-  mlx
-  ocamlmerlin-mlx
-  ocamlformat
-  ocamlformat-mlx
-  ocaml-lsp-server
-  yojson)
- (sites
-  (share static)))
-
-(dialect
- (name mlx)
- (implementation
-  (extension mlx)
-  (merlin_reader mlx)
-  (format
-   (run ocamlformat-mlx %{input-file}))
-  (preprocess
-   (run mlx-pp %{input-file}))))
