@@ -126,6 +126,10 @@ val update : ('row, _, _) table -> db -> 'row -> unit
 val delete : (_, _, 'pk) table -> db -> 'pk -> unit
 (** delete a row by pk *)
 
+val delete_where :
+  (_, 'scope, _) table -> where:('scope -> (bool, _) E.t) -> db -> unit
+(** delete mutiple rows by condition *)
+
 val make_query_with :
   sql:Containers_pp.t ->
   (ctx:Codec.ctx -> stmt:Sqlite3.stmt -> (unit -> unit) -> 'a) ->

@@ -314,12 +314,17 @@ module Sql = struct
   let upsert_sql t =
     insert_values_sql ~or_replace:true ~name:t.table ~columns:t.columns
 
-  let delete_sql t =
+  let delete_sql' ?where t =
     let open Containers_pp in
     group
       (textf "DELETE FROM %s" t.table
-      ^/ group
-           (text "WHERE" ^+ where_primary_key_sql t.primary_key_columns))
+      ^
+      match where with
+      | None -> nil
+      | Some where -> newline ^ group (text "WHERE" ^+ where))
+
+  let delete_sql t =
+    delete_sql' t ~where:(where_primary_key_sql t.primary_key_columns)
 end
 
 let create t =
@@ -355,6 +360,12 @@ let make_query ~sql ~bind =
 let insert t = make_query ~sql:(Sql.insert_sql t) ~bind:t.codec.bind
 let upsert t = make_query ~sql:(Sql.upsert_sql t) ~bind:t.codec.bind
 let delete t = make_query ~sql:(Sql.delete_sql t) ~bind:t.primary_key_bind
+
+let delete_where t ~where =
+  let where : (bool, _) E.t = where (t.scope ("", "")) in
+  let where = Containers_pp.text (E.to_sql where) in
+  make_query_with ~sql:(Sql.delete_sql' ~where t) (fun ~ctx:_ ~stmt:_ k ->
+      k ())
 
 let update t =
   let bind v ctx stmt =
