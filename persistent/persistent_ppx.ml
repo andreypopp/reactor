@@ -682,9 +682,8 @@ module Expr_form = struct
 end
 
 module Query_form = struct
-  let rec expand' ?prev ?names ~ctxt e =
+  let rec expand' ~ctxt e =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
-    let prev = Option.value prev ~default:[%expr ()] in
     let rec unroll acc e =
       match e.pexp_desc with
       | Pexp_sequence (a, b) -> unroll (a :: acc) b
@@ -698,7 +697,7 @@ module Query_form = struct
         fun [@ocaml.warning "-27"] [%p names] ->
           [%e Expr_form.expand ~ctxt e]]
     in
-    let rewrite names prev q =
+    let rec rewrite names prev q =
       let loc = q.pexp_loc in
       match q with
       | [%expr from [%e? id]] ->
@@ -870,7 +869,7 @@ module Query_form = struct
                 ppat_var ~loc { txt; loc }
             | _ -> raise_errorf ~loc "simple identifier expected"
           in
-          let _names, rhs = expand' ~ctxt ~prev ~names rhs in
+          let _names, rhs = rewrite names prev rhs in
           name, rhs
       | _ -> raise_errorf ~loc "unknown query form"
     in
@@ -880,10 +879,8 @@ module Query_form = struct
           ~loc:(Expansion_context.Extension.extension_point_loc ctxt)
           "empty query"
     | q :: qs ->
-        let names =
-          match names with Some names -> names | None -> [%pat? ()]
-        in
-        List.fold_left qs ~init:(rewrite names prev q)
+        List.fold_left qs
+          ~init:(rewrite [%pat? ()] [%expr ()] q)
           ~f:(fun (names, prev) e ->
             let names, e = rewrite names prev e in
             names, e)
