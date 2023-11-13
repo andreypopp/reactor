@@ -1,8 +1,8 @@
 open Persistent.Primitives
 
-type profile = { name : string; age : int } [@@deriving codec]
-
 module User = struct
+  type profile = { name : string; age : int } [@@deriving codec]
+
   type t = {
     id : int; [@primary_key]
     created_at : float;
@@ -11,8 +11,6 @@ module User = struct
   }
   [@@deriving codec, table ~name:"user"]
 end
-
-type subscription_id = { user_id : int; id : int } [@@deriving codec]
 
 module Subscription = struct
   type t = { id : int; [@primary_key] user_id : int; name : string }
