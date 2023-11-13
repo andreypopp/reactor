@@ -623,6 +623,14 @@ module Expr_form = struct
       | Pexp_ident { txt = Lident "="; _ } -> [%expr Persistent.E.( = )]
       | Pexp_ident { txt = Lident "&&"; _ } -> [%expr Persistent.E.( && )]
       | Pexp_ident { txt = Lident "||"; _ } -> [%expr Persistent.E.( || )]
+      | Pexp_ident { txt = Lident ">"; _ } -> [%expr Persistent.E.( > )]
+      | Pexp_ident { txt = Lident "<"; _ } -> [%expr Persistent.E.( < )]
+      | Pexp_ident { txt = Lident "<="; _ } -> [%expr Persistent.E.( <= )]
+      | Pexp_ident { txt = Lident ">="; _ } -> [%expr Persistent.E.( >= )]
+      | Pexp_ident { txt = Lident "+"; _ } -> [%expr Persistent.E.( + )]
+      | Pexp_ident { txt = Lident "-"; _ } -> [%expr Persistent.E.( - )]
+      | Pexp_ident { txt = Lident "*"; _ } -> [%expr Persistent.E.( * )]
+      | Pexp_ident { txt = Lident "/"; _ } -> [%expr Persistent.E.( / )]
       | Pexp_ident _ -> e
       | Pexp_field (e, { txt = Lident n; loc = nloc }) ->
           pexp_send ~loc:nloc (rewrite e) { txt = n; loc = nloc }
