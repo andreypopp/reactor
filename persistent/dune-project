@@ -12,10 +12,12 @@
 (license LICENSE)
 
 (package
- (name ppx_deriving_schema)
+ (name persistent)
  (depends
   (ocaml
    (>= 5.1))
   dune
   ppxlib
+  sqlite3
+  ppx_deriving_schema
   containers))

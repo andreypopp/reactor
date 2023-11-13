@@ -9,6 +9,8 @@ depends: [
   "ocaml" {>= "5.1"}
   "dune" {>= "3.10"}
   "ppxlib"
+  "sqlite3"
+  "ppx_deriving_schema"
   "containers"
   "odoc" {with-doc}
 ]
