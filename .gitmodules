@@ -1,0 +1,3 @@
+[submodule "ppx_deriving_tools"]
+	path = ppx_deriving_tools
+	url = git@github.com:andreypopp/ppx_deriving_tools.git
