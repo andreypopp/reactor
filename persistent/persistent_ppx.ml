@@ -4,30 +4,6 @@ open ContainersLabels
 open Ppx_deriving_schema
 open Deriving_helper
 
-let pexp_errorf ~loc fmt =
-  let open Ast_builder.Default in
-  Printf.ksprintf
-    (fun msg ->
-      pexp_extension ~loc (Location.error_extensionf ~loc "%s" msg))
-    fmt
-
-exception Error of location * string
-
-let raise_errorf ~loc fmt =
-  Printf.ksprintf (fun msg -> raise (Error (loc, msg))) fmt
-
-let wrap_expand_expression f =
-  try f () with
-  | Not_supported (loc, msg) -> pexp_errorf ~loc "%s" msg
-  | Error (loc, msg) ->
-      pexp_extension ~loc (Location.error_extensionf ~loc "%s" msg)
-
-let wrap_expand_structure f =
-  try f () with
-  | Not_supported (loc, msg) ->
-      [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
-  | Error (loc, msg) -> [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
-
 let ext_structure_item ~name expand =
   let pattern =
     let open Ast_pattern in
@@ -382,15 +358,14 @@ let _ =
     let table_name =
       match table_name, name.txt with
       | None, "t" ->
-          raise_errorf ~loc
-            "missing table name, specify with ~name argument"
+          error ~loc "missing table name, specify with ~name argument"
       | None, txt -> { loc = name.loc; txt }
       | Some txt, _ -> { loc = name.loc; txt }
     in
     let fields =
       match td.ptype_kind with
       | Ptype_record fs -> fs
-      | _ -> raise_errorf ~loc "not a record"
+      | _ -> error ~loc "not a record"
     in
     if not (List.is_empty params) then
       not_supported ~loc "type parameters";
@@ -423,7 +398,7 @@ let _ =
                     f.pld_type ))
       in
       match pk with
-      | [] -> raise_errorf ~loc "missing [@primary_key] annotation"
+      | [] -> error ~loc "missing [@primary_key] annotation"
       | [ (loc, label, pk, pk_type) ] ->
           ( label.txt,
             [%expr
@@ -432,8 +407,7 @@ let _ =
             [%expr Some [%e pk]],
             pk_type )
       | _first :: (loc, _, _, _) :: _ ->
-          raise_errorf ~loc
-            "multiple [@primary_key] annotations are not allowed"
+          error ~loc "multiple [@primary_key] annotations are not allowed"
     in
     let optionals =
       (* TODO: read optionals from fields as well *)
@@ -553,23 +527,24 @@ let _ =
     ~str_type_decl:
       (Deriving.Generator.V2.make ~deps:[ codec; meta ] table_args
          (fun ~ctxt (_rec_flag, type_decls) unique name ->
-           wrap_expand_structure @@ fun () ->
-           let unique =
-             Option.map
-               (List.map ~f:(function
-                 | { txt = Lident txt; loc } -> estring ~loc txt
-                 | { txt = _; loc } -> raise_errorf ~loc "not a column"))
-               unique
-           in
-           let loc = Expansion_context.Deriver.derived_item_loc ctxt in
-           let reprs =
-             List.map type_decls ~f:(fun td ->
-                 td, Repr.of_type_declaration td)
-           in
-           let str =
-             List.flat_map reprs ~f:(derive_table ~name ~unique)
-           in
-           [%stri [@@@ocaml.warning "-39-11"]] :: str))
+           try
+             let unique =
+               Option.map
+                 (List.map ~f:(function
+                   | { txt = Lident txt; loc } -> estring ~loc txt
+                   | { txt = _; loc } -> error ~loc "not a column"))
+                 unique
+             in
+             let loc = Expansion_context.Deriver.derived_item_loc ctxt in
+             let reprs =
+               List.map type_decls ~f:(fun td ->
+                   td, Repr.of_type_declaration td)
+             in
+             let str =
+               List.flat_map reprs ~f:(derive_table ~name ~unique)
+             in
+             [%stri [@@@ocaml.warning "-39-11"]] :: str
+           with Error (loc, msg) -> [ stri_error ~loc msg ]))
 
 module Expr_form = struct
   let expand ~ctxt:_ (e : expression) =
@@ -638,9 +613,9 @@ module Expr_form = struct
       | Pexp_pack _
       | Pexp_open (_, _)
       | Pexp_letop _ | Pexp_extension _ | Pexp_unreachable ->
-          pexp_errorf ~loc "this expression is not supported"
+          error ~loc "this expression is not supported"
     in
-    wrap_expand_expression @@ fun () -> rewrite e
+    try rewrite e with Error (loc, msg) -> pexp_error ~loc msg
 
   let ext =
     let pattern =
@@ -672,7 +647,7 @@ module Query_form = struct
         ppat_var ~loc { txt; loc }, estring ~loc txt
     | Pexp_ident { txt = Ldot (_, txt); loc } ->
         ppat_var ~loc { txt; loc }, estring ~loc txt
-    | _ -> raise_errorf ~loc:id.pexp_loc "only identifiers are allowed"
+    | _ -> error ~loc:id.pexp_loc "only identifiers are allowed"
 
   let rec expand' ~ctxt e =
     let rec rewrite ~alias names prev q =
@@ -701,7 +676,7 @@ module Query_form = struct
               | [%expr asc [%e? e]] ->
                   [%expr Persistent.Q.asc [%e Expr_form.expand ~ctxt e]]
               | e ->
-                  raise_errorf ~loc:e.pexp_loc
+                  error ~loc:e.pexp_loc
                     "should have form 'desc e' or 'asc e'")
           in
           let e = pexp_list ~loc fs in
@@ -772,7 +747,7 @@ module Query_form = struct
             List.map fs ~f:(fun (n, x) ->
                 match n.txt with
                 | Lident txt -> { txt; loc = n.loc }, x
-                | _ -> raise_errorf ~loc "invalid select")
+                | _ -> error ~loc "invalid select")
           in
           let ps, e = gen_tuple ~loc "c" (List.length fs) in
           let xs =
@@ -849,11 +824,11 @@ module Query_form = struct
             [%expr
               let [%p pat] = [%e ocamlish] in
               [%e next]] )
-      | _ -> raise_errorf ~loc "unknown query form"
+      | _ -> error ~loc "unknown query form"
     in
     match List.rev (unroll [] e) with
     | [] ->
-        raise_errorf
+        error
           ~loc:(Expansion_context.Extension.extension_point_loc ctxt)
           "empty query"
     | q :: qs ->
@@ -865,19 +840,20 @@ module Query_form = struct
             names, alias, e)
 
   let expand ~ctxt e =
-    wrap_expand_expression @@ fun () ->
-    let loc = Expansion_context.Extension.extension_point_loc ctxt in
-    match e with
-    | [%expr
-        let [%p? p] = [%e? e] in
-        [%e? body]] ->
-        let _, _, e = expand' ~ctxt e in
-        [%expr
-          let [%p p] = [%e e] in
-          [%e body]]
-    | e ->
-        let _, _, e = expand' ~ctxt e in
-        e
+    try
+      let loc = Expansion_context.Extension.extension_point_loc ctxt in
+      match e with
+      | [%expr
+          let [%p? p] = [%e? e] in
+          [%e? body]] ->
+          let _, _, e = expand' ~ctxt e in
+          [%expr
+            let [%p p] = [%e e] in
+            [%e body]]
+      | e ->
+          let _, _, e = expand' ~ctxt e in
+          e
+    with Error (loc, msg) -> pexp_error ~loc msg
 
   let ext =
     let pattern =
