@@ -340,28 +340,50 @@ let derive_meta =
 let codec = register' derive_codec
 let meta = register' derive_meta
 
-let primary_key =
-  Attribute.declare_with_attr_loc "persistent.primary_key"
-    Attribute.Context.label_declaration
-    Ast_pattern.(pstr nil)
-    (fun ~attr_loc -> attr_loc)
-
 let table_args =
   let open Deriving.Args in
-  let cols = pexp_tuple (many (pexp_ident __')) in
+  let col_many = pexp_tuple (many (pexp_ident __')) in
   let col = map1 (pexp_ident __') ~f:List.return in
-  empty +> arg "unique" (cols ||| col) +> arg "name" (estring __)
+  let cols = col_many ||| col in
+  let cols =
+    map1 cols
+      ~f:
+        (List.map ~f:(function
+          | { txt = Lident txt; loc } -> { txt; loc }
+          | _ -> failwith "expected a column"))
+  in
+  empty
+  +> arg "unique" cols
+  +> arg "primary_key" cols
+  +> arg "name" (estring __)
 
 let _ =
-  let derive_table ~name:table_name ~unique
+  let resolve_names fields names =
+    List.map names ~f:(fun name ->
+        let f =
+          List.find_opt fields ~f:(fun f ->
+              String.equal f.pld_name.txt name.txt)
+        in
+        match f with
+        | None -> error ~loc:name.loc "no such field"
+        | Some f -> name, f.pld_type)
+  in
+  let extract_columns ~loc fs =
+    [%expr
+      let fs =
+        [%e
+          pexp_list ~loc
+            (List.map ~f:(fun ({ txt; loc }, _) -> estring ~loc txt) fs)]
+      in
+      Stdlib.List.filter
+        (fun col ->
+          match col.Persistent.Codec.field with
+          | None -> false
+          | Some f -> Stdlib.List.mem f fs)
+        columns]
+  in
+  let derive_table ~name:table_name ~primary_key:pk ~unique
       (td, { Repr.name; params; shape = _; loc }) =
-    let table_name =
-      match table_name, name.txt with
-      | None, "t" ->
-          error ~loc "missing table name, specify with ~name argument"
-      | None, txt -> { loc = name.loc; txt }
-      | Some txt, _ -> { loc = name.loc; txt }
-    in
     let fields =
       match td.ptype_kind with
       | Ptype_record fs -> fs
@@ -369,6 +391,29 @@ let _ =
     in
     if not (List.is_empty params) then
       not_supported ~loc "type parameters";
+    let table_name =
+      match table_name, name.txt with
+      | None, "t" ->
+          error ~loc "missing table name, specify with ~name argument"
+      | None, txt -> { loc = name.loc; txt }
+      | Some txt, _ -> { loc = name.loc; txt }
+    in
+    let pk =
+      match pk with
+      | None -> error ~loc "missing primary key"
+      | Some primary_key -> primary_key
+    in
+    let unique = Option.map (resolve_names fields) unique in
+    let pk = resolve_names fields pk in
+    let pk_type = ptyp_tuple ~loc (List.map pk ~f:snd) in
+    let pk_project =
+      [%expr
+        fun x ->
+          [%e
+            pexp_tuple ~loc
+              (List.map pk ~f:(fun ({ loc; txt }, _) ->
+                   pexp_field ~loc [%expr x] { loc; txt = lident txt }))]]
+    in
     let derive ?(name = name) what =
       let id = map_loc (derive_of_label what) name in
       pexp_ident ~loc (map_loc lident id)
@@ -382,37 +427,11 @@ let _ =
       ptyp_constr ~loc (map_loc lident id) []
     in
     let table = pexp_ident ~loc (map_loc lident name) in
-    let ( primary_key_name,
-          primary_key_project,
-          primary_key_field,
-          primary_key_type ) =
-      let pk =
-        List.filter_map fields ~f:(fun f ->
-            match Attribute.get primary_key f with
-            | None -> None
-            | Some loc ->
-                Some
-                  ( loc,
-                    f.pld_name,
-                    estring ~loc f.pld_name.txt,
-                    f.pld_type ))
-      in
-      match pk with
-      | [] -> error ~loc "missing [@primary_key] annotation"
-      | [ (loc, label, pk, pk_type) ] ->
-          ( label.txt,
-            [%expr
-              fun row ->
-                [%e pexp_field ~loc [%expr row] (map_loc lident label)]],
-            [%expr Some [%e pk]],
-            pk_type )
-      | _first :: (loc, _, _, _) :: _ ->
-          error ~loc "multiple [@primary_key] annotations are not allowed"
-    in
     let optionals =
       (* TODO: read optionals from fields as well *)
-      match primary_key_type with
-      | [%type: int] -> [ primary_key_name ]
+      match pk with
+      | [ (n, t) ] -> (
+          match t with [%type: int] -> [ n.txt ] | _ -> [])
       | _ -> []
     in
     let insert =
@@ -468,28 +487,14 @@ let _ =
                     match unique with
                     | None -> [%expr None]
                     | Some unique ->
-                        [%expr
-                          let unique = [%e pexp_list ~loc unique] in
-                          Some
-                            (Stdlib.List.filter
-                               (fun col ->
-                                 match col.Persistent.Codec.field with
-                                 | None -> false
-                                 | Some field ->
-                                     Stdlib.List.mem field unique)
-                               columns)]]
+                        [%expr Some [%e extract_columns ~loc unique]]]
                 in
-                let primary_key = [%e primary_key_project] in
-                let primary_key_columns =
-                  Stdlib.List.filter
-                    (fun col ->
-                      col.Persistent.Codec.field = [%e primary_key_field])
-                    columns
-                in
+                let primary_key = [%e pk_project] in
+                let primary_key_columns = [%e extract_columns ~loc pk] in
                 let primary_key_bind x =
                   [%e
                     derive_bind#derive_of_type_expr ~loc
-                      (Repr.of_core_type primary_key_type)
+                      (Repr.of_core_type pk_type)
                       [%expr x]]
                 in
                 ({
@@ -506,7 +511,7 @@ let _ =
                  }
                   : ( [%t ptyp_constr ~loc (map_loc lident name) []],
                       [%t derive_type "scope"],
-                      [%t primary_key_type] )
+                      [%t pk_type] )
                     Persistent.table)];
         ];
       [%stri
@@ -526,22 +531,16 @@ let _ =
   Deriving.add "table"
     ~str_type_decl:
       (Deriving.Generator.V2.make ~deps:[ codec; meta ] table_args
-         (fun ~ctxt (_rec_flag, type_decls) unique name ->
+         (fun ~ctxt (_rec_flag, type_decls) unique primary_key name ->
            try
-             let unique =
-               Option.map
-                 (List.map ~f:(function
-                   | { txt = Lident txt; loc } -> estring ~loc txt
-                   | { txt = _; loc } -> error ~loc "not a column"))
-                 unique
-             in
              let loc = Expansion_context.Deriver.derived_item_loc ctxt in
              let reprs =
                List.map type_decls ~f:(fun td ->
                    td, Repr.of_type_declaration td)
              in
              let str =
-               List.flat_map reprs ~f:(derive_table ~name ~unique)
+               List.flat_map reprs
+                 ~f:(derive_table ~name ~primary_key ~unique)
              in
              [%stri [@@@ocaml.warning "-39-11"]] :: str
            with Error (loc, msg) -> [ stri_error ~loc msg ]))

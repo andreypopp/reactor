@@ -4,17 +4,20 @@ module User = struct
   type profile = { name : string; age : int } [@@deriving codec, meta]
 
   type t = {
-    id : int; [@primary_key]
+    id : int;
     created_at : float;
     profile : profile;
     pair : int * int;
   }
-  [@@deriving codec, meta, table ~name:"user"]
+  [@@deriving codec, meta, table ~primary_key:id ~name:"user"]
 end
 
 module Subscription = struct
-  type t = { id : int; [@primary_key] user_id : int; name : string }
-  [@@deriving codec, meta, table ~name:"subscription" ~unique:user_id]
+  type t = { id : int; user_id : int; name : string }
+  [@@deriving
+    codec,
+      meta,
+      table ~name:"subscription" ~primary_key:id ~unique:user_id]
 end
 
 module Submodule = struct
