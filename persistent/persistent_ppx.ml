@@ -1,8 +1,8 @@
 open Ppxlib
 open Ast_builder.Default
 open ContainersLabels
-open Ppx_deriving_schema
-open Deriving_helper
+open Ppx_deriving_tools
+open Ppx_deriving_tools.Deriving_helper
 
 let ext_structure_item ~name expand =
   let pattern =

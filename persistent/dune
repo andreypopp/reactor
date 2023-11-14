@@ -8,7 +8,7 @@
  (name persistent_ppx)
  (public_name persistent.ppx)
  (modules persistent_ppx)
- (libraries ppxlib ppx_deriving_schema containers)
+ (libraries ppxlib ppx_deriving_tools containers)
  (ppx_runtime_libraries sqlite3 persistent)
  (preprocess
   (pps ppxlib.metaquot))

@@ -2,7 +2,7 @@
  (public_name ppx_deriving_json.browser)
  (name ppx_deriving_json_browser)
  (modules ppx_deriving_json_browser)
- (libraries ppx_deriving_schema ppxlib containers)
+ (libraries ppx_deriving_tools ppxlib containers)
  (ppx_runtime_libraries ppx_deriving_json.browser_runtime)
  (preprocess
   (pps ppxlib.metaquot))

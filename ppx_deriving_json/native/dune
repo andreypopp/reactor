@@ -2,7 +2,7 @@
  (public_name ppx_deriving_json.native)
  (name ppx_deriving_json_native)
  (modules ppx_deriving_json_native)
- (libraries ppx_deriving_schema ppxlib containers)
+ (libraries ppx_deriving_tools ppxlib containers)
  (ppx_runtime_libraries ppx_deriving_json.native_runtime)
  (preprocess
   (pps ppxlib.metaquot))

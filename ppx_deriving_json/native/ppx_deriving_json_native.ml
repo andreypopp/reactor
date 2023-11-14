@@ -2,7 +2,7 @@ open Printf
 open ContainersLabels
 open Ppxlib
 open Ast_builder.Default
-open Ppx_deriving_schema.Deriving_helper
+open Ppx_deriving_tools.Deriving_helper
 
 module Of_json = struct
   let with_refs ~loc prefix fs inner =
@@ -115,7 +115,7 @@ module Of_json = struct
     --> build_record ~loc derive fs [%expr fs] (fun e -> make (Some e))
 
   let deriving =
-    Ppx_deriving_schema.deriving_of_match () ~name:"of_json"
+    Ppx_deriving_tools.deriving_of_match () ~name:"of_json"
       ~of_t:(fun ~loc -> [%type: Yojson.Basic.t])
       ~error:(fun ~loc ->
         [%expr Ppx_deriving_json_runtime.of_json_error "invalid JSON"])
@@ -148,17 +148,17 @@ module To_json = struct
         :: [ [%e derive_of_record ~loc derive fs es] ])]
 
   let deriving =
-    Ppx_deriving_schema.deriving_to () ~name:"to_json"
+    Ppx_deriving_tools.deriving_to () ~name:"to_json"
       ~t_to:(fun ~loc -> [%type: Yojson.Basic.t])
       ~derive_of_tuple ~derive_of_record ~derive_of_variant_case
       ~derive_of_variant_case_record
 end
 
 let () =
-  let _ = Ppx_deriving_schema.register Of_json.deriving in
-  let _ = Ppx_deriving_schema.register To_json.deriving in
+  let _ = Ppx_deriving_tools.register Of_json.deriving in
+  let _ = Ppx_deriving_tools.register To_json.deriving in
   let _ =
-    Ppx_deriving_schema.(
+    Ppx_deriving_tools.(
       register (combined ~name:"json" Of_json.deriving To_json.deriving))
   in
   ()
