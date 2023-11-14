@@ -32,8 +32,6 @@ module Repr : sig
 
   val of_core_type : core_type -> type_expr
   val of_type_declaration : type_declaration -> type_decl
-  val te_opaque : longident loc -> type_expr list -> type_expr
-  val decl_to_te_expr : type_decl -> core_type
 end
 
 type deriving
@@ -338,8 +336,12 @@ val register' :
   ; .. > ->
   Deriving.t
 
-exception Not_supported of location * string
-(** TODO: remove it from interface *)
+exception Error of location * string
+
+val error : loc:location -> string -> 'a
 
 val not_supported : loc:location -> string -> 'a
 (** [not_supported what] terminates ppx with an error message telling [what] unsupported. *)
+
+val pexp_error : loc:location -> label -> expression
+val stri_error : loc:location -> label -> structure_item

@@ -3,10 +3,17 @@ open Ppxlib
 open Ast_builder.Default
 open ContainersLabels
 
-exception Not_supported of location * string
+exception Error of location * string
+
+let error ~loc what = raise (Error (loc, what))
 
 let not_supported ~loc what =
-  raise (Not_supported (loc, sprintf "%s are not supported" what))
+  raise (Error (loc, sprintf "%s are not supported" what))
+
+let pexp_error ~loc msg =
+  pexp_extension ~loc (Location.error_extensionf ~loc "%s" msg)
+
+let stri_error ~loc msg = [%stri [%%ocaml.error [%e estring ~loc msg]]]
 
 module Repr = struct
   type type_decl = {
@@ -281,8 +288,7 @@ class virtual deriving0 =
       fun ~ctxt (_rec_flag, type_decls) ->
         let loc = Expansion_context.Deriver.derived_item_loc ctxt in
         match List.map type_decls ~f:Repr.of_type_declaration with
-        | exception Not_supported (loc, msg) ->
-            [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
+        | exception Error (loc, msg) -> [ stri_error ~loc msg ]
         | reprs ->
             let bindings =
               List.flat_map reprs ~f:(fun decl ->
@@ -387,8 +393,7 @@ class virtual deriving1 =
       fun ~ctxt (_rec_flag, type_decls) ->
         let loc = Expansion_context.Deriver.derived_item_loc ctxt in
         match List.map type_decls ~f:Repr.of_type_declaration with
-        | exception Not_supported (loc, msg) ->
-            [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
+        | exception Error (loc, msg) -> [ stri_error ~loc msg ]
         | reprs ->
             let bindings =
               List.flat_map reprs ~f:(fun decl ->
@@ -459,8 +464,7 @@ class virtual deriving_type =
       fun ~ctxt (_rec_flag, type_decls) ->
         let loc = Expansion_context.Deriver.derived_item_loc ctxt in
         match List.map type_decls ~f:Repr.of_type_declaration with
-        | exception Not_supported (loc, msg) ->
-            [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
+        | exception Error (loc, msg) -> [ stri_error ~loc msg ]
         | reprs ->
             let type_decls =
               List.flat_map reprs ~f:(fun decl ->
