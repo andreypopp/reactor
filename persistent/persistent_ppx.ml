@@ -51,75 +51,6 @@ let ext_structure_item ~name expand =
     (Extension.V3.declare name Extension.Context.structure_item pattern
        expand)
 
-class virtual deriving_type =
-  object (self)
-    method virtual name : string
-
-    method derive_of_tuple
-        : loc:location -> Repr.type_expr list -> core_type =
-      not_supported "tuple types"
-
-    method derive_of_record
-        : loc:location -> (label loc * Repr.type_expr) list -> core_type =
-      not_supported "record types"
-
-    method derive_of_variant
-        : loc:location -> Repr.variant_case list -> core_type =
-      not_supported "variant types"
-
-    method derive_of_polyvariant
-        : loc:location -> Repr.polyvariant_case list -> core_type =
-      not_supported "variant types"
-
-    method derive_of_type_expr
-        : loc:location -> Repr.type_expr -> core_type =
-      fun ~loc t ->
-        match t with
-        | _, Repr.Te_tuple ts -> self#derive_of_tuple ~loc ts
-        | _, Te_var _ -> not_supported ~loc "type variables"
-        | _, Te_opaque (n, ts) ->
-            if not (List.is_empty ts) then
-              not_supported ~loc "type params"
-            else
-              let n = map_loc (derive_of_longident self#name) n in
-              ptyp_constr ~loc n []
-        | _, Te_polyvariant cs -> self#derive_of_polyvariant ~loc cs
-
-    method private derive_type_shape ~(loc : location) =
-      function
-      | Repr.Ts_expr t -> self#derive_of_type_expr ~loc t
-      | Ts_record fs -> self#derive_of_record ~loc fs
-      | Ts_variant cs -> self#derive_of_variant ~loc cs
-
-    method derive_type_decl { Repr.name; params; shape; loc }
-        : type_declaration list =
-      let manifest = self#derive_type_shape ~loc shape in
-      if not (List.is_empty params) then not_supported ~loc "type params"
-      else
-        [
-          type_declaration ~loc
-            ~name:(map_loc (derive_of_label self#name) name)
-            ~manifest:(Some manifest) ~cstrs:[] ~private_:Public
-            ~kind:Ptype_abstract ~params:[];
-        ]
-
-    method generator
-        : ctxt:Expansion_context.Deriver.t ->
-          rec_flag * type_declaration list ->
-          structure =
-      fun ~ctxt (_rec_flag, type_decls) ->
-        let loc = Expansion_context.Deriver.derived_item_loc ctxt in
-        match List.map type_decls ~f:Repr.of_type_declaration with
-        | exception Not_supported (loc, msg) ->
-            [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
-        | reprs ->
-            let type_decls =
-              List.flat_map reprs ~f:(fun decl ->
-                  self#derive_type_decl decl)
-            in
-            [%str [%%i pstr_type ~loc Recursive type_decls]]
-  end
-
 let with_genname_field ~loc col body =
   [%expr
     let genname =
@@ -366,70 +297,72 @@ let derive_fields =
       [%expr Stdlib.List.flatten [%e pexp_list ~loc es]]
   end
 
-let codec =
-  let derive_codec
-      ({ name; params; shape = _; loc } as decl : Repr.type_decl) =
-    if not (List.is_empty params) then
-      not_supported ~loc "type parameters";
-    let derive deriver =
-      let id = map_loc (derive_of_label deriver#name) name in
-      pexp_ident ~loc (map_loc lident id)
-    in
-    let open_struct stris =
-      pstr_open ~loc
-        (open_infos ~loc ~override:Fresh
-           ~expr:(pmod_structure ~loc stris))
-    in
-    [
-      pstr_type ~loc Recursive (derive_scope_type#derive_type_decl decl);
-      open_struct
-        [
-          pstr_value ~loc Nonrecursive
-            (derive_decode#derive_type_decl decl);
-          pstr_value ~loc Nonrecursive (derive_bind#derive_type_decl decl);
-          pstr_value ~loc Nonrecursive
-            (derive_columns#derive_type_decl decl);
-          pstr_value ~loc Nonrecursive
-            (derive_fields#derive_type_decl decl);
-          pstr_value ~loc Nonrecursive
-            (derive_scope#derive_type_decl decl);
-        ];
-      pstr_value ~loc Nonrecursive
-        [
-          value_binding ~loc
-            ~pat:(ppat_var ~loc (map_loc (derive_of_label "codec") name))
-            ~expr:
-              [%expr
-                {
-                  Persistent.Codec.columns = [%e derive derive_columns];
-                  decode = [%e derive derive_decode];
-                  bind = [%e derive derive_bind];
-                }];
-          value_binding ~loc
-            ~pat:(ppat_var ~loc (map_loc (derive_of_label "meta") name))
-            ~expr:
-              [%expr
-                {
-                  Persistent.scope = [%e derive derive_scope];
-                  fields = [%e derive derive_fields];
-                }];
-        ];
-    ]
-  in
-  Deriving.add "codec"
-    ~str_type_decl:
-      (Deriving.Generator.V2.make Deriving.Args.empty
-         (fun ~ctxt (_rec_flag, type_decls) ->
-           let loc = Expansion_context.Deriver.derived_item_loc ctxt in
-           match List.map type_decls ~f:Repr.of_type_declaration with
-           | exception Not_supported (loc, msg) ->
-               [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
-           | reprs -> (
-               try
-                 let str = List.flat_map reprs ~f:derive_codec in
-                 [%stri [@@@ocaml.warning "-39-11"]] :: str
-               with Not_supported (loc, msg) ->
-                 [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ])))
+let derive_codec =
+  object
+    inherit deriving0
+    method name = "codec"
+    method t ~loc _name t = [%type: [%t t] Persistent.Codec.t]
+
+    method! derive_of_tuple ~loc ts =
+      let columns = derive_columns#derive_of_tuple ~loc ts [%expr x] in
+      let decode = derive_decode#derive_of_tuple ~loc ts [%expr x] in
+      let bind = derive_bind#derive_of_tuple ~loc ts [%expr x] in
+      [%expr
+        {
+          Persistent.Codec.columns = (fun x -> [%e columns]);
+          decode = (fun x -> [%e decode]);
+          bind = (fun x -> [%e bind]);
+        }]
+
+    method! derive_of_record ~loc fs =
+      let columns = derive_columns#derive_of_record ~loc fs [%expr x] in
+      let decode = derive_decode#derive_of_record ~loc fs [%expr x] in
+      let bind = derive_bind#derive_of_record ~loc fs [%expr x] in
+      [%expr
+        {
+          Persistent.Codec.columns = (fun x -> [%e columns]);
+          decode = (fun x -> [%e decode]);
+          bind = (fun x -> [%e bind]);
+        }]
+  end
+
+let derive_meta =
+  object
+    inherit deriving0 as super
+    method name = "meta"
+
+    method t ~loc _name t =
+      let s =
+        derive_scope_type#derive_of_type_expr ~loc (Repr.of_core_type t)
+      in
+      [%type: [%t s] Persistent.meta]
+
+    method! derive_of_tuple ~loc ts =
+      let scope = derive_scope#derive_of_tuple ~loc ts [%expr x] in
+      let fields = derive_fields#derive_of_tuple ~loc ts [%expr x] in
+      [%expr
+        {
+          Persistent.scope = (fun x -> [%e scope]);
+          fields = (fun x -> [%e fields]);
+        }]
+
+    method! derive_of_record ~loc fs =
+      let scope = derive_scope#derive_of_record ~loc fs [%expr x] in
+      let fields = derive_fields#derive_of_record ~loc fs [%expr x] in
+      [%expr
+        {
+          Persistent.scope = (fun x -> [%e scope]);
+          fields = (fun x -> [%e fields]);
+        }]
+
+    method! generator ~ctxt tds =
+      let scope = derive_scope_type#generator ~ctxt tds in
+      let meta = super#generator ~ctxt tds in
+      scope @ meta
+  end
+
+let codec = register' derive_codec
+let meta = register' derive_meta
 
 let primary_key =
   Attribute.declare_with_attr_loc "persistent.primary_key"
@@ -618,7 +551,7 @@ let _ =
   in
   Deriving.add "table"
     ~str_type_decl:
-      (Deriving.Generator.V2.make ~deps:[ codec ] table_args
+      (Deriving.Generator.V2.make ~deps:[ codec; meta ] table_args
          (fun ~ctxt (_rec_flag, type_decls) unique name ->
            wrap_expand_structure @@ fun () ->
            let unique =

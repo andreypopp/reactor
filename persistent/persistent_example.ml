@@ -1,7 +1,7 @@
 open Persistent.Primitives
 
 module User = struct
-  type profile = { name : string; age : int } [@@deriving codec]
+  type profile = { name : string; age : int } [@@deriving codec, meta]
 
   type t = {
     id : int; [@primary_key]
@@ -9,12 +9,12 @@ module User = struct
     profile : profile;
     pair : int * int;
   }
-  [@@deriving codec, table ~name:"user"]
+  [@@deriving codec, meta, table ~name:"user"]
 end
 
 module Subscription = struct
   type t = { id : int; [@primary_key] user_id : int; name : string }
-  [@@deriving codec, table ~name:"subscription" ~unique:user_id]
+  [@@deriving codec, meta, table ~name:"subscription" ~unique:user_id]
 end
 
 module Submodule = struct
@@ -56,4 +56,5 @@ let () =
     where (q.is_john && q.is_john)
   in
   Persistent.iter_query db q ~f:(fun (name, is_john, x) ->
-      print_endline (Printf.sprintf "name=%s, is_john=%b, x=%i" name is_john x))
+      print_endline
+        (Printf.sprintf "name=%s, is_john=%b, x=%i" name is_john x))
