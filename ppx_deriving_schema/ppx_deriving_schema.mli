@@ -213,13 +213,10 @@ module Deriving_helper : sig
   (** This is [derive_of_label] lifted to work on [longident]. *)
 end
 
-(** define a generic deriver *)
+(** EXPERIMENTAL *)
 class virtual deriving1 : object
   method virtual name : string
-  (** name of the deriver *)
-
   method virtual t : loc:location -> label loc -> core_type -> core_type
-  (** produce a type expression for the deriver *)
 
   method derive_of_tuple :
     loc:location -> Repr.type_expr list -> expression -> expression
@@ -262,6 +259,84 @@ class virtual deriving1 : object
     rec_flag * type_declaration list ->
     structure
 end
+
+(** EXPERIMENTAL *)
+class virtual deriving0 : object
+  method virtual name : string
+  method virtual t : loc:location -> label loc -> core_type -> core_type
+
+  method derive_of_tuple :
+    loc:location -> Repr.type_expr list -> expression
+
+  method derive_of_record :
+    loc:location -> (label loc * Repr.type_expr) list -> expression
+
+  method derive_of_variant :
+    loc:location -> Repr.variant_case list -> expression
+
+  method derive_of_polyvariant :
+    loc:location -> Repr.polyvariant_case list -> core_type -> expression
+
+  method derive_of_type_expr :
+    loc:location -> Repr.type_expr -> expression
+
+  method derive_type_decl_label : label loc -> label loc
+  method derive_type_decl : Repr.type_decl -> value_binding list
+  method derive_type_ref_name : label -> longident loc -> expression
+
+  method derive_type_ref :
+    loc:location ->
+    label ->
+    longident loc ->
+    Repr.type_expr list ->
+    expression
+
+  method extension : loc:location -> path:label -> core_type -> expression
+
+  method generator :
+    ctxt:Expansion_context.Deriver.t ->
+    rec_flag * type_declaration list ->
+    structure
+end
+
+(** EXPERIMENTAL *)
+class virtual deriving_type : object
+  method virtual name : label
+
+  method derive_of_polyvariant :
+    loc:location -> Repr.polyvariant_case list -> core_type
+
+  method derive_of_record :
+    loc:location -> (label loc * Repr.type_expr) list -> core_type
+
+  method derive_of_tuple :
+    loc:location -> Repr.type_expr list -> core_type
+
+  method derive_of_type_expr : loc:location -> Repr.type_expr -> core_type
+
+  method derive_of_variant :
+    loc:location -> Repr.variant_case list -> core_type
+
+  method derive_type_decl : Repr.type_decl -> type_declaration list
+
+  method private derive_type_shape :
+    loc:location -> Repr.type_decl_shape -> core_type
+
+  method generator :
+    ctxt:Expansion_context.Deriver.t ->
+    rec_flag * type_declaration list ->
+    structure
+end
+
+val register' :
+  < extension : loc:location -> path:label -> core_type -> expression
+  ; generator :
+      ctxt:Expansion_context.Deriver.t ->
+      rec_flag * type_declaration list ->
+      Ppxlib__Import.structure
+  ; name : label
+  ; .. > ->
+  Deriving.t
 
 exception Not_supported of location * string
 (** TODO: remove it from interface *)

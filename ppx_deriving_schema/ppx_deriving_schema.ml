@@ -201,6 +201,99 @@ let as_fun ~loc deriver =
 open Repr
 open Deriving_helper
 
+class virtual deriving0 =
+  object (self)
+    method virtual name : string
+    method virtual t : loc:location -> label loc -> core_type -> core_type
+
+    method derive_of_tuple : loc:location -> type_expr list -> expression
+        =
+      not_supported "tuple types"
+
+    method derive_of_record
+        : loc:location -> (label loc * type_expr) list -> expression =
+      not_supported "record types"
+
+    method derive_of_variant
+        : loc:location -> variant_case list -> expression =
+      not_supported "variant types"
+
+    method derive_of_polyvariant
+        : loc:location -> polyvariant_case list -> core_type -> expression
+        =
+      not_supported "variant types"
+
+    method derive_type_ref_name : label -> longident loc -> expression =
+      fun name n -> ederiver name n
+
+    method derive_type_ref ~loc name n ts =
+      let f = self#derive_type_ref_name name n in
+      let args =
+        List.fold_left (List.rev ts) ~init:[] ~f:(fun args a ->
+            let a = self#derive_of_type_expr ~loc a in
+            (Nolabel, a) :: args)
+      in
+      pexp_apply ~loc f args
+
+    method derive_of_type_expr ~loc =
+      function
+      | _, Te_tuple ts -> self#derive_of_tuple ~loc ts
+      | _, Te_var id -> ederiver self#name (map_loc lident id)
+      | _, Te_opaque (n, ts) -> self#derive_type_ref self#name ~loc n ts
+      | t, Te_polyvariant cs -> self#derive_of_polyvariant ~loc cs t
+
+    method private derive_type_shape ~loc =
+      function
+      | Ts_expr t -> self#derive_of_type_expr ~loc t
+      | Ts_record fs -> self#derive_of_record ~loc fs
+      | Ts_variant cs -> self#derive_of_variant ~loc cs
+
+    method derive_type_decl_label name =
+      map_loc (derive_of_label self#name) name
+
+    method derive_type_decl ({ name; params; shape; loc } as decl) =
+      let expr = self#derive_type_shape ~loc shape in
+      let t = Repr.decl_to_te_expr decl in
+      let expr = [%expr ([%e expr] : [%t self#t ~loc name t])] in
+      let expr =
+        List.fold_left params ~init:expr ~f:(fun body param ->
+            pexp_fun ~loc Nolabel None
+              (ppat_var ~loc (map_loc (derive_of_label self#name) param))
+              body)
+      in
+      [
+        value_binding ~loc
+          ~pat:(ppat_var ~loc (self#derive_type_decl_label name))
+          ~expr;
+      ]
+
+    method extension
+        : loc:location -> path:label -> core_type -> expression =
+      fun ~loc:_ ~path:_ ty ->
+        let repr = Repr.of_core_type ty in
+        let loc = ty.ptyp_loc in
+        self#derive_of_type_expr ~loc repr
+
+    method generator
+        : ctxt:Expansion_context.Deriver.t ->
+          rec_flag * type_declaration list ->
+          structure =
+      fun ~ctxt (_rec_flag, type_decls) ->
+        let loc = Expansion_context.Deriver.derived_item_loc ctxt in
+        match List.map type_decls ~f:Repr.of_type_declaration with
+        | exception Not_supported (loc, msg) ->
+            [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
+        | reprs ->
+            let bindings =
+              List.flat_map reprs ~f:(fun decl ->
+                  self#derive_type_decl decl)
+            in
+            [%str
+              [@@@ocaml.warning "-39-11-27"]
+
+              [%%i pstr_value ~loc Recursive bindings]]
+  end
+
 class virtual deriving1 =
   object (self)
     method virtual name : string
@@ -305,6 +398,75 @@ class virtual deriving1 =
               [@@@ocaml.warning "-39-11-27"]
 
               [%%i pstr_value ~loc Recursive bindings]]
+  end
+
+class virtual deriving_type =
+  object (self)
+    method virtual name : string
+
+    method derive_of_tuple
+        : loc:location -> Repr.type_expr list -> core_type =
+      not_supported "tuple types"
+
+    method derive_of_record
+        : loc:location -> (label loc * Repr.type_expr) list -> core_type =
+      not_supported "record types"
+
+    method derive_of_variant
+        : loc:location -> Repr.variant_case list -> core_type =
+      not_supported "variant types"
+
+    method derive_of_polyvariant
+        : loc:location -> Repr.polyvariant_case list -> core_type =
+      not_supported "variant types"
+
+    method derive_of_type_expr
+        : loc:location -> Repr.type_expr -> core_type =
+      fun ~loc t ->
+        match t with
+        | _, Repr.Te_tuple ts -> self#derive_of_tuple ~loc ts
+        | _, Te_var _ -> not_supported ~loc "type variables"
+        | _, Te_opaque (n, ts) ->
+            if not (List.is_empty ts) then
+              not_supported ~loc "type params"
+            else
+              let n = map_loc (derive_of_longident self#name) n in
+              ptyp_constr ~loc n []
+        | _, Te_polyvariant cs -> self#derive_of_polyvariant ~loc cs
+
+    method private derive_type_shape ~(loc : location) =
+      function
+      | Repr.Ts_expr t -> self#derive_of_type_expr ~loc t
+      | Ts_record fs -> self#derive_of_record ~loc fs
+      | Ts_variant cs -> self#derive_of_variant ~loc cs
+
+    method derive_type_decl { Repr.name; params; shape; loc }
+        : type_declaration list =
+      let manifest = self#derive_type_shape ~loc shape in
+      if not (List.is_empty params) then not_supported ~loc "type params"
+      else
+        [
+          type_declaration ~loc
+            ~name:(map_loc (derive_of_label self#name) name)
+            ~manifest:(Some manifest) ~cstrs:[] ~private_:Public
+            ~kind:Ptype_abstract ~params:[];
+        ]
+
+    method generator
+        : ctxt:Expansion_context.Deriver.t ->
+          rec_flag * type_declaration list ->
+          structure =
+      fun ~ctxt (_rec_flag, type_decls) ->
+        let loc = Expansion_context.Deriver.derived_item_loc ctxt in
+        match List.map type_decls ~f:Repr.of_type_declaration with
+        | exception Not_supported (loc, msg) ->
+            [ [%stri [%%ocaml.error [%e estring ~loc msg]]] ]
+        | reprs ->
+            let type_decls =
+              List.flat_map reprs ~f:(fun decl ->
+                  self#derive_type_decl decl)
+            in
+            [%str [%%i pstr_type ~loc Recursive type_decls]]
   end
 
 type deriving =
@@ -672,3 +834,9 @@ let register ?deps = function
       Deriving.add name
         ~str_type_decl:
           (Deriving.Generator.V2.make ?deps Deriving.Args.empty generator)
+
+let register' d =
+  Deriving.add d#name
+    ~str_type_decl:
+      (Deriving.Generator.V2.make Deriving.Args.empty d#generator)
+    ~extension:d#extension
