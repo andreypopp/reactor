@@ -340,22 +340,32 @@ let derive_meta =
 let codec = register' derive_codec
 let meta = register' derive_meta
 
-let table_args =
-  let open Deriving.Args in
+let extract_columns () =
+  let open Ast_pattern in
   let col_many = pexp_tuple (many (pexp_ident __')) in
   let col = map1 (pexp_ident __') ~f:List.return in
   let cols = col_many ||| col in
-  let cols =
-    map1 cols
-      ~f:
-        (List.map ~f:(function
-          | { txt = Lident txt; loc } -> { txt; loc }
-          | _ -> failwith "expected a column"))
-  in
-  empty
-  +> arg "unique" cols
-  +> arg "primary_key" cols
-  +> arg "name" (estring __)
+  map1 cols
+    ~f:
+      (List.map ~f:(function
+        | { txt = Lident txt; loc } -> { txt; loc }
+        | _ -> failwith "expected a column"))
+
+let primary_key =
+  Attribute.declare_with_attr_loc "persistent.primary_key"
+    Attribute.Context.type_declaration
+    Ast_pattern.(single_expr_payload (extract_columns ()))
+    (fun ~attr_loc cols -> attr_loc, cols)
+
+let unique =
+  Attribute.declare_with_attr_loc "persistent.unique"
+    Attribute.Context.type_declaration
+    Ast_pattern.(single_expr_payload (extract_columns ()))
+    (fun ~attr_loc cols -> attr_loc, cols)
+
+let table_args =
+  let open Deriving.Args in
+  empty +> arg "name" (estring __)
 
 let _ =
   let resolve_names fields names =
@@ -382,7 +392,7 @@ let _ =
           | Some f -> Stdlib.List.mem f fs)
         columns]
   in
-  let derive_table ~name:table_name ~primary_key:pk ~unique
+  let derive_table ~name:table_name ~pk ~unique
       (td, { Repr.name; params; shape = _; loc }) =
     let fields =
       match td.ptype_kind with
@@ -397,11 +407,6 @@ let _ =
           error ~loc "missing table name, specify with ~name argument"
       | None, txt -> { loc = name.loc; txt }
       | Some txt, _ -> { loc = name.loc; txt }
-    in
-    let pk =
-      match pk with
-      | None -> error ~loc "missing primary key"
-      | Some primary_key -> primary_key
     in
     let unique = Option.map (resolve_names fields) unique in
     let pk = resolve_names fields pk in
@@ -531,16 +536,21 @@ let _ =
   Deriving.add "table"
     ~str_type_decl:
       (Deriving.Generator.V2.make ~deps:[ codec; meta ] table_args
-         (fun ~ctxt (_rec_flag, type_decls) unique primary_key name ->
+         (fun ~ctxt (_rec_flag, type_decls) name ->
            try
              let loc = Expansion_context.Deriver.derived_item_loc ctxt in
-             let reprs =
-               List.map type_decls ~f:(fun td ->
-                   td, Repr.of_type_declaration td)
-             in
              let str =
-               List.flat_map reprs
-                 ~f:(derive_table ~name ~primary_key ~unique)
+               List.flat_map type_decls ~f:(fun td ->
+                   let repr = Repr.of_type_declaration td in
+                   let pk =
+                     match Attribute.get primary_key td with
+                     | None -> error ~loc "missing @@primary_key"
+                     | Some (_loc, pk) -> pk
+                   in
+                   let unique =
+                     Option.map snd (Attribute.get unique td)
+                   in
+                   derive_table ~name ~pk ~unique (td, repr))
              in
              [%stri [@@@ocaml.warning "-39-11"]] :: str
            with Error (loc, msg) -> [ stri_error ~loc msg ]))
@@ -695,6 +705,12 @@ module Query_form = struct
               Persistent.Q.left_join ?na:[%e pexp_opt ~loc aalias]
                 ?nb:[%e pexp_opt ~loc balias] [%e prev] [%e q]
                 [%e pexp_slot' ~loc names (Expr_form.expand ~ctxt e)]] )
+      | [%expr query [%e? ocamlish]] ->
+          names, alias, [%expr [%e ocamlish] [%e prev]]
+      | [%expr [%e? name] = [%e? rhs]] ->
+          let _name, _alias, rhs = rewrite ~alias names prev rhs in
+          let name, alias = name_of name in
+          name, Some alias, rhs
       | { pexp_desc = Pexp_tuple xs; _ } ->
           let xs =
             List.map xs ~f:(function
@@ -706,10 +722,10 @@ module Query_form = struct
             let xs =
               List.mapi xs ~f:(fun i (_, e) ->
                   let n = estring ~loc (Printf.sprintf "_%i" i) in
-                  [%expr Persistent.E.as_col t [%e n] [%e e]])
+                  [%expr Persistent.E.as_col __t [%e n] [%e e]])
             in
             pexp_slot' ~loc names
-              [%expr fun (t, _p) -> [%e pexp_tuple ~loc xs]]
+              [%expr fun (__t, __p) -> [%e pexp_tuple ~loc xs]]
           in
           let ps, e = gen_tuple ~loc "col" (List.length xs) in
           let x, xs =
@@ -760,7 +776,9 @@ module Query_form = struct
             let fields =
               List.map xs ~f:(fun (n, (_, e)) ->
                   let ns = estring ~loc:n.loc n.txt in
-                  let e = [%expr Persistent.E.as_col t [%e ns] [%e e]] in
+                  let e =
+                    [%expr Persistent.E.as_col __t [%e ns] [%e e]]
+                  in
                   {
                     pcf_desc =
                       Pcf_method (n, Public, Cfk_concrete (Fresh, e));
@@ -770,7 +788,7 @@ module Query_form = struct
             in
             pexp_slot' ~loc names
               [%expr
-                fun (t, _p) ->
+                fun (__t, __p) ->
                   [%e
                     pexp_object ~loc
                       (class_structure ~self:(ppat_any ~loc) ~fields)]]
@@ -812,10 +830,6 @@ module Query_form = struct
           ( name,
             Some (Option.value alias ~default:alias'),
             [%expr [%e q] [%e prev]] )
-      | [%expr [%e? name] = [%e? rhs]] ->
-          let _name, _alias, rhs = rewrite ~alias names prev rhs in
-          let name, alias = name_of name in
-          name, Some alias, rhs
       | [%expr
           let [%p? pat] = [%e? ocamlish] in
           [%e? next]] ->

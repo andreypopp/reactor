@@ -9,15 +9,15 @@ module User = struct
     profile : profile;
     pair : int * int;
   }
-  [@@deriving codec, meta, table ~primary_key:id ~name:"user"]
+  [@@deriving codec, meta, table ~name:"user"]
+  [@@persistent.primary_key id]
 end
 
 module Subscription = struct
   type t = { id : int; user_id : int; name : string }
-  [@@deriving
-    codec,
-      meta,
-      table ~name:"subscription" ~primary_key:id ~unique:user_id]
+  [@@deriving codec, meta, table ~name:"subscription"]
+  [@@persistent.primary_key id]
+  [@@persistent.unique id, user_id]
 end
 
 module Submodule = struct
@@ -27,6 +27,7 @@ module Submodule = struct
 end
 
 let%expr is_john u = u.profile.name = "John" && true
+let where_user_id id = fun%query u -> where (u.id = Persistent.E.int id)
 
 let () =
   let db =
@@ -41,14 +42,14 @@ let () =
     ~pair:(1, 2) ();
   let%query q =
     u = from User.t;
-    where (u.id = 3);
+    query (where_user_id 3);
     order_by (desc u.created_at);
     left_join Submodule.sub (u.id = sub.user_id);
     where (u.id = 2);
     left_join
       (Submodule.sub;
-       q = { id = sub.user_id })
-      (u.id = q.id);
+       t = { id = sub.user_id })
+      (u.id = t.id);
     where (u.id = 2);
     q
     = {
