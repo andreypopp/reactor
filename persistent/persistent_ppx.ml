@@ -574,9 +574,26 @@ module Expr_form = struct
       | Pexp_ident _ -> e
       | Pexp_field (e, { txt = Lident n; loc = nloc }) ->
           pexp_send ~loc:nloc (rewrite e) { txt = n; loc = nloc }
-      | Pexp_apply (e, args) ->
-          pexp_apply ~loc (rewrite e)
-            (List.map args ~f:(fun (l, e) -> l, rewrite e))
+      | Pexp_apply (f, args) -> (
+          match e with
+          | [%expr [%e? scope] #. [%e? field]] ->
+              let field =
+                match field.pexp_desc with
+                | Pexp_ident { txt = Lident txt; loc } -> { loc; txt }
+                | _ -> error ~loc:field.pexp_loc "not an identifier"
+              in
+              [%expr
+                Persistent.E.of_opt [%e scope] (fun scope ->
+                    [%e pexp_send ~loc:field.loc [%expr scope] field])]
+          | [%expr [%e? nullable] #? [%e? default]] ->
+              [%expr
+                Persistent.E.coalesce [%e rewrite nullable]
+                  [%e rewrite default]]
+          | [%expr ??[%e? e]] ->
+              [%expr Persistent.E.nullable [%e rewrite e]]
+          | _ ->
+              pexp_apply ~loc (rewrite f)
+                (List.map args ~f:(fun (l, e) -> l, rewrite e)))
       | Pexp_constant (Pconst_integer _) ->
           [%expr Persistent.E.int [%e e]]
       | Pexp_constant (Pconst_char _) -> [%expr Persistent.E.char [%e e]]

@@ -36,6 +36,7 @@ module E : sig
   val iif : (bool, _) t -> ('a, 'n) t -> ('a, 'n) t -> ('a, 'n) t
   val iif' : (bool, _) t -> ('a, _) t -> ('a, null) t
   val of_opt : 's opt -> ('s -> ('a, _) t) -> 'a expr_nullable
+  val nullable : ('a, _) t -> 'a expr_nullable
 
   val as_col : string -> string -> ('a, 'n) t -> ('a, 'n) t
   (** FOR INTERNAL USE ONLY *)

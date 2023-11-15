@@ -221,6 +221,8 @@ module E = struct
       cols = ov.cols @ v.cols;
     }
 
+  let nullable v = { sql = v.sql; decode = v.decode; cols = v.cols }
+
   let iif' c t =
     {
       sql = sprintf "iif(%s, %s, NULL)" c.sql t.sql;

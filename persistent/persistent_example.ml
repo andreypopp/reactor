@@ -45,7 +45,7 @@ let () =
     query (where_user_id 3);
     u = order_by (desc t.created_at);
     (user, sub) = left_join (query Submodule.sub) (u.id = t.user_id);
-    where (user.id = 2);
+    where (user.id = 2 && ((sub#.id = ??1) #? false));
     left_join
       (query Submodule.sub;
        t' = { id = t.user_id })
@@ -56,9 +56,10 @@ let () =
         name = user.profile.name;
         is_john = is_john user;
         x = (if is_john user then 1 else 0);
+        zz = nullable sub#.user_id;
       };
     where (q.is_john && q.is_john)
   in
-  Persistent.iter_query db q ~f:(fun (name, is_john, x) ->
+  Persistent.iter_query db q ~f:(fun (name, is_john, x, _zz) ->
       print_endline
         (Printf.sprintf "name=%s, is_john=%b, x=%i" name is_john x))
