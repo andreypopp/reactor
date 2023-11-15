@@ -648,7 +648,7 @@ module Query_form = struct
         ppat_var ~loc { txt; loc }, estring ~loc txt
     | _ -> error ~loc:id.pexp_loc "only identifiers are allowed"
 
-  let rec expand' ~ctxt e =
+  let rec expand' ?names ?prev ~ctxt e =
     let rec rewrite ~alias names prev q =
       let loc = q.pexp_loc in
       match q with
@@ -809,7 +809,9 @@ module Query_form = struct
           [%pat? here], alias, e
       | { pexp_desc = Pexp_ident _; _ } as q ->
           let name, alias' = name_of q in
-          name, Some (Option.value alias ~default:alias'), q
+          ( name,
+            Some (Option.value alias ~default:alias'),
+            [%expr [%e q] [%e prev]] )
       | [%expr [%e? name] = [%e? rhs]] ->
           let _name, _alias, rhs = rewrite ~alias names prev rhs in
           let name, alias = name_of name in
@@ -823,7 +825,14 @@ module Query_form = struct
             [%expr
               let [%p pat] = [%e ocamlish] in
               [%e next]] )
-      | _ -> error ~loc "unknown query form"
+      | [%expr fun [%p? names] -> [%e? e]] ->
+          let name, alias, expr =
+            expand' ~names ~ctxt ~prev:[%expr prev] e
+          in
+          name, alias, [%expr fun prev -> [%e expr]]
+      | e ->
+          Format.printf "%a@." Ppxlib_ast.Pprintast.expression e;
+          error ~loc "unknown query form"
     in
     match List.rev (unroll [] e) with
     | [] ->
@@ -832,8 +841,9 @@ module Query_form = struct
           "empty query"
     | q :: qs ->
         let loc = Expansion_context.Extension.extension_point_loc ctxt in
-        List.fold_left qs
-          ~init:(rewrite ~alias:None [%pat? ()] [%expr ()] q)
+        let names = Option.value names ~default:[%pat? ()] in
+        let prev = Option.value prev ~default:[%expr ()] in
+        List.fold_left qs ~init:(rewrite ~alias:None names prev q)
           ~f:(fun (names, alias, prev) e ->
             let names, alias, e = rewrite ~alias names prev e in
             names, alias, e)

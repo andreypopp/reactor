@@ -21,7 +21,7 @@ module Subscription = struct
 end
 
 module Submodule = struct
-  let%query sub =
+  let%query sub () =
     from Subscription.t;
     where (t.user_id = 3)
 end
