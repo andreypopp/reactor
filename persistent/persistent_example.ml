@@ -41,21 +41,21 @@ let () =
     ~profile:{ name = "aaaaaa"; age = 34 }
     ~pair:(1, 2) ();
   let%query q =
-    u = from User.t;
+    from User.t;
     query (where_user_id 3);
-    order_by (desc u.created_at);
-    left_join Submodule.sub (u.id = sub.user_id);
-    where (u.id = 2);
+    u = order_by (desc t.created_at);
+    (user, sub) = left_join (query Submodule.sub) (u.id = t.user_id);
+    where (user.id = 2);
     left_join
-      (Submodule.sub;
-       t = { id = sub.user_id })
-      (u.id = t.id);
-    where (u.id = 2);
+      (query Submodule.sub;
+       t' = { id = t.user_id })
+      (user.id = t'.id);
+    where (user.id = 2);
     q
     = {
-        name = u.profile.name;
-        is_john = is_john u;
-        x = (if is_john u then 1 else 0);
+        name = user.profile.name;
+        is_john = is_john user;
+        x = (if is_john user then 1 else 0);
       };
     where (q.is_john && q.is_john)
   in

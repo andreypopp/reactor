@@ -645,18 +645,26 @@ module Query_form = struct
     | _ -> e :: acc
 
   let pexp_slot' ~loc names e =
+    let names = Option.value names ~default:[%pat? t] in
     [%expr fun [@ocaml.warning "-27"] [%p names] -> [%e e]]
 
   let pexp_opt ~loc e =
     match e with None -> [%expr None] | Some e -> [%expr Some [%e e]]
 
-  let name_of id =
-    match id.pexp_desc with
-    | Pexp_ident { txt = Lident txt; loc } ->
-        ppat_var ~loc { txt; loc }, estring ~loc txt
+  let rec parse_pat e =
+    match e.pexp_desc with
+    | Pexp_ident { txt = Lident txt; loc } -> ppat_var ~loc { txt; loc }
     | Pexp_ident { txt = Ldot (_, txt); loc } ->
-        ppat_var ~loc { txt; loc }, estring ~loc txt
-    | _ -> error ~loc:id.pexp_loc "only identifiers are allowed"
+        ppat_var ~loc { txt; loc }
+    | Pexp_tuple es ->
+        ppat_tuple ~loc:e.pexp_loc (List.map es ~f:parse_pat)
+    | _ -> error ~loc:e.pexp_loc "invalid pattern"
+
+  let name_of e =
+    let p = parse_pat e in
+    match p.ppat_desc with
+    | Ppat_var { txt; loc } -> p, Some (estring ~loc txt)
+    | _ -> p, None
 
   let rec expand' ?names ?prev ~ctxt e =
     let rec rewrite ~alias names prev q =
@@ -664,8 +672,9 @@ module Query_form = struct
       match q with
       | [%expr from [%e? id]] ->
           let names, alias' = name_of id in
-          let alias = Option.value alias ~default:alias' in
-          ( names,
+          let alias = Option.or_ alias ~else_:alias' in
+          let alias = Option.value alias ~default:[%expr "t"] in
+          ( Some names,
             Some alias,
             [%expr Persistent.Q.from ~n:[%e alias] [%e id]] )
       | [%expr where [%e? e]] ->
@@ -697,20 +706,30 @@ module Query_form = struct
       | [%expr left_join [%e? q] [%e? e]] ->
           let aalias = alias in
           let qnames, balias, q = expand' ~ctxt q in
+          let qnames = Option.value qnames ~default:[%pat? joined] in
+          let names = Option.value names ~default:[%pat? t] in
           let names = [%pat? [%p names], [%p qnames]] in
           let alias = Some [%expr "q"] in
-          ( names,
+          ( Some names,
             alias,
             [%expr
               Persistent.Q.left_join ?na:[%e pexp_opt ~loc aalias]
                 ?nb:[%e pexp_opt ~loc balias] [%e prev] [%e q]
-                [%e pexp_slot' ~loc names (Expr_form.expand ~ctxt e)]] )
+                [%e
+                  pexp_slot' ~loc (Some names) (Expr_form.expand ~ctxt e)]]
+          )
       | [%expr query [%e? ocamlish]] ->
-          names, alias, [%expr [%e ocamlish] [%e prev]]
+          let names = Option.value names ~default:[%pat? t] in
+          Some names, alias, [%expr [%e ocamlish] [%e prev]]
+      (* | { pexp_desc = Pexp_ident _; _ } as q -> *)
+      (*     let name, alias' = name_of q in *)
+      (*     ( name, *)
+      (*       Some (Option.value alias ~default:alias'), *)
+      (*       [%expr [%e q] [%e prev]] ) *)
       | [%expr [%e? name] = [%e? rhs]] ->
           let _name, _alias, rhs = rewrite ~alias names prev rhs in
           let name, alias = name_of name in
-          name, Some alias, rhs
+          Some name, alias, rhs
       | { pexp_desc = Pexp_tuple xs; _ } ->
           let xs =
             List.map xs ~f:(function
@@ -756,7 +775,7 @@ module Query_form = struct
               Persistent.P.select' ?n:[%e pexp_opt ~loc alias] [%e prev]
                 [%e make_scope] [%e pexp_slot' ~loc names e]]
           in
-          [%pat? here], alias, e
+          Some [%pat? t], alias, e
       | { pexp_desc = Pexp_record (fs, None); _ } ->
           let fs =
             List.map fs ~f:(fun (n, x) ->
@@ -824,12 +843,7 @@ module Query_form = struct
               Persistent.P.select' ?n:[%e pexp_opt ~loc alias] [%e prev]
                 [%e make_scope] [%e pexp_slot' ~loc names e]]
           in
-          [%pat? here], alias, e
-      | { pexp_desc = Pexp_ident _; _ } as q ->
-          let name, alias' = name_of q in
-          ( name,
-            Some (Option.value alias ~default:alias'),
-            [%expr [%e q] [%e prev]] )
+          Some [%pat? t], alias, e
       | [%expr
           let [%p? pat] = [%e? ocamlish] in
           [%e? next]] ->
@@ -855,7 +869,6 @@ module Query_form = struct
           "empty query"
     | q :: qs ->
         let loc = Expansion_context.Extension.extension_point_loc ctxt in
-        let names = Option.value names ~default:[%pat? ()] in
         let prev = Option.value prev ~default:[%expr ()] in
         List.fold_left qs ~init:(rewrite ~alias:None names prev q)
           ~f:(fun (names, alias, prev) e ->
