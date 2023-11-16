@@ -456,6 +456,17 @@ let fold_table t db ~init ~f =
 
 let iter_table t db ~f = fold_table ~init:() ~f:(fun () -> f) t db
 
+let transaction db f =
+  let open Sqlite3 in
+  Rc.check (exec db "BEGIN");
+  try
+    let v = f () in
+    Rc.check (exec db "COMMIT");
+    v
+  with exn ->
+    Rc.check (exec db "ROLLBACK");
+    raise exn
+
 module Q = struct
   type order = Asc : (_, _) E.t -> order | Desc : (_, _) E.t -> order
 

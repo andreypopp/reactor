@@ -148,6 +148,8 @@ val make_query_with :
   db ->
   'a
 
+val transaction : db -> (unit -> 'a) -> 'a
+
 type ('s, 'a) q = ('s, 'a) Q.t
 
 val iter_query : db -> (_, 'row) q -> f:('row -> unit) -> unit
