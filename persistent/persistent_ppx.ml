@@ -657,34 +657,107 @@ module Expr_form = struct
 end
 
 module Query_form = struct
+  module Scope_structure = struct
+    type t = location * syn
+
+    and syn =
+      | Pat_name of label loc
+      | Pat_tuple of t list
+      | Pat_record of (label loc * t) list
+
+    let rec build arg body = function
+      | loc, Pat_name label ->
+          [%expr
+            let [%p ppat_var ~loc label] = [%e arg] in
+            [%e body]]
+      | _loc, Pat_tuple ps ->
+          List.foldi ps ~init:body ~f:(fun next i ((loc, _) as p) ->
+              let arg =
+                pexp_send ~loc arg { txt = sprintf "_%i" (i + 1); loc }
+              in
+              build arg next p)
+      | _loc, Pat_record fs ->
+          List.fold_left fs ~init:body
+            ~f:(fun next (name, ((loc, _) as p)) ->
+              let arg = pexp_send ~loc arg name in
+              build arg next p)
+
+    let name ~loc txt = loc, Pat_name { loc; txt }
+    let tuple ~loc xs = loc, Pat_tuple xs
+
+    let rec of_expression e =
+      let loc = e.pexp_loc in
+      match e.pexp_desc with
+      | Pexp_ident { txt = Lident txt; loc = loc' } ->
+          loc, Pat_name { txt; loc = loc' }
+      | Pexp_ident { txt = Ldot (_, txt); loc = loc' } ->
+          loc, Pat_name { txt; loc = loc' }
+      | Pexp_tuple es -> loc, Pat_tuple (List.map es ~f:of_expression)
+      | Pexp_record (fs, None) ->
+          let f = function
+            | { txt = Lident txt; loc }, e ->
+                { txt; loc }, of_expression e
+            | _ -> error ~loc "invalid pattern"
+          in
+          loc, Pat_record (List.map fs ~f)
+      | _ -> error ~loc "invalid pattern"
+
+    let rec of_pattern p =
+      let loc = p.ppat_loc in
+      match p.ppat_desc with
+      | Ppat_var lab -> loc, Pat_name lab
+      | Ppat_tuple es -> loc, Pat_tuple (List.map es ~f:of_pattern)
+      | Ppat_record (fs, _) ->
+          let f = function
+            | { txt = Lident txt; loc }, e -> { txt; loc }, of_pattern e
+            | _ -> error ~loc "invalid pattern"
+          in
+          loc, Pat_record (List.map fs ~f)
+      | _ -> error ~loc "invalid pattern"
+  end
+
   let rec unroll acc e =
     match e.pexp_desc with
     | Pexp_sequence (a, b) -> unroll (a :: acc) b
     | _ -> e :: acc
 
-  let pexp_slot' ~loc names e =
-    let names = Option.value names ~default:[%pat? t] in
-    [%expr fun [@ocaml.warning "-27"] [%p names] -> [%e e]]
-
   let pexp_opt ~loc e =
     match e with None -> [%expr None] | Some e -> [%expr Some [%e e]]
 
-  let rec parse_pat e =
-    match e.pexp_desc with
-    | Pexp_ident { txt = Lident txt; loc } -> ppat_var ~loc { txt; loc }
-    | Pexp_ident { txt = Ldot (_, txt); loc } ->
-        ppat_var ~loc { txt; loc }
-    | Pexp_tuple es ->
-        ppat_tuple ~loc:e.pexp_loc (List.map es ~f:parse_pat)
-    | _ -> error ~loc:e.pexp_loc "invalid pattern"
-
   let name_of e =
-    let p = parse_pat e in
-    match p.ppat_desc with
-    | Ppat_var { txt; loc } -> p, Some (estring ~loc txt)
+    let p = Scope_structure.of_expression e in
+    match p with
+    | _, Pat_name { loc; txt } -> p, Some (estring ~loc txt)
     | _ -> p, None
 
-  let expand_select' ~ctxt ~loc ~make_scope (alias, names, prev) fs =
+  let pexp_slot' ~loc names e =
+    let names =
+      Option.value names ~default:(Scope_structure.name ~loc "t")
+    in
+    [%expr
+      fun [@ocaml.warning "-27-26"] __scope ->
+        [%e Scope_structure.build [%expr __scope] e names]]
+
+  let make_scope ~loc names fs =
+    let fields =
+      List.map fs ~f:(fun (_, (n, e)) ->
+          let ns = estring ~loc:n.loc n.txt in
+          let e = [%expr Persistent.E.as_col __t [%e ns] [%e e]] in
+          {
+            pcf_desc = Pcf_method (n, Public, Cfk_concrete (Fresh, e));
+            pcf_loc = loc;
+            pcf_attributes = [];
+          })
+    in
+    pexp_slot' ~loc names
+      [%expr
+        fun (__t, __p) ->
+          [%e
+            pexp_object ~loc
+              (class_structure ~self:(ppat_any ~loc) ~fields)]]
+
+  let expand_select' ~ctxt ~loc ?(make_scope = make_scope)
+      (alias, names, prev) fs =
     let fs =
       List.map fs ~f:(fun (n, e) ->
           match e with
@@ -715,14 +788,14 @@ module Query_form = struct
     let e =
       [%expr
         Persistent.P.select' ?n:[%e pexp_opt ~loc alias] [%e prev]
-          [%e make_scope names fs]
+          [%e make_scope ~loc names fs]
           [%e
             pexp_slot' ~loc names
               [%expr
                 let open Persistent.P in
                 [%e e]]]]
     in
-    Some [%pat? t], alias, e
+    Some (Scope_structure.name ~loc "t"), alias, e
 
   let rec expand' ?names ?prev ~ctxt e =
     let rec rewrite ((alias, names, prev) as here) q =
@@ -764,9 +837,14 @@ module Query_form = struct
       | [%expr left_join [%e? q] [%e? e]] ->
           let aalias = alias in
           let qnames, balias, q = expand' ~ctxt q in
-          let qnames = Option.value qnames ~default:[%pat? joined] in
-          let names = Option.value names ~default:[%pat? t] in
-          let names = [%pat? [%p names], [%p qnames]] in
+          let qnames =
+            Option.value qnames
+              ~default:(Scope_structure.name ~loc:q.pexp_loc "right")
+          in
+          let names =
+            Option.value names ~default:(Scope_structure.name ~loc "t")
+          in
+          let names = Scope_structure.tuple ~loc [ names; qnames ] in
           let alias = Some [%expr "q"] in
           ( Some names,
             alias,
@@ -777,7 +855,9 @@ module Query_form = struct
                   pexp_slot' ~loc (Some names) (Expr_form.expand ~ctxt e)]]
           )
       | [%expr query [%e? ocamlish]] ->
-          let names = Option.value names ~default:[%pat? t] in
+          let names =
+            Option.value names ~default:(Scope_structure.name ~loc "t")
+          in
           Some names, alias, [%expr [%e ocamlish] [%e prev]]
       | [%expr [%e? name] = [%e? rhs]] ->
           let _name, _alias, rhs = rewrite here rhs in
@@ -787,19 +867,12 @@ module Query_form = struct
       | [%expr select [%e? { pexp_desc = Pexp_tuple xs; _ }]] ->
           let fs =
             List.mapi xs ~f:(fun i x ->
-                let n = { txt = sprintf "_%i" i; loc = x.pexp_loc } in
+                let n =
+                  { txt = sprintf "_%i" (i + 1); loc = x.pexp_loc }
+                in
                 n, x)
           in
-          let make_scope names fs =
-            let xs =
-              List.map fs ~f:(fun (_, (n, e)) ->
-                  let ns = estring ~loc:n.loc n.txt in
-                  [%expr Persistent.E.as_col __t [%e ns] [%e e]])
-            in
-            pexp_slot' ~loc names
-              [%expr fun (__t, __p) -> [%e pexp_tuple ~loc xs]]
-          in
-          expand_select' ~ctxt ~loc ~make_scope here fs
+          expand_select' ~ctxt ~loc here fs
       | { pexp_desc = Pexp_record (fs, None); _ }
       | [%expr select [%e? { pexp_desc = Pexp_record (fs, None); _ }]] ->
           let fs =
@@ -808,31 +881,10 @@ module Query_form = struct
                 | Lident txt -> { txt; loc = n.loc }, x
                 | _ -> error ~loc "invalid select")
           in
-          let make_scope names fs =
-            let fields =
-              List.map fs ~f:(fun (_, (n, e)) ->
-                  let ns = estring ~loc:n.loc n.txt in
-                  let e =
-                    [%expr Persistent.E.as_col __t [%e ns] [%e e]]
-                  in
-                  {
-                    pcf_desc =
-                      Pcf_method (n, Public, Cfk_concrete (Fresh, e));
-                    pcf_loc = loc;
-                    pcf_attributes = [];
-                  })
-            in
-            pexp_slot' ~loc names
-              [%expr
-                fun (__t, __p) ->
-                  [%e
-                    pexp_object ~loc
-                      (class_structure ~self:(ppat_any ~loc) ~fields)]]
-          in
-          expand_select' ~ctxt ~loc ~make_scope here fs
+          expand_select' ~ctxt ~loc here fs
       | [%expr select [%e? e]] ->
           let fs = [ { txt = "c"; loc = e.pexp_loc }, e ] in
-          let make_scope names fs =
+          let make_scope ~loc names fs =
             let n, e =
               match fs with [ (_, x) ] -> x | _ -> assert false
             in
@@ -852,6 +904,7 @@ module Query_form = struct
               let [%p pat] = [%e ocamlish] in
               [%e next]] )
       | [%expr fun [%p? names] -> [%e? e]] ->
+          let names = Scope_structure.of_pattern names in
           let name, alias, expr =
             expand' ~names ~ctxt ~prev:[%expr prev] e
           in
