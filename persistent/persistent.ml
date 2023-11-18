@@ -712,6 +712,10 @@ module Q = struct
     trim_select rel;
     rel.decode, rel.scope, print_rel rel
 
+  let print_sql q =
+    let _, _, sql = to_sql q in
+    print_endline (Containers_pp.Pretty.to_string ~width:79 sql)
+
   let from ?n t = From (t, Option.value n ~default:t.table)
   let where ?(n = "t") q e = Where (q, n, e)
   let order_by ?(n = "t") q e = Order_by (q, n, e)

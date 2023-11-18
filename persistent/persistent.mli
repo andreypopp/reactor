@@ -110,6 +110,8 @@ module Q : sig
     ('scope -> 'next_scope make_scope * fields * 'value Codec.decode) ->
     ('next_scope, 'value) t
   (** FOR INTERNAL USE ONLY *)
+
+  val print_sql : (_, _) t -> unit
 end
 
 val init :

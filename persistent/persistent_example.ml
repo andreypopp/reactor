@@ -29,6 +29,15 @@ end
 let%expr is_john u = u.profile.name = "John" && true
 let where_user_id id = fun%query u -> where (u.id = Persistent.E.int id)
 
+(** single value *)
+let () =
+  let%query q =
+    from Subscription.t;
+    select t.user_id;
+    select (t = 1)
+  in
+  Persistent.Q.print_sql q
+
 let () =
   let db =
     let db = Persistent.init "./persistent.db" in

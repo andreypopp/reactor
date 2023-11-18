@@ -1,3 +1,4 @@
+open Printf
 open Ppxlib
 open Ast_builder.Default
 open ContainersLabels
@@ -683,8 +684,48 @@ module Query_form = struct
     | Ppat_var { txt; loc } -> p, Some (estring ~loc txt)
     | _ -> p, None
 
+  let expand_select' ~ctxt ~loc ~make_scope (alias, names, prev) fs =
+    let fs =
+      List.map fs ~f:(fun (n, e) ->
+          match e with
+          | [%expr nullable [%e? e]] ->
+              `null, (n, Expr_form.expand ~ctxt e)
+          | e -> `not_null, (n, Expr_form.expand ~ctxt e))
+    in
+    let ps, e = gen_tuple ~loc "col" (List.length fs) in
+    let x, xs =
+      match List.combine ps fs with
+      | [] -> assert false
+      | x :: xs -> x, xs
+    in
+    let make txt (pat, (nullable, (n, e))) =
+      let name = estring ~loc:n.loc n.txt in
+      let exp =
+        match nullable with
+        | `null -> [%expr Persistent.P.get_opt ~name:[%e name] [%e e]]
+        | `not_null -> [%expr Persistent.P.get ~name:[%e name] [%e e]]
+      in
+      binding_op ~loc ~op:{ loc; txt } ~pat ~exp
+    in
+    let e =
+      pexp_letop ~loc
+        (letop ~body:e ~let_:(make "let+" x)
+           ~ands:(List.map xs ~f:(make "and+")))
+    in
+    let e =
+      [%expr
+        Persistent.P.select' ?n:[%e pexp_opt ~loc alias] [%e prev]
+          [%e make_scope names fs]
+          [%e
+            pexp_slot' ~loc names
+              [%expr
+                let open Persistent.P in
+                [%e e]]]]
+    in
+    Some [%pat? t], alias, e
+
   let rec expand' ?names ?prev ~ctxt e =
-    let rec rewrite ~alias names prev q =
+    let rec rewrite ((alias, names, prev) as here) q =
       let loc = q.pexp_loc in
       match q with
       | [%expr from [%e? id]] ->
@@ -739,73 +780,37 @@ module Query_form = struct
           let names = Option.value names ~default:[%pat? t] in
           Some names, alias, [%expr [%e ocamlish] [%e prev]]
       | [%expr [%e? name] = [%e? rhs]] ->
-          let _name, _alias, rhs = rewrite ~alias names prev rhs in
+          let _name, _alias, rhs = rewrite here rhs in
           let name, alias = name_of name in
           Some name, alias, rhs
-      | { pexp_desc = Pexp_tuple xs; _ } ->
-          let xs =
-            List.map xs ~f:(function
-              | [%expr nullable [%e? exp]] ->
-                  `null, Expr_form.expand ~ctxt exp
-              | exp -> `not_null, Expr_form.expand ~ctxt exp)
+      | { pexp_desc = Pexp_tuple xs; _ }
+      | [%expr select [%e? { pexp_desc = Pexp_tuple xs; _ }]] ->
+          let fs =
+            List.mapi xs ~f:(fun i x ->
+                let n = { txt = sprintf "_%i" i; loc = x.pexp_loc } in
+                n, x)
           in
-          let make_scope =
+          let make_scope names fs =
             let xs =
-              List.mapi xs ~f:(fun i (_, e) ->
-                  let n = estring ~loc (Printf.sprintf "_%i" i) in
-                  [%expr Persistent.E.as_col __t [%e n] [%e e]])
+              List.map fs ~f:(fun (_, (n, e)) ->
+                  let ns = estring ~loc:n.loc n.txt in
+                  [%expr Persistent.E.as_col __t [%e ns] [%e e]])
             in
             pexp_slot' ~loc names
               [%expr fun (__t, __p) -> [%e pexp_tuple ~loc xs]]
           in
-          let ps, e = gen_tuple ~loc "col" (List.length xs) in
-          let x, xs =
-            match List.combine ps xs with
-            | [] -> assert false
-            | x :: xs -> x, xs
-          in
-          let make txt (pat, exp) =
-            let exp =
-              match exp with
-              | `null, exp -> [%expr Persistent.P.get_opt [%e exp]]
-              | `not_null, exp -> [%expr Persistent.P.get [%e exp]]
-            in
-            binding_op ~loc ~op:{ loc; txt } ~pat ~exp
-          in
-          let e =
-            pexp_letop ~loc
-              (letop ~body:e ~let_:(make "let+" x)
-                 ~ands:(List.map xs ~f:(make "and+")))
-          in
-          let e =
-            [%expr
-              let open Persistent.P in
-              [%e e]]
-          in
-          let e =
-            [%expr
-              Persistent.P.select' ?n:[%e pexp_opt ~loc alias] [%e prev]
-                [%e make_scope] [%e pexp_slot' ~loc names e]]
-          in
-          Some [%pat? t], alias, e
-      | { pexp_desc = Pexp_record (fs, None); _ } ->
+          expand_select' ~ctxt ~loc ~make_scope here fs
+      | { pexp_desc = Pexp_record (fs, None); _ }
+      | [%expr select [%e? { pexp_desc = Pexp_record (fs, None); _ }]] ->
           let fs =
             List.map fs ~f:(fun (n, x) ->
                 match n.txt with
                 | Lident txt -> { txt; loc = n.loc }, x
                 | _ -> error ~loc "invalid select")
           in
-          let ps, e = gen_tuple ~loc "c" (List.length fs) in
-          let xs =
-            List.map fs ~f:(fun (n, x) ->
-                match x with
-                | [%expr nullable [%e? exp]] ->
-                    n, (`null, Expr_form.expand ~ctxt exp)
-                | exp -> n, (`not_null, Expr_form.expand ~ctxt exp))
-          in
-          let make_scope =
+          let make_scope names fs =
             let fields =
-              List.map xs ~f:(fun (n, (_, e)) ->
+              List.map fs ~f:(fun (_, (n, e)) ->
                   let ns = estring ~loc:n.loc n.txt in
                   let e =
                     [%expr Persistent.E.as_col __t [%e ns] [%e e]]
@@ -824,42 +829,23 @@ module Query_form = struct
                     pexp_object ~loc
                       (class_structure ~self:(ppat_any ~loc) ~fields)]]
           in
-          let x, xs =
-            match List.combine ps xs with
-            | [] -> assert false
-            | x :: xs -> x, xs
-          in
-          let e =
-            let make txt (pat, (name, exp)) =
-              let name = estring ~loc:name.loc name.txt in
-              let exp =
-                match exp with
-                | `null, exp ->
-                    [%expr Persistent.P.get_opt ~name:[%e name] [%e exp]]
-                | `not_null, exp ->
-                    [%expr Persistent.P.get ~name:[%e name] [%e exp]]
-              in
-              binding_op ~loc ~op:{ loc; txt } ~pat ~exp
+          expand_select' ~ctxt ~loc ~make_scope here fs
+      | [%expr select [%e? e]] ->
+          let fs = [ { txt = "c"; loc = e.pexp_loc }, e ] in
+          let make_scope names fs =
+            let n, e =
+              match fs with [ (_, x) ] -> x | _ -> assert false
             in
-            pexp_letop ~loc
-              (letop ~body:e ~let_:(make "let+" x)
-                 ~ands:(List.map xs ~f:(make "and+")))
+            let ns = estring ~loc:n.loc n.txt in
+            pexp_slot' ~loc names
+              [%expr
+                fun (__t, __p) -> Persistent.E.as_col __t [%e ns] [%e e]]
           in
-          let e =
-            [%expr
-              let open Persistent.P in
-              [%e e]]
-          in
-          let e =
-            [%expr
-              Persistent.P.select' ?n:[%e pexp_opt ~loc alias] [%e prev]
-                [%e make_scope] [%e pexp_slot' ~loc names e]]
-          in
-          Some [%pat? t], alias, e
+          expand_select' ~ctxt ~loc ~make_scope here fs
       | [%expr
           let [%p? pat] = [%e? ocamlish] in
           [%e? next]] ->
-          let name, alias, next = rewrite ~alias names prev next in
+          let name, alias, next = rewrite here next in
           ( name,
             alias,
             [%expr
@@ -882,9 +868,10 @@ module Query_form = struct
     | q :: qs ->
         let loc = Expansion_context.Extension.extension_point_loc ctxt in
         let prev = Option.value prev ~default:[%expr ()] in
-        List.fold_left qs ~init:(rewrite ~alias:None names prev q)
+        List.fold_left qs
+          ~init:(rewrite (None, names, prev) q)
           ~f:(fun (names, alias, prev) e ->
-            let names, alias, e = rewrite ~alias names prev e in
+            let names, alias, e = rewrite (alias, names, prev) e in
             names, alias, e)
 
   let expand ~ctxt e =
