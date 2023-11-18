@@ -29,12 +29,31 @@ end
 let%expr is_john u = u.profile.name = "John" && true
 let where_user_id id = fun%query u -> where (u.id = Persistent.E.int id)
 
-(** single value *)
+(** select a single value *)
 let () =
   let%query q =
     from Subscription.t;
     select t.user_id;
     select (t = 1)
+  in
+  Persistent.Q.print_sql q
+
+(** select a tuple value *)
+let () =
+  let%query q =
+    from Subscription.t;
+    select (t.user_id, "OK");
+    (u, n) = where (t._1 = 45);
+    where (u = 45)
+  in
+  Persistent.Q.print_sql q
+
+(** select a record value *)
+let () =
+  let%query q =
+    from Subscription.t;
+    { user_id } = where (t.user_id = 45);
+    select { is_45 = user_id = 45 }
   in
   Persistent.Q.print_sql q
 
@@ -54,7 +73,7 @@ let () =
     query (where_user_id 3);
     u = order_by (desc t.created_at);
     (user, sub) = left_join (query Submodule.sub) (u.id = t.user_id);
-    where (user.id = 2 && ((sub#.id = ??1) #? false));
+    where (user.id = 2 && sub#.id = 1);
     left_join
       (query Submodule.sub;
        t' = { id = t.user_id })

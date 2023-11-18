@@ -14,11 +14,13 @@ module Codec : sig
 end
 
 type 's opt
+type 's agg
 
 (** expression DSL *)
 module E : sig
-  type not_null = private NOT_NULL
-  type null = private NULL
+  type null = [ `not_null | `null ]
+  type not_null = [ `not_null ]
+  type 'a n = [< `not_null | `null ] as 'a
   type ('a, 'n) t
   type 'a expr = ('a, not_null) t
   type 'a expr_nullable = ('a, null) t
@@ -26,16 +28,17 @@ module E : sig
   val int : int -> int expr
   val bool : bool -> bool expr
   val string : string -> string expr
-  val eq : ('a, 'n) t -> ('b, 'n) t -> (bool, 'n) t
-  val and_ : (bool, 'n) t -> (bool, 'n) t -> (bool, 'n) t
-  val or_ : (bool, 'n) t -> (bool, 'n) t -> (bool, 'n) t
-  val ( = ) : ('a, 'n) t -> ('a, 'n) t -> (bool, 'n) t
-  val ( && ) : (bool, 'n) t -> (bool, 'n) t -> (bool, 'n) t
-  val ( || ) : (bool, 'n) t -> (bool, 'n) t -> (bool, 'n) t
-  val coalesce : ('a, _) t -> ('a, 'n) t -> ('a, 'n) t
-  val iif : (bool, _) t -> ('a, 'n) t -> ('a, 'n) t -> ('a, 'n) t
-  val iif' : (bool, _) t -> ('a, _) t -> ('a, null) t
+  val eq : ('a, _ n) t -> ('b, _ n) t -> (bool, _ n) t
+  val and_ : (bool, _ n) t -> (bool, _ n) t -> (bool, _ n) t
+  val or_ : (bool, _ n) t -> (bool, _ n) t -> (bool, _ n) t
+  val ( = ) : ('a, _ n) t -> ('a, _ n) t -> (bool, _ n) t
+  val ( && ) : (bool, _ n) t -> (bool, _ n) t -> (bool, _ n) t
+  val ( || ) : (bool, _ n) t -> (bool, _ n) t -> (bool, _ n) t
+  val coalesce : ('a, _) t -> ('a, 'n n) t -> ('a, 'n n) t
+  val iif : (bool, _ n) t -> ('a, _ n) t -> ('a, _ n) t -> ('a, _ n) t
+  val iif' : (bool, _ n) t -> ('a, _ n) t -> 'a expr_nullable
   val of_opt : 's opt -> ('s -> ('a, _) t) -> 'a expr_nullable
+  val null : unit -> 'a expr_nullable
   val nullable : ('a, _) t -> 'a expr_nullable
 
   val as_col : string -> string -> ('a, 'n) t -> ('a, 'n) t
@@ -77,8 +80,8 @@ type ('row, 'scope, 'pk) table = {
 module Q : sig
   type order
 
-  val asc : (_, _) E.t -> order
-  val desc : (_, _) E.t -> order
+  val asc : (_, _) E.t -> order * any_expr
+  val desc : (_, _) E.t -> order * any_expr
 
   type ('a, 's) t
 
@@ -87,13 +90,13 @@ module Q : sig
   val where :
     ?n:string ->
     ('scope, 'row) t ->
-    ('scope -> bool expr) ->
+    ('scope -> (bool, _) E.t) ->
     ('scope, 'row) t
 
   val order_by :
     ?n:string ->
     ('scope, 'row) t ->
-    ('scope -> order list) ->
+    ('scope -> (order * any_expr) list) ->
     ('scope, 'row) t
 
   val left_join :
@@ -101,13 +104,22 @@ module Q : sig
     ?nb:string ->
     ('scope_a, 'row_a) t ->
     ('scope_b, 'row_b) t ->
-    ('scope_a * 'scope_b -> bool expr) ->
-    ('scope_a * 'scope_b opt, 'row_a * 'row_b option) t
+    (< _1 : 'scope_a ; _2 : 'scope_b > -> bool expr) ->
+    (< _1 : 'scope_a ; _2 : 'scope_b opt >, 'row_a * 'row_b option) t
 
   val select :
     ?n:string ->
     ('scope, _) t ->
     ('scope -> 'next_scope make_scope * fields * 'value Codec.decode) ->
+    ('next_scope, 'value) t
+  (** FOR INTERNAL USE ONLY *)
+
+  val group_by :
+    ?n:string ->
+    ('scope, _) t ->
+    ('scope -> 'key * any_expr list) ->
+    ('key * 'scope agg ->
+    'next_scope make_scope * fields * 'value Codec.decode) ->
     ('next_scope, 'value) t
   (** FOR INTERNAL USE ONLY *)
 

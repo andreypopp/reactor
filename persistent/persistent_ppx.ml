@@ -561,6 +561,8 @@ module Expr_form = struct
     let rec rewrite e =
       let loc = e.pexp_loc in
       match e.pexp_desc with
+      | Pexp_ident { txt = Lident "null"; _ } ->
+          [%expr Persistent.E.null ()]
       | Pexp_ident { txt = Lident "="; _ } -> [%expr Persistent.E.( = )]
       | Pexp_ident { txt = Lident "&&"; _ } -> [%expr Persistent.E.( && )]
       | Pexp_ident { txt = Lident "||"; _ } -> [%expr Persistent.E.( || )]
@@ -586,7 +588,7 @@ module Expr_form = struct
               [%expr
                 Persistent.E.of_opt [%e scope] (fun scope ->
                     [%e pexp_send ~loc:field.loc [%expr scope] field])]
-          | [%expr [%e? nullable] #? [%e? default]] ->
+          | [%expr [%e? nullable] |? [%e? default]] ->
               [%expr
                 Persistent.E.coalesce [%e rewrite nullable]
                   [%e rewrite default]]

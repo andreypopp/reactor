@@ -168,12 +168,14 @@ module Esc = struct
 end
 
 type 's opt = Opt of 's
+type 's agg = Agg of 's
 
 module E = struct
   open Codec.Primitives
 
-  type not_null = private NOT_NULL
-  type null = private NULL
+  type null = [ `not_null | `null ]
+  type not_null = [ `not_null ]
+  type 'a n = [< `not_null | `null ] as 'a
 
   type ('a, 'n) t = {
     sql : string;
@@ -199,6 +201,9 @@ module E = struct
     Buffer.add_char b '\'';
     let sql = Buffer.contents b in
     { sql; decode = string_codec.decode; cols = [] }
+
+  let null () =
+    { sql = "NULL"; decode = (fun _ _ -> assert false); cols = [] }
 
   let make_binop decode op a b =
     {
@@ -468,15 +473,17 @@ let transaction db f =
     raise exn
 
 module Q = struct
-  type order = Asc : (_, _) E.t -> order | Desc : (_, _) E.t -> order
+  type order = Asc | Desc
 
-  let asc e = Asc e
-  let desc e = Desc e
+  let asc e = Asc, Any_expr e
+  let desc e = Desc, Any_expr e
 
   type (_, _) t =
     | From : ('a, 's, _) table * string -> ('s, 'a) t
-    | Where : ('s, 'a) t * string * ('s -> bool expr) -> ('s, 'a) t
-    | Order_by : ('s, 'a) t * string * ('s -> order list) -> ('s, 'a) t
+    | Where : ('s, 'a) t * string * ('s -> (bool, _) E.t) -> ('s, 'a) t
+    | Order_by :
+        ('s, 'a) t * string * ('s -> (order * any_expr) list)
+        -> ('s, 'a) t
     (* | Join : *)
     (*     ('sa, 'a) q * ('sb, 'b) q * ('sa * 'sb -> bool expr) *)
     (*     -> ('sa * 'sb, 'a * 'b) q *)
@@ -485,12 +492,18 @@ module Q = struct
         * string
         * ('sb, 'b) t
         * string
-        * ('sa * 'sb -> bool expr)
-        -> ('sa * 'sb opt, 'a * 'b option) t
+        * (< _1 : 'sa ; _2 : 'sb > -> bool expr)
+        -> (< _1 : 'sa ; _2 : 'sb opt >, 'a * 'b option) t
     | Select :
         ('s, 'a) t
         * string
         * ('s -> 's1 make_scope * fields * 'a1 Codec.decode)
+        -> ('s1, 'a1) t
+    | Group_by :
+        ('s, 'a) t
+        * string
+        * ('s -> 'k * any_expr list)
+        * ('k * 's agg -> 's1 make_scope * fields * 'a1 Codec.decode)
         -> ('s1, 'a1) t
 
   type ('s, 'a) rel = {
@@ -504,11 +517,10 @@ module Q = struct
   and tree =
     | SUBQUERY : (_, _) rel * string -> tree
     | FROM : _ table * string -> tree
-    | WHERE : (_, _) rel * string * (_, _) E.t -> tree
-    | ORDER_BY : (_, _) rel * string * order list -> tree
-    | JOIN :
-        (_, _) rel * string * (_, _) rel * string * (_, _) E.t
-        -> tree
+    | WHERE : (_, _) rel * string * any_expr -> tree
+    | ORDER_BY : (_, _) rel * string * (order * any_expr) list -> tree
+    | GROUP_BY : (_, _) rel * string * any_expr list -> tree
+    | JOIN : (_, _) rel * string * (_, _) rel * string * any_expr -> tree
 
   let rec print_rel : type s a. (s, a) rel -> Containers_pp.t =
    fun rel ->
@@ -535,15 +547,22 @@ module Q = struct
         ^/ text "LEFT JOIN"
         ^+ bracket2 "(" (print_rel b)
              (sprintf ") AS %s" (Esc.render_id bn))
-        ^/ group (text "ON" ^ nest 2 (newline ^ text (E.to_sql e)))
+        ^/ group (text "ON" ^ nest 2 (newline ^ print_any_expr e))
     | WHERE (rel, n, e) ->
         print_from rel n
-        ^/ group (text "WHERE" ^ nest 2 (newline ^ text (E.to_sql e)))
+        ^/ group (text "WHERE" ^ nest 2 (newline ^ print_any_expr e))
+    | GROUP_BY (rel, n, key) ->
+        print_from rel n
+        ^/ group
+             (text "GROUP BY"
+             ^ nest 2 (newline ^ of_list ~sep:comma print_any_expr key))
     | ORDER_BY (rel, n, os) ->
         print_from rel n
         ^/ group
              (text "ORDER BY"
              ^ nest 2 (newline ^ of_list ~sep:comma print_order os))
+
+  and print_any_expr (Any_expr e) = Containers_pp.text (E.to_sql e)
 
   and print_from : type s a. (s, a) rel -> string -> Containers_pp.t =
     let open Containers_pp in
@@ -556,8 +575,8 @@ module Q = struct
   and print_order =
     let open Containers_pp in
     function
-    | Asc e -> textf "%s ASC" (E.to_sql e)
-    | Desc e -> textf "%s DESC" (E.to_sql e)
+    | Asc, e -> print_any_expr e ^+ text "ASC"
+    | Desc, e -> print_any_expr e ^+ text "DESC"
 
   module Col_set = Set.Make (struct
     type t = string * string
@@ -565,14 +584,13 @@ module Q = struct
     let compare = Ord.pair Ord.string Ord.string
   end)
 
-  let used_expr e used =
+  let used_expr (Any_expr e) used =
     List.fold_left (E.cols e)
       ~f:(fun used col -> Col_set.add col used)
       ~init:used
 
   let used_fields fs used =
-    List.fold_left fs ~init:used ~f:(fun used (Any_expr e, _) ->
-        used_expr e used)
+    List.fold_left fs ~init:used ~f:(fun used (e, _) -> used_expr e used)
 
   let mark t rel used_select used =
     if not (Col_set.is_empty used_select) then
@@ -594,8 +612,15 @@ module Q = struct
     | ORDER_BY (inner, n, fs) ->
         let used =
           List.fold_left fs
-            ~f:(fun used -> function
-              | Asc e -> used_expr e used | Desc e -> used_expr e used)
+            ~f:(fun used (_, e) -> used_expr e used)
+            ~init:used_select
+        in
+        mark n inner used_select used;
+        trim_select inner
+    | GROUP_BY (inner, n, key) ->
+        let used =
+          List.fold_left key
+            ~f:(fun used e -> used_expr e used)
             ~init:used_select
         in
         mark n inner used_select used;
@@ -630,7 +655,7 @@ module Q = struct
         }
     | Where (q, n, e) ->
         let inner = to_rel q in
-        let e = e (inner.scope (n, "")) in
+        let e = Any_expr (e (inner.scope (n, ""))) in
         {
           decode = inner.decode;
           scope = inner.scope;
@@ -669,7 +694,12 @@ module Q = struct
     | Left_join (a, na, b, nb, e) ->
         let a = to_rel a in
         let b = to_rel b in
-        let inner_scope = a.scope (na, ""), b.scope (nb, "") in
+        let inner_scope =
+          object
+            method _1 = a.scope (na, "")
+            method _2 = b.scope (nb, "")
+          end
+        in
         let concat_prefix a b =
           match a, b with
           | "", "" -> ""
@@ -677,10 +707,11 @@ module Q = struct
           | p, "" -> p
           | a, b -> sprintf "%s.%s" a b
         in
-
         let scope (t, p) =
-          ( a.scope (t, concat_prefix p na),
-            Opt (b.scope (t, concat_prefix p nb)) )
+          object
+            method _1 = a.scope (t, concat_prefix p na)
+            method _2 = Opt (b.scope (t, concat_prefix p nb))
+          end
         in
         let decode row ctx =
           let a = a.decode row ctx in
@@ -690,7 +721,7 @@ module Q = struct
         {
           decode;
           scope;
-          tree = JOIN (a, na, b, nb, e inner_scope);
+          tree = JOIN (a, na, b, nb, Any_expr (e inner_scope));
           select = [];
           fields =
             forward_fields ~prefix:na na a.fields
@@ -703,6 +734,18 @@ module Q = struct
           decode;
           scope;
           tree = SUBQUERY (inner, n);
+          fields;
+          select = fields;
+        }
+    | Group_by (q, n, k, f) ->
+        let inner = to_rel q in
+        let inner_scope = inner.scope (n, "") in
+        let key_scope, key = k inner_scope in
+        let scope, fields, decode = f (key_scope, Agg inner_scope) in
+        {
+          decode;
+          scope;
+          tree = GROUP_BY (inner, n, key);
           fields;
           select = fields;
         }
@@ -723,6 +766,7 @@ module Q = struct
   (* let join b e a = Join (a, b, e) *)
   let left_join ?(na = "a") ?(nb = "b") a b e = Left_join (a, na, b, nb, e)
   let select ?(n = "t") q f = Select (q, n, f)
+  let group_by ?(n = "t") q k f = Group_by (q, n, k, f)
 
   let fold db q ~init ~f =
     let decode, _scope, sql = to_sql q in
