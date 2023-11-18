@@ -738,11 +738,6 @@ module Query_form = struct
       | [%expr query [%e? ocamlish]] ->
           let names = Option.value names ~default:[%pat? t] in
           Some names, alias, [%expr [%e ocamlish] [%e prev]]
-      (* | { pexp_desc = Pexp_ident _; _ } as q -> *)
-      (*     let name, alias' = name_of q in *)
-      (*     ( name, *)
-      (*       Some (Option.value alias ~default:alias'), *)
-      (*       [%expr [%e q] [%e prev]] ) *)
       | [%expr [%e? name] = [%e? rhs]] ->
           let _name, _alias, rhs = rewrite ~alias names prev rhs in
           let name, alias = name_of name in
