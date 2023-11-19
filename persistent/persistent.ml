@@ -173,9 +173,8 @@ type 's agg = Agg of 's
 module E = struct
   open Codec.Primitives
 
-  type null = [ `not_null | `null ]
-  type not_null = [ `not_null ]
-  type 'a n = [< `not_null | `null ] as 'a
+  type null = NULL
+  type not_null = NOT_NULL
 
   type ('a, 'n) t = {
     sql : string;

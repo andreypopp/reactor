@@ -18,9 +18,8 @@ type 's agg
 
 (** expression DSL *)
 module E : sig
-  type null = [ `not_null | `null ]
-  type not_null = [ `not_null ]
-  type 'a n = [< `not_null | `null ] as 'a
+  type null = NULL
+  type not_null = NOT_NULL
   type ('a, 'n) t
   type 'a expr = ('a, not_null) t
   type 'a expr_nullable = ('a, null) t
@@ -28,15 +27,15 @@ module E : sig
   val int : int -> int expr
   val bool : bool -> bool expr
   val string : string -> string expr
-  val eq : ('a, _ n) t -> ('b, _ n) t -> (bool, _ n) t
-  val and_ : (bool, _ n) t -> (bool, _ n) t -> (bool, _ n) t
-  val or_ : (bool, _ n) t -> (bool, _ n) t -> (bool, _ n) t
-  val ( = ) : ('a, _ n) t -> ('a, _ n) t -> (bool, _ n) t
-  val ( && ) : (bool, _ n) t -> (bool, _ n) t -> (bool, _ n) t
-  val ( || ) : (bool, _ n) t -> (bool, _ n) t -> (bool, _ n) t
-  val coalesce : ('a, _) t -> ('a, 'n n) t -> ('a, 'n n) t
-  val iif : (bool, _ n) t -> ('a, _ n) t -> ('a, _ n) t -> ('a, _ n) t
-  val iif' : (bool, _ n) t -> ('a, _ n) t -> 'a expr_nullable
+  val eq : ('a, 'n) t -> ('b, 'n) t -> (bool, 'n) t
+  val and_ : (bool, 'n) t -> (bool, 'n) t -> (bool, 'n) t
+  val or_ : (bool, 'n) t -> (bool, 'n) t -> (bool, 'n) t
+  val ( = ) : ('a, 'n) t -> ('a, 'n) t -> (bool, 'n) t
+  val ( && ) : (bool, 'n) t -> (bool, 'n) t -> (bool, 'n) t
+  val ( || ) : (bool, 'n) t -> (bool, 'n) t -> (bool, 'n) t
+  val coalesce : ('a, _) t -> ('a, 'n) t -> ('a, 'n) t
+  val iif : (bool, 'n) t -> ('a, 'n) t -> ('a, 'n) t -> ('a, 'n) t
+  val iif' : (bool, 'n) t -> ('a, 'n) t -> 'a expr_nullable
   val of_opt : 's opt -> ('s -> ('a, _) t) -> 'a expr_nullable
   val null : unit -> 'a expr_nullable
   val nullable : ('a, _) t -> 'a expr_nullable
