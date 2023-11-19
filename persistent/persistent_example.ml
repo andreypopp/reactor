@@ -73,7 +73,7 @@ let () =
     query (where_user_id 3);
     u = order_by (desc t.created_at);
     (user, sub) = left_join (query Submodule.sub) (u.id = t.user_id);
-    where (user.id = 2 && sub#.id = ??1 |? false);
+    where (user.id = 2 && Persistent.E.coalesce (sub#.id = to_nullable 1) false);
     left_join
       (query Submodule.sub;
        t' = { id = t.user_id })

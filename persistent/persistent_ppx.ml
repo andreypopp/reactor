@@ -592,8 +592,8 @@ module Expr_form = struct
               [%expr
                 Persistent.E.coalesce [%e rewrite nullable]
                   [%e rewrite default]]
-          | [%expr ??[%e? e]] ->
-              [%expr Persistent.E.nullable [%e rewrite e]]
+          | [%expr to_nullable [%e? e]] ->
+              [%expr Persistent.E.to_nullable [%e rewrite e]]
           | _ ->
               pexp_apply ~loc (rewrite f)
                 (List.map args ~f:(fun (l, e) -> l, rewrite e)))
