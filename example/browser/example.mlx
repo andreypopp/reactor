@@ -1,6 +1,6 @@
 let%component link' ~href ~label () =
   let%browser_only onClick ev =
-    ReactEvent.Mouse.preventDefault ev;
+    React.Event.Mouse.preventDefault ev;
     React_browser.Router.navigate href
   in
   <a href onClick>(React.string label)</a>
@@ -150,7 +150,7 @@ let%component add_todo_form ~on_create () =
   let value, set_value = React.useState (fun () -> "") in
   let input, set_input = ReactDOM.useDomRef () in
   let%browser_only onChange ev =
-    let value = ReactEvent.Form.(target ev)##value in
+    let value = React.Event.Form.(target ev)##value in
     set_value (fun _ -> value)
   in
   let%browser_only create () =
@@ -158,13 +158,13 @@ let%component add_todo_form ~on_create () =
       Promise.(
         let* () = on_create value in
         set_value (fun _ -> "");
-        let el = Js.Null_undefined.toOption input.current in
+        let el = Js.Nullable.toOption input.current in
         let el = Option.bind el Webapi.Dom.HtmlElement.ofElement in
         Option.iter Webapi.Dom.HtmlElement.focus el;
         return ())
   in
   let%browser_only onKeyDown ev =
-    match ReactEvent.Keyboard.key ev with "Enter" -> create () | _ -> ()
+    match React.Event.Keyboard.key ev with "Enter" -> create () | _ -> ()
   in
   let%browser_only onClick _ev = create () in
   <div>

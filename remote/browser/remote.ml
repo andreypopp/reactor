@@ -172,7 +172,7 @@ end = struct
         | None -> ()
         | Some t ->
             Js.Dict.unsafeDeleteKey (Obj.magic t) (Lazy.force req.input)
-            [@bs])
+            [@u])
 end
 
 let run_query (Query req) =

@@ -9,7 +9,7 @@ module Promise = struct
     let unit = () in
     ignore
       (Js.Global.setIntervalFloat
-         (fun () -> (resolve unit [@bs]))
+         ~f:(fun () -> (resolve unit [@u]))
          (sec *. 1000.))
 end
 
