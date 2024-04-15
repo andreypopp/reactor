@@ -1,18 +1,21 @@
-import * as React from 'react';
-import * as ReactDOM from 'react-dom/client';
-import * as ReactServerDOM from "react-server-dom-webpack/client";
+console.log("react_browser_runtime.js: starting");
 
-function callServer(id, args) {
-  throw new Error(`callServer(${id}, ...): not supported yet`);
-}
-
+// import this to be defined before we import React/ReactDOM
 window.__webpack_require__ = (id) => {
   let component = window.__exported_components[id];
+  console.log('window.__webpack_require__', id, component);
   if (component == null)
     throw new Error(`unable to resolve client component "${id}"`);
   return {__esModule: true, default: component};
 };
 
+let React = require('react');
+let ReactDOM = require('react-dom/client');
+let ReactServerDOM = require("react-server-dom-webpack/client");
+
+function callServer(id, args) {
+  throw new Error(`callServer(${id}, ...): not supported yet`);
+}
 
 function Page({loading}) {
   let tree = React.use(loading);

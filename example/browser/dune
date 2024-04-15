@@ -37,7 +37,9 @@
 
 (rule
  (target ./__boot.js)
- (deps ./output/example/browser/example.js)
+ (deps
+  ./output/example/browser/example.js
+  %{lib:react.browser:react_browser_runtime.js})
  (action
   (with-stdout-to
    %{target}

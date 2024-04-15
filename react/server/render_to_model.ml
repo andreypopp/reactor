@@ -26,12 +26,11 @@ let suspense_placeholder ~key idx =
   node ~tag_name:"$Sreact.suspense" ~key ~props:[] (Some (lazy_value idx))
 
 let ref ~import_module ~import_name =
-  `Assoc
+  `List
     [
-      "id", `String import_module;
-      "name", `String import_name;
-      "chunks", `List [];
-      "async", `Bool false;
+      `String import_module (* id *);
+      `List [] (* chunks *);
+      `String import_name (* name *);
     ]
 
 type chunk = C_value of model | C_ref of model
