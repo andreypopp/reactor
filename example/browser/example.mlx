@@ -164,7 +164,9 @@ let%component add_todo_form ~on_create () =
         return ())
   in
   let%browser_only onKeyDown ev =
-    match React.Event.Keyboard.key ev with "Enter" -> create () | _ -> ()
+    match React.Event.Keyboard.key ev with
+    | "Enter" -> create ()
+    | _ -> ()
   in
   let%browser_only onClick _ev = create () in
   <div>
