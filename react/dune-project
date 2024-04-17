@@ -7,7 +7,7 @@
 (generate_opam_files true)
 
 (source
- (github andreypopp/react_of_ocaml))
+ (github andreypopp/reactor))
 
 (authors "Andrey Popp")
 

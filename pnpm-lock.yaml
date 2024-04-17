@@ -17,7 +17,7 @@ dependencies:
   react-server-dom-webpack:
     specifier: 19.0.0-canary-96c584661-20240412
     version: 19.0.0-canary-96c584661-20240412(react-dom@19.0.0-canary-96c584661-20240412)(react@19.0.0-canary-96c584661-20240412)(webpack@5.88.2)
-  react_of_ocaml:
+  reactor:
     specifier: 'link:'
     version: 'link:'
 

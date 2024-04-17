@@ -1,5 +1,5 @@
 {
-  "name": "react_of_ocaml",
+  "name": "reactor",
   "version": "1.0.0",
   "author": "Andrey Popp",
   "license": "ISC",
@@ -8,6 +8,6 @@
     "react": "19.0.0-canary-96c584661-20240412",
     "react-dom": "19.0.0-canary-96c584661-20240412",
     "react-server-dom-webpack": "19.0.0-canary-96c584661-20240412",
-    "react_of_ocaml": "link:"
+    "reactor": "link:"
   }
 }

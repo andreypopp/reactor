@@ -3,8 +3,8 @@ opam-version: "2.0"
 maintainer: ["Andrey Popp"]
 authors: ["Andrey Popp"]
 license: "LICENSE"
-homepage: "https://github.com/andreypopp/react_of_ocaml"
-bug-reports: "https://github.com/andreypopp/react_of_ocaml/issues"
+homepage: "https://github.com/andreypopp/reactor"
+bug-reports: "https://github.com/andreypopp/reactor/issues"
 depends: [
   "ocaml" {>= "5.1"}
   "dune" {>= "3.11"}
@@ -29,4 +29,4 @@ build: [
   ]
   ["dune" "install" "-p" name "--create-install-files" name]
 ]
-dev-repo: "git+https://github.com/andreypopp/react_of_ocaml.git"
+dev-repo: "git+https://github.com/andreypopp/reactor.git"
