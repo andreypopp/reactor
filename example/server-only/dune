@@ -5,4 +5,4 @@
  (libraries react.server react_dream dream)
  (flags :standard -alert ++browser_only)
  (preprocess
-  (pps react.ppx -native)))
+  (pps ppx_router react.ppx -native)))

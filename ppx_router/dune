@@ -1,0 +1,22 @@
+(library
+ (name ppx_router)
+ (modules ppx_router)
+ (public_name ppx_router)
+ (libraries uri ppxlib containers)
+ (kind ppx_rewriter)
+ (ppx_runtime_libraries ppx_router.runtime)
+ (preprocess
+  (pps ppxlib.metaquot)))
+
+(library
+ (name ppx_router_runtime)
+ (modules ppx_router_runtime)
+ (public_name ppx_router.runtime)
+ (libraries containers dream)
+ (preprocess
+  (pps ppxlib.metaquot)))
+
+(executable
+ (name ppx_router_test)
+ (modules ppx_router_test)
+ (libraries ppx_router))

@@ -1,10 +1,13 @@
 open! ContainersLabels
 open! Monomorphic
 open Lwt.Infix
+open React_server
+
+let main, main_href = [%GET "/"]
+let hello, hello_href = [%GET "/hello/:name?capitalize=:bool?"]
+let api_data, _api_data_href = [%GET "/api/data"]
 
 module UI = struct
-  open React_server
-
   let%async_component card ~delay ~title ~children () =
     Lwt_unix.sleep delay >|= fun () ->
     <div>
@@ -31,6 +34,9 @@ module UI = struct
         <card title="Initial Data" delay=0.>
           "This components loads some async data but will block the \
            shell until this data is ready."
+          <div>
+            <a href=(hello_href () ~capitalize:"true" ~name:"world")>"Go to hello page"</a>
+          </div>
         </card>
         <React.Suspense>
           <card title="Async Data" delay=1.>(React.string "HELLO")</card>
@@ -55,8 +61,32 @@ module UI = struct
     </page>
 end
 
+let to_page_route (route : _ Ppx_router_runtime.route) ui =
+  let k ui = React_dream.render ui in
+  let register =
+    match route.method_ with
+    | `GET -> Dream.get
+    | `POST -> Dream.post
+    | `PUT -> Dream.put
+    | `DELETE -> Dream.delete
+  in
+  register route.path (route.handle k ui)
+
 let () =
-  let render ui = React_dream.render ui in
   Dream.run ~interface:"0.0.0.0" ~port:8080
   @@ Dream.logger
-  @@ Dream.router [ Dream.get "/" (render UI.app) ]
+  @@ Dream.router
+       [
+         to_page_route main UI.app;
+         to_page_route hello (fun ~name ~capitalize _req ->
+             let capitalize = Option.is_some capitalize in
+             let name = if capitalize then String.capitalize_ascii name else name in
+             <div>
+               <div>"Hello, " (React.string name)</div>
+               <div>
+                 "Back to " <a href=(main_href ())>"main page"</a>
+               </div>
+             </div>);
+         Ppx_router_runtime.to_route api_data (fun _req ->
+             Dream.json "{}");
+       ]
