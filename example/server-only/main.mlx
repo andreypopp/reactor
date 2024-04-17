@@ -2,25 +2,48 @@ open! ContainersLabels
 open! Monomorphic
 open Lwt.Infix
 open React_server
-open Ppx_router_runtime.Types
 
-type modifier = [ `capitalize | `uppercase ]
+(* first we define few routes for the app *)
+module Routes = struct
+  (* we need to open this module to to_url/of_url functions for common OCaml
+     types (string, int, etc.) are in scope *)
+  open Ppx_router_runtime.Types
 
-let modifier_of_url : string -> modifier option = function
-  | "capitalize" -> Some `capitalize
-  | "uppercase" -> Some `uppercase
-  | _ -> None
+  (* now, we showcase how to define a custom type and allow it to be used in
+     query parameters *)
+  type modifier = [ `capitalize | `uppercase ]
 
-let modifier_to_url : modifier -> string = function
-  | `capitalize -> "capitalize"
-  | `uppercase -> "uppercase"
+  let modifier_of_url : string -> modifier option = function
+    | "capitalize" -> Some `capitalize
+    | "uppercase" -> Some `uppercase
+    | _ -> None
 
-let main, main_href = [%GET "/"]
+  let modifier_to_url : modifier -> string = function
+    | `capitalize -> "capitalize"
+    | `uppercase -> "uppercase"
 
-let hello, hello_href =
-  [%GET "/hello/:name?repeat=:int?&modifier=:modifier?"]
+  (* this is the main page of the app *)
+  let main, main_href = [%GET "/"]
 
-let api_data, _api_data_href = [%GET "/api/data"]
+  (* this is the hello page, it takes a name and an optional modifier and
+     an optional repeat parameter *)
+  let hello, hello_href =
+    [%GET "/hello/:name?repeat=:int?&modifier=:modifier?"]
+
+  (* just an example of an API route *)
+  let api_data, _api_data_href = [%GET "/api/data"]
+
+  let to_page_route (route : _ Ppx_router_runtime.route) ui =
+    let k ui = React_dream.render ui in
+    let register =
+      match route.method_ with
+      | `GET -> Dream.get
+      | `POST -> Dream.post
+      | `PUT -> Dream.put
+      | `DELETE -> Dream.delete
+    in
+    register route.path (route.handle k ui)
+end
 
 module UI = struct
   let%async_component card ~delay ~title ~children () =
@@ -50,7 +73,8 @@ module UI = struct
           "This components loads some async data but will block the \
            shell until this data is ready."
           <div>
-            <a href=(hello_href () ~modifier:`uppercase ~name:"world")>
+            <a href=(Routes.hello_href () ~modifier:`uppercase
+                       ~name:"world")>
               "Go to hello page"
             </a>
           </div>
@@ -78,24 +102,14 @@ module UI = struct
     </page>
 end
 
-let to_page_route (route : _ Ppx_router_runtime.route) ui =
-  let k ui = React_dream.render ui in
-  let register =
-    match route.method_ with
-    | `GET -> Dream.get
-    | `POST -> Dream.post
-    | `PUT -> Dream.put
-    | `DELETE -> Dream.delete
-  in
-  register route.path (route.handle k ui)
-
 let () =
   Dream.run ~interface:"0.0.0.0" ~port:8080
   @@ Dream.logger
   @@ Dream.router
        [
-         to_page_route main UI.app;
-         to_page_route hello (fun ~name ~modifier ~repeat _req ->
+         Routes.to_page_route Routes.main UI.app;
+         Routes.to_page_route Routes.hello
+           (fun ~name ~modifier ~repeat _req ->
              let name =
                match modifier with
                | Some `capitalize -> String.capitalize_ascii name
@@ -112,9 +126,9 @@ let () =
              <div>
                <div>"Hello, " (React.string name)</div>
                <div>
-                 "Back to " <a href=(main_href ())>"main page"</a>
+                 "Back to " <a href=(Routes.main_href ())>"main page"</a>
                </div>
              </div>);
-         Ppx_router_runtime.to_route api_data (fun _req ->
+         Ppx_router_runtime.to_route Routes.api_data (fun _req ->
              Dream.json "{}");
        ]
