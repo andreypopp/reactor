@@ -1,4 +1,4 @@
-OPAM_PACKAGES=$(wildcard ./*.opam) $(wildcard ./*/*.opam)
+OPAM_PACKAGES=$(wildcard ./*.opam) $(wildcard ./*/*.opam) $(wildcard example/*/*.opam)
 
 init: opam-switch opam-install pnpm-install
 

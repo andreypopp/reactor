@@ -44,8 +44,8 @@
   (with-stdout-to
    %{target}
    (progn
-    (run echo "import '%{entry}';")
-    (run echo "import '%{runtime}';")))))
+    (run echo "import './%{entry}';")
+    (run echo "import './%{runtime}';")))))
 
 (rule
  (target ./bundle.js)
