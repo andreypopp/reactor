@@ -82,7 +82,9 @@ let () =
   in
   let links = [ "/static/bundle.css" ] in
   let scripts = [ "/static/bundle.js" ] in
-  let render ui = React_dream.render ~links ~scripts ui in
+  let render ui =
+    React_dream.render ~enable_client_components:true ~links ~scripts ui
+  in
   Dream.run ~interface:"0.0.0.0" ~port:8080
   @@ Dream.logger
   @@ Dream.router
@@ -92,7 +94,8 @@ let () =
           Dream.get "/about" (render UI.about);
           Dream.get "/todo" (render UI.todos);
           Dream.get "/no-ssr"
-            (React_dream.render ~enable_ssr:false ~links ~scripts UI.app);
+            (React_dream.render ~enable_client_components:true
+               ~enable_ssr:false ~links ~scripts UI.app);
         ]
        @ Api.Hello.routes
        @ Api.Todo.routes)
