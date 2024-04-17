@@ -19,7 +19,8 @@ let html_prelude ~links =
 
 let rsc_content_type = "application/react.component"
 
-let render ?(enable_ssr = true) ?(scripts = []) ?(links = []) =
+let render ?(enable_client_components = false) ?(enable_ssr = true)
+    ?(scripts = []) ?(links = []) =
   let html_prelude = html_prelude ~links in
   let html_scripts =
     Html.(List.map scripts ~f:make_script |> splice ~sep:"\n")
@@ -27,13 +28,16 @@ let render ?(enable_ssr = true) ?(scripts = []) ?(links = []) =
   fun f : Dream.handler ->
     fun req ->
      match Dream.header req "accept" with
-     | Some accept when String.equal accept rsc_content_type ->
+     | Some accept
+       when enable_client_components
+            && String.equal accept rsc_content_type ->
          Dream.stream (fun stream ->
              render_to_model (f req) (fun data ->
                  Dream.write stream data >>= fun () -> Dream.flush stream))
      | _ ->
          if enable_ssr then
-           render_to_html (f req) >>= function
+           render_to_html ~render_model:enable_client_components (f req)
+           >>= function
            | Html_rendering_done { html } ->
                Dream.html
                  Html.(

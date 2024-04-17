@@ -257,20 +257,26 @@ and client_to_html_many t els : Html.t Lwt.t =
   |> Lwt_list.map_p (client_to_html t)
   >|= Emit_html.splice
 
-let rec server_to_html t = function
+let rec server_to_html ~render_model t = function
   | React_model.El_null -> Lwt.return (Html.empty, Render_to_model.null)
-  | El_text s -> Lwt.return (Html.text s, Render_to_model.text s)
-  | El_frag els -> server_to_html_many t els
+  | El_text s ->
+      Lwt.return
+        ( Html.text s,
+          if not render_model then Render_to_model.null
+          else Render_to_model.text s )
+  | El_frag els -> server_to_html_many ~render_model t els
   | El_context _ ->
       failwith "react context is not supported in server environment"
   | El_html
       { tag_name; key; props; children = Some (Html_children children) }
     ->
-      server_to_html t children >|= fun (html, children) ->
+      server_to_html ~render_model t children >|= fun (html, children) ->
       ( Html.node tag_name props [ html ],
-        Render_to_model.node ~tag_name ~key
-          ~props:(props :> (string * json) list)
-          (Some children) )
+        if not render_model then Render_to_model.null
+        else
+          Render_to_model.node ~tag_name ~key
+            ~props:(props :> (string * json) list)
+            (Some children) )
   | El_html
       {
         tag_name;
@@ -280,50 +286,59 @@ let rec server_to_html t = function
       } ->
       Lwt.return
         ( Html.node tag_name props [ Html.unsafe_raw __html ],
-          let props = (props :> (string * json) list) in
-          let props =
-            ( "dangerouslySetInnerHTML",
-              `Assoc [ "__html", `String __html ] )
-            :: props
-          in
-          Render_to_model.node ~tag_name ~key ~props None )
+          if not render_model then Render_to_model.null
+          else
+            let props = (props :> (string * json) list) in
+            let props =
+              ( "dangerouslySetInnerHTML",
+                `Assoc [ "__html", `String __html ] )
+              :: props
+            in
+            Render_to_model.node ~tag_name ~key ~props None )
   | El_html { tag_name; key; props; children = None } ->
       Lwt.return
         ( Html.node tag_name props [],
-          Render_to_model.node ~tag_name ~key
-            ~props:(props :> (string * json) list)
-            None )
+          if not render_model then Render_to_model.null
+          else
+            Render_to_model.node ~tag_name ~key
+              ~props:(props :> (string * json) list)
+              None )
   | El_thunk f ->
       let tree, _reqs = Computation.with_ctx t f in
       (* TODO: need to register them somewhere? *)
       (* let payload = handle_remote_reqs t reqs in *)
-      server_to_html t tree
+      server_to_html ~render_model t tree
   | El_async_thunk f ->
       Computation.with_ctx_async t f >>= fun (tree, _reqs) ->
-      server_to_html t tree
+      server_to_html ~render_model t tree
   | El_suspense { children; fallback = _; key } -> (
       Computation.fork t @@ fun t ->
-      let promise = server_to_html t children in
+      let promise = server_to_html ~render_model t children in
       match Lwt.state promise with
       | Sleep ->
           let idx = Computation.use_idx t in
           let html_async =
             promise >|= fun (html, model) ->
-            Html.splice
-              [
-                Emit_model.html_model (idx, Render_to_model.C_value model);
-                Emit_html.html_chunk idx html;
-              ]
+            let html = [ Emit_html.html_chunk idx html ] in
+            let html =
+              if not render_model then html
+              else
+                Emit_model.html_model (idx, Render_to_model.C_value model)
+                :: html
+            in
+            Html.splice html
           in
           let html_sync =
             ( Emit_html.html_suspense_placeholder idx,
-              Render_to_model.suspense_placeholder ~key idx )
+              if not render_model then Render_to_model.null
+              else Render_to_model.suspense_placeholder ~key idx )
           in
           `Fork (html_async, html_sync)
       | Return (html, model) ->
           `Sync
             ( Emit_html.html_suspense html,
-              Render_to_model.suspense ~key model )
+              if not render_model then Render_to_model.null
+              else Render_to_model.suspense ~key model )
       | Fail exn -> `Fail exn)
   | El_client_thunk { import_module; import_name; props; thunk } ->
       let props =
@@ -331,12 +346,16 @@ let rec server_to_html t = function
           (fun (name, jsony) ->
             match jsony with
             | React_model.Element element ->
-                server_to_html t element >|= fun (_html, model) ->
-                name, model
+                server_to_html ~render_model t element
+                >|= fun (_html, model) -> name, model
             | Promise (promise, value_to_yojson) ->
                 Computation.fork t @@ fun t ->
                 let idx = Computation.use_idx t in
-                let sync = name, Render_to_model.promise_value idx in
+                let sync =
+                  ( name,
+                    if not render_model then Render_to_model.null
+                    else Render_to_model.promise_value idx )
+                in
                 let async =
                   promise >|= fun value ->
                   let json = value_to_yojson value in
@@ -352,17 +371,19 @@ let rec server_to_html t = function
       Lwt.pause () >>= fun () ->
       Lwt.both html props >|= fun (html, props) ->
       let model =
-        let idx = Computation.use_idx t in
-        let ref = Render_to_model.ref ~import_module ~import_name in
-        Computation.emit_html t (Emit_model.html_model (idx, C_ref ref));
-        Render_to_model.node ~tag_name:(sprintf "$%i" idx) ~key:None
-          ~props None
+        if not render_model then Render_to_model.null
+        else
+          let idx = Computation.use_idx t in
+          let ref = Render_to_model.ref ~import_module ~import_name in
+          Computation.emit_html t (Emit_model.html_model (idx, C_ref ref));
+          Render_to_model.node ~tag_name:(sprintf "$%i" idx) ~key:None
+            ~props None
       in
       html, model
 
-and server_to_html_many finished els =
+and server_to_html_many ~render_model finished els =
   Array.to_list els
-  |> Lwt_list.map_p (server_to_html finished)
+  |> Lwt_list.map_p (server_to_html ~render_model finished)
   >|= List.split
   >|= fun (htmls, model) ->
   Emit_html.splice htmls, Render_to_model.list model
@@ -374,27 +395,38 @@ type html_rendering =
       html_iter : (Html.t -> unit Lwt.t) -> unit Lwt.t;
     }
 
-let render el =
+let render ~render_model el =
   let html =
     Computation.root @@ fun (t, idx) ->
-    server_to_html t el >|= fun (html, model) ->
-    Html.splice
-      [ Emit_model.html_model (idx, Render_to_model.C_value model); html ]
+    server_to_html ~render_model t el >|= fun (html, model) ->
+    if not render_model then html
+    else
+      Html.splice
+        [
+          Emit_model.html_model (idx, Render_to_model.C_value model); html;
+        ]
   in
   html >|= fun (html_shell, async) ->
   match async with
   | None ->
       let html =
-        Html.splice
-          [ Emit_model.html_start; html_shell; Emit_model.html_end ]
+        if not render_model then html_shell
+        else
+          Html.splice
+            [ Emit_model.html_start; html_shell; Emit_model.html_end ]
       in
       Html_rendering_done { html }
   | Some async ->
       let html_iter f =
-        Lwt_stream.iter_s f async >>= fun () -> f Emit_model.html_end
+        Lwt_stream.iter_s f async >>= fun () ->
+        if not render_model then Lwt.return () else f Emit_model.html_end
       in
       let html_shell =
-        Html.(
-          splice [ Emit_model.html_start; Emit_html.html_rc; html_shell ])
+        if not render_model then
+          Html.splice [ Emit_html.html_rc; html_shell ]
+        else
+          Html.(
+            splice
+              [ Emit_model.html_start; Emit_html.html_rc; html_shell ])
       in
       Html_rendering_async { html_shell; html_iter }

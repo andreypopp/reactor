@@ -107,7 +107,8 @@ type html_rendering =
       html_iter : (Html.t -> unit Lwt.t) -> unit Lwt.t;
     }
 
-val render_to_html : React.element -> html_rendering Lwt.t
+val render_to_html :
+  render_model:bool -> React.element -> html_rendering Lwt.t
 (** [render_to_html elem] renders React element [elem] to HTML. *)
 
 type browser_only

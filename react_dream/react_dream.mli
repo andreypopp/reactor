@@ -28,6 +28,7 @@ open React_server
 (** {2 Reference} *)
 
 val render :
+  ?enable_client_components:bool ->
   ?enable_ssr:bool ->
   ?scripts:string list ->
   ?links:string list ->
