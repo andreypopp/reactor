@@ -96,10 +96,11 @@ let route_expand method_ ~ctxt:_ ({ txt; loc } : label loc) =
             let write =
               [%expr
                 Buffer.add_char [%e out] ![%e sep];
-                Buffer.add_string [%e out] [%e estring ~loc param];
+                Ppx_router_runtime.encode_query_key [%e out]
+                  [%e estring ~loc param];
                 [%e sep] := '&';
                 Buffer.add_char [%e out] '=';
-                Buffer.add_string [%e out] [%e value]]
+                Ppx_router_runtime.encode_query_value [%e out] [%e value]]
             in
             match is_opt with
             | false ->
@@ -122,12 +123,13 @@ let route_expand method_ ~ctxt:_ ({ txt; loc } : label loc) =
           | `path x ->
               [%expr
                 Buffer.add_char [%e out] '/';
-                Buffer.add_string [%e out] [%e estring ~loc x];
+                Ppx_router_runtime.encode_path [%e out]
+                  [%e estring ~loc x];
                 [%e acc]]
           | `param x ->
               [%expr
                 Buffer.add_char [%e out] '/';
-                Buffer.add_string [%e out] [%e evar ~loc x];
+                Ppx_router_runtime.encode_path [%e out] [%e evar ~loc x];
                 [%e acc]])
     in
     let body =
