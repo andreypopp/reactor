@@ -18,12 +18,20 @@ let collect_params_rev ~loc:_ uri =
 let collect_query ~loc uri =
   let rec aux acc = function
     | [] -> acc
-    | (k, [ ":int" ]) :: xs -> aux (`q (k, false, `int) :: acc) xs
-    | (k, [ ":int?" ]) :: xs -> aux (`q (k, true, `int) :: acc) xs
-    | (k, [ ":string" ]) :: xs -> aux (`q (k, false, `string) :: acc) xs
-    | (k, [ ":string?" ]) :: xs -> aux (`q (k, true, `string) :: acc) xs
-    | (k, [ ":bool" ]) :: xs -> aux (`q (k, false, `bool) :: acc) xs
-    | (k, [ ":bool?" ]) :: xs -> aux (`q (k, true, `bool) :: acc) xs
+    | (k, [ typ ]) :: xs ->
+        let typ =
+          match String.chop_prefix typ ~pre:":" with
+          | Some typ -> typ
+          | None ->
+              Location.raise_errorf ~loc
+                "query parameter type must start with :"
+        in
+        let is_opt, typ =
+          match String.chop_suffix typ ~suf:"?" with
+          | Some typ -> true, typ
+          | None -> false, typ
+        in
+        aux (`q (k, is_opt, typ) :: acc) xs
     | _ ->
         Location.raise_errorf ~loc
           "unsupported query parameter type, should be either :int, \
@@ -60,24 +68,45 @@ let route_expand method_ ~ctxt:_ ({ txt; loc } : label loc) =
     let body =
       List.fold_left query ~init:body ~f:(fun f param ->
           match param with
-          | `q (param, is_opt, _) ->
+          | `q (param, is_opt, typ) ->
+              let of_url = evar ~loc (Printf.sprintf "%s_of_url" typ) in
               let x =
                 [%expr Dream.query [%e req] [%e estring ~loc param]]
               in
               let x =
-                match is_opt with
-                | true -> x
-                | false ->
-                    [%expr
-                      match [%e x] with
-                      | Some x -> x
-                      | None ->
-                          (* TODO: better error handling *)
-                          let msg =
-                            Printf.sprintf "missing query parameter %s"
-                              [%e estring ~loc param]
-                          in
-                          failwith msg]
+                [%expr
+                  match [%e x] with
+                  | Some x ->
+                      let x =
+                        match [%e of_url] x with
+                        | Some x -> x
+                        | None ->
+                            (* TODO: better error handling *)
+                            let msg =
+                              Printf.sprintf
+                                "expected paramer %s of type %s"
+                                [%e estring ~loc param]
+                                [%e estring ~loc typ]
+                            in
+                            failwith msg
+                      in
+                      [%e
+                        match is_opt with
+                        | true -> [%expr Some x]
+                        | false -> x]
+                  | None ->
+                      [%e
+                        match is_opt with
+                        | true -> [%expr None]
+                        | false ->
+                            [%expr
+                              (* TODO: better error handling *)
+                              let msg =
+                                Printf.sprintf
+                                  "missing query parameter %s"
+                                  [%e estring ~loc param]
+                              in
+                              failwith msg]]]
               in
               pexp_apply ~loc f [ Labelled param, x ])
     in
@@ -91,8 +120,9 @@ let route_expand method_ ~ctxt:_ ({ txt; loc } : label loc) =
       match query with
       | [] -> body
       | q :: qs ->
-          let f acc (`q (param, is_opt, _)) =
+          let f acc (`q (param, is_opt, typ)) =
             let pvalue, value = patt_and_expr ~loc param in
+            let to_url = evar ~loc (Printf.sprintf "%s_to_url" typ) in
             let write =
               [%expr
                 Buffer.add_char [%e out] ![%e sep];
@@ -100,7 +130,8 @@ let route_expand method_ ~ctxt:_ ({ txt; loc } : label loc) =
                   [%e estring ~loc param];
                 [%e sep] := '&';
                 Buffer.add_char [%e out] '=';
-                Ppx_router_runtime.encode_query_value [%e out] [%e value]]
+                Ppx_router_runtime.encode_query_value [%e out]
+                  ([%e to_url] [%e value])]
             in
             match is_opt with
             | false ->
@@ -149,7 +180,7 @@ let route_expand method_ ~ctxt:_ ({ txt; loc } : label loc) =
           | `param x -> pexp_fun ~loc (Labelled x) None (pvar ~loc x) body)
     in
     List.fold_left query ~init:body
-      ~f:(fun body (`q (param, is_opt, _ty)) ->
+      ~f:(fun body (`q (param, is_opt, _typ)) ->
         let label = if is_opt then Optional param else Labelled param in
         pexp_fun ~loc label None (pvar ~loc param) body)
   in

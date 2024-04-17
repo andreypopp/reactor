@@ -2,9 +2,24 @@ open! ContainersLabels
 open! Monomorphic
 open Lwt.Infix
 open React_server
+open Ppx_router_runtime.Types
+
+type modifier = [ `capitalize | `uppercase ]
+
+let modifier_of_url : string -> modifier option = function
+  | "capitalize" -> Some `capitalize
+  | "uppercase" -> Some `uppercase
+  | _ -> None
+
+let modifier_to_url : modifier -> string = function
+  | `capitalize -> "capitalize"
+  | `uppercase -> "uppercase"
 
 let main, main_href = [%GET "/"]
-let hello, hello_href = [%GET "/hello/:name?capitalize=:bool?"]
+
+let hello, hello_href =
+  [%GET "/hello/:name?repeat=:int?&modifier=:modifier?"]
+
 let api_data, _api_data_href = [%GET "/api/data"]
 
 module UI = struct
@@ -35,7 +50,9 @@ module UI = struct
           "This components loads some async data but will block the \
            shell until this data is ready."
           <div>
-            <a href=(hello_href () ~capitalize:"true" ~name:"world")>"Go to hello page"</a>
+            <a href=(hello_href () ~modifier:`uppercase ~name:"world")>
+              "Go to hello page"
+            </a>
           </div>
         </card>
         <React.Suspense>
@@ -78,9 +95,20 @@ let () =
   @@ Dream.router
        [
          to_page_route main UI.app;
-         to_page_route hello (fun ~name ~capitalize _req ->
-             let capitalize = Option.is_some capitalize in
-             let name = if capitalize then String.capitalize_ascii name else name in
+         to_page_route hello (fun ~name ~modifier ~repeat _req ->
+             let name =
+               match modifier with
+               | Some `capitalize -> String.capitalize_ascii name
+               | Some `uppercase -> String.uppercase_ascii name
+               | None -> name
+             in
+             let name =
+               match repeat with
+               | Some repeat ->
+                   List.init repeat ~f:(fun _ -> name)
+                   |> String.concat ~sep:", "
+               | None -> name
+             in
              <div>
                <div>"Hello, " (React.string name)</div>
                <div>
