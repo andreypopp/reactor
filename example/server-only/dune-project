@@ -1,31 +1,18 @@
 (lang dune 3.11)
 
-(using melange 0.1)
-
-(using dune_site 0.1)
-
 (package
- (name react_example)
+ (name react_example_server_only)
  (depends
   (ocaml
    (>= 5.1))
-  (melange
-   (>= 2))
-  (dune (= "3.11.0+merlin-reader"))
-  remote
-  realm
+  (dune (= "3.15.0+merlin-reader"))
   dream
   lwt
-  melange-webapi
-  dune-site
   mlx
   ocamlmerlin-mlx
   ocamlformat
   ocamlformat-mlx
-  ocaml-lsp-server
-  yojson)
- (sites
-  (share static)))
+  ocaml-lsp-server))
 
 (dialect
  (name mlx)

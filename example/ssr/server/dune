@@ -1,7 +1,7 @@
 (executable
  (name main)
- (public_name react-example)
- (package react_example)
+ (public_name react-example-ssr)
+ (package react-example-ssr)
  (libraries
   api_native
   react.server
@@ -15,4 +15,4 @@
 
 (generate_sites_module
  (module static)
- (sites react_example))
+ (sites react-example-ssr))

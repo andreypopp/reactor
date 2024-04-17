@@ -24,7 +24,8 @@ fmt:
 test:
 	dune runtest
 
-start:
-	@DUNE_CONFIG__GLOBAL_LOCK=disabled watchexec --restart --no-ignore \
-		--watch $$OPAMSWITCH/_build/install/default/bin --filter 'react-example' -- \
-		dune exec --no-build -- react-example
+react-example-ssr:
+	dune exec -- react-example-ssr
+
+react-example-server-only:
+	dune exec -- react-example-server-only

@@ -1,0 +1,62 @@
+open! ContainersLabels
+open! Monomorphic
+open Lwt.Infix
+
+module UI = struct
+  open React_server
+
+  let%async_component card ~delay ~title ~children () =
+    Lwt_unix.sleep delay >|= fun () ->
+    <div>
+      <h3>(React.string title)</h3>
+      <div>children</div>
+      <div>
+        "I've been sleeping for "
+        (React.stringf "%0.1f sec" delay)
+        " before appearing"
+      </div>
+    </div>
+
+  let%component page ~title ~children () =
+    <html>
+      <head><title>(React.string title)</title></head>
+      <body>
+        <h1><span>(React.string title)</span></h1> <div>children</div>
+      </body>
+    </html>
+
+  let app _req =
+    <page title="React of OCaml">
+      <div>
+        <card title="Initial Data" delay=0.>
+          "This components loads some async data but will block the \
+           shell until this data is ready."
+        </card>
+        <React.Suspense>
+          <card title="Async Data" delay=1.>(React.string "HELLO")</card>
+          <card title="Async Data" delay=1.>(React.string "HELLO")</card>
+        </React.Suspense>
+        <React.Suspense>
+          <card title="Async Data" delay=2.>(React.string "OUTER")</card>
+          <React.Suspense>
+            <card title="Inner Async Data" delay=1.>
+              (React.string "INNER")
+            </card>
+          </React.Suspense>
+        </React.Suspense>
+        <div>
+          <h2>(React.string "Testing XSS")</h2>
+          <ul>
+            <li>"</script><script>console.log(1)</script>"</li>
+            <li>"\u{2028}<script>console.log(1)</script>"</li>
+          </ul>
+        </div>
+      </div>
+    </page>
+end
+
+let () =
+  let render ui = React_dream.render ui in
+  Dream.run ~interface:"0.0.0.0" ~port:8080
+  @@ Dream.logger
+  @@ Dream.router [ Dream.get "/" (render UI.app) ]

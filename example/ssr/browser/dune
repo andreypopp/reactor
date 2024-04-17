@@ -38,14 +38,14 @@
 (rule
  (target ./__boot.js)
  (deps
-  ./output/example/browser/example.js
-  %{lib:react.browser:react_browser_runtime.js})
+  (:entry ./output/example/ssr/browser/example.js)
+  (:runtime %{lib:react.browser:react_browser_runtime.js}))
  (action
   (with-stdout-to
    %{target}
    (progn
-    (run echo "import './output/example/browser/example.js';")
-    (run echo "import '%{lib:react.browser:react_browser_runtime.js}';")))))
+    (run echo "import '%{entry}';")
+    (run echo "import '%{runtime}';")))))
 
 (rule
  (target ./bundle.js)
@@ -62,10 +62,10 @@
    ./__boot.js)))
 
 (install
- (package react_example)
+ (package react-example-ssr)
  (section
   (site
-   (react_example static)))
+   (react-example-ssr static)))
  (files
   bundle.js
   (static/tachyons.css as bundle.css)))

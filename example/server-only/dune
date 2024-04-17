@@ -1,0 +1,8 @@
+(executable
+ (name main)
+ (public_name react-example-server-only)
+ (package react_example_server_only)
+ (libraries react.server react_dream dream)
+ (flags :standard -alert ++browser_only)
+ (preprocess
+  (pps react.ppx -native)))
