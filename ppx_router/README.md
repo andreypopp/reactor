@@ -11,7 +11,7 @@ opam update
 opam install ppx_router
 ```
 
-Put this into your `dune` config:
+Put this into your `dune` file:
 ```
 (...
  (preprocess (pps ppx_router))
@@ -53,4 +53,51 @@ let handle = Routes.handle (fun route _req ->
 Finally we can use the handler in a Dream app:
 ```ocaml
 let () = Dream.run ~interface:"0.0.0.0" ~port:8080 handle
+```
+
+## Custom path/query parameter types
+
+When generating parameter encoding/decoding code for a parameter of type `T`,
+`ppx_router` will emit the code that uses the following functions.
+
+If `T` is a path parameter:
+```ocaml
+val T_of_url_path : string -> T option
+val T_to_url_path : T -> string
+```
+
+If `T` is a query parameter:
+```ocaml
+val T_of_url_query : string list -> T option
+val T_to_url_query : T -> string list
+```
+
+The default encoders/decoders are provided in `Ppx_router_runtime.Types` module
+(this is why we need to `open` the module when defining routes).
+
+To provide custom encoders/decoders for a custom type, we can define own
+functions, for example:
+
+```ocaml
+module Modifier = struct
+  type t = Capitalize | Uppercase
+
+  let rec of_url_query : t Ppx_router_runtime.url_query_decoder = function
+    | [] -> None
+    | [ "capitalize" ] -> Some Capitalize
+    | [ "uppercase" ] -> Some Uppercase
+    | _ :: xs -> of_url_query xs (* let the last one win *)
+
+  let to_url_query : t Ppx_router_runtime.url_query_encoder = function
+    | Capitalize -> [ "capitalize" ]
+    | Uppercase -> [ "uppercase" ]
+end
+```
+
+After that one can use `Modifier.t` in route definitions:
+
+```ocaml
+type t =
+  | Hello of { name : string; modifier : Modifier.t } [@GET "/hello/:name"]
+  [@@deriving router]
 ```
