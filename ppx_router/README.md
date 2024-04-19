@@ -17,34 +17,42 @@ Put this into your `dune` config:
  (preprocess (pps ppx_router))
 ```
 
-Now define your routes:
+Define your routes:
 ```ocaml
-open Ppx_router_runtime.Types
+module Routes = struct
+  open Ppx_router_runtime.Types
 
-let main, main_href =
-  [%GET "/"]
-
-let hello, hello_href =
-  [%GET "/hello/:name?repeat=:int"]
+  type t =
+    | Home [@GET "/"]
+    | Hello of { name : string; repeat : int option } [@GET "/hello/:name"]
+end
 ```
 
-And finally use them in your Dream app:
+Now we can generate URLs for these routes:
+```ocaml
+let () =
+  assert (Routes.href Home = "/");
+  assert (Routes.href (Hello {name="world"; repeat=1} = "/hello/world?repeat=1")
+```
+
+and define a handler for them:
+```ocaml
+let handle = Routes.handle (function
+  | Home -> Dream.html "Home page!"
+  | Hello {name; repeat} ->
+    let name =
+      match repeat with
+      | Some repeat ->
+        List.init repeat (fun _ -> name) |> String.concat ", "
+      | None -> name
+    in
+    Dream.html (Printf.sprintf "Hello, %s" name))
+```
+
+Finally we can use the handler in a Dream app:
 ```ocaml
 let () =
   Dream.run ~interface:"0.0.0.0" ~port:8080
   @@ Dream.logger
-  @@ Dream.router [
-    Ppx_router_runtime.to_route main (fun _req ->
-      Dream.html "Hello, World!");
-    Ppx_router_runtime.to_route hello (fun ~name ~repeat _req ->
-      let name =
-        match repeat with
-        | Some repeat ->
-          List.init repeat (fun _ -> name) |> String.concat ", "
-        | None -> name
-      in
-      Dream.html (Printf.sprintf "Hello, %s" name));
-  ]
+  @@ handle
 ```
-
-The functions `main_href` and `hello_href` are used to generate URLs for the routes.
