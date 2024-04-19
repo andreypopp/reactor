@@ -6,6 +6,7 @@
   react.browser
   api_browser
   remote.browser
+  routing_browser
   realm.browser
   melange-webapi)
  (flags :standard -open Realm -open React_browser -alert ++browser_only)
@@ -19,7 +20,12 @@
   (name example_native)
   (wrapped false)
   (modes native)
-  (libraries react.browser_server remote.native realm.native api_native)
+  (libraries
+   react.browser_server
+   remote.native
+   realm.native
+   api_native
+   routing_native)
   (flags :standard -open Realm -alert ++browser_only -w -32-27-26)
   (preprocess
    (pps react.ppx -native ppx_deriving_json.native)))

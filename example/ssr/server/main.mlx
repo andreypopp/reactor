@@ -74,29 +74,33 @@ module UI = struct
     </page>
 end
 
+let links = [ "/static/bundle.css" ]
+let scripts = [ "/static/bundle.js" ]
+
+let render =
+  React_dream.render ~enable_client_components:true ~links ~scripts
+
+let handle =
+  Routing.handle @@ function
+  | Routing.Home -> render UI.app
+  | About -> render UI.about
+  | Todo -> render UI.todos
+  | No_ssr ->
+      React_dream.render ~enable_client_components:true ~enable_ssr:false
+        ~links ~scripts UI.app
+
 let () =
   let static =
     Static.Sites.static
     |> List.head_opt
     |> Option.get_exn_or "no /static dir found"
   in
-  let links = [ "/static/bundle.css" ] in
-  let scripts = [ "/static/bundle.js" ] in
-  let render ui req =
-    React_dream.render ~enable_client_components:true ~links ~scripts ui
-      req
-  in
   Dream.run ~interface:"0.0.0.0" ~port:8080
   @@ Dream.logger
   @@ Dream.router
-       ([
-          Dream.get "/static/**" (Dream.static static);
-          Dream.get "/" (render UI.app);
-          Dream.get "/about" (render UI.about);
-          Dream.get "/todo" (render UI.todos);
-          Dream.get "/no-ssr"
-            (React_dream.render ~enable_client_components:true
-               ~enable_ssr:false ~links ~scripts UI.app);
-        ]
-       @ Api.Hello.routes
-       @ Api.Todo.routes)
+       (Api.Hello.routes
+       @ Api.Todo.routes
+       @ [
+           Dream.get "/static/**" (Dream.static static);
+           Dream.get "/**" handle;
+         ])

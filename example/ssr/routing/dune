@@ -1,0 +1,17 @@
+(library
+ (name routing_native)
+ (wrapped false)
+ (preprocess
+  (pps ppx_router))
+ (modes native))
+
+(subdir
+ browser
+ (library
+  (name routing_browser)
+  (wrapped false)
+  (modes melange)
+  (preprocess
+   (pps ppx_router.browser)))
+ (copy_files#
+  (files ../**[!.pp][!.mlx].ml)))

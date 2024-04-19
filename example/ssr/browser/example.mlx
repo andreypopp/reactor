@@ -68,9 +68,9 @@ let%component wait_and_print ~promise ?promise2 ~msg () =
 
 let%component nav' () =
   <ul>
-    <li><link' href="/" label="Main page" /></li>
-    <li><link' href="/todo" label="TODOs" /></li>
-    <li><link' href="/about" label="About" /></li>
+    <li><link' href=(Routing.href Home) label="Main page" /></li>
+    <li><link' href=(Routing.href Todo) label="TODOs" /></li>
+    <li><link' href=(Routing.href About) label="About" /></li>
   </ul>
 
 type about_mode = About_light | About_dark [@@deriving json]

@@ -4,6 +4,7 @@
  (package react-example-ssr)
  (libraries
   api_native
+  routing_native
   react.server
   react_dream
   dream
