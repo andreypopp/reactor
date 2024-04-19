@@ -25,7 +25,7 @@ module UI = struct
       </body>
     </html>
 
-  let app _req =
+  let app =
     <page title="React of OCaml">
       <div className="flex flex-column g2 measure-wide">
         <Example.app title="Hello from Client Component"
@@ -58,7 +58,7 @@ module UI = struct
       </div>
     </page>
 
-  let about _req =
+  let about =
     <page title="About">
       <div className="flex flex-column g2 measure-wide">
         <p>(React.string "Just an about page")</p>
@@ -66,7 +66,7 @@ module UI = struct
       </div>
     </page>
 
-  let todos _req =
+  let todos =
     <page title="TODOs">
       <div className="flex flex-column g2 measure-wide">
         <Example.todo_list />
@@ -82,8 +82,9 @@ let () =
   in
   let links = [ "/static/bundle.css" ] in
   let scripts = [ "/static/bundle.js" ] in
-  let render ui =
+  let render ui req =
     React_dream.render ~enable_client_components:true ~links ~scripts ui
+      req
   in
   Dream.run ~interface:"0.0.0.0" ~port:8080
   @@ Dream.logger

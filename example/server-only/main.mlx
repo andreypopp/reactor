@@ -3,46 +3,31 @@ open! Monomorphic
 open Lwt.Infix
 open React_server
 
-(* first we define few routes for the app *)
+module Modifier = struct
+  type t = Capitalize | Uppercase
+
+  let rec of_url_query : t Ppx_router_runtime.url_query_decoder = function
+    | [] -> None
+    | [ "capitalize" ] -> Some Capitalize
+    | [ "uppercase" ] -> Some Uppercase
+    | _ :: xs -> of_url_query xs
+
+  let to_url_query : t Ppx_router_runtime.url_query_encoder = function
+    | Capitalize -> [ "capitalize" ]
+    | Uppercase -> [ "uppercase" ]
+end
+
 module Routes = struct
-  (* we need to open this module to to_url/of_url functions for common OCaml
-     types (string, int, etc.) are in scope *)
   open Ppx_router_runtime.Types
 
-  (* now, we showcase how to define a custom type and allow it to be used in
-     query parameters *)
-  type modifier = [ `capitalize | `uppercase ]
-
-  let modifier_of_url : string -> modifier option = function
-    | "capitalize" -> Some `capitalize
-    | "uppercase" -> Some `uppercase
-    | _ -> None
-
-  let modifier_to_url : modifier -> string = function
-    | `capitalize -> "capitalize"
-    | `uppercase -> "uppercase"
-
-  (* this is the main page of the app *)
-  let main, main_href = [%GET "/"]
-
-  (* this is the hello page, it takes a name and an optional modifier and
-     an optional repeat parameter *)
-  let hello, hello_href =
-    [%GET "/hello/:name?repeat=:int?&modifier=:modifier?"]
-
-  (* just an example of an API route *)
-  let api_data, _api_data_href = [%GET "/api/data"]
-
-  let to_page_route (route : _ Ppx_router_runtime.route) ui =
-    let k ui = React_dream.render ui in
-    let register =
-      match route.method_ with
-      | `GET -> Dream.get
-      | `POST -> Dream.post
-      | `PUT -> Dream.put
-      | `DELETE -> Dream.delete
-    in
-    register route.path (route.handle k ui)
+  type t =
+    | Home [@GET "/"]
+    | Hello of {
+        name : string;
+        repeat : int option;
+        modifier : Modifier.t option;
+      } [@GET "/hello/:name"]
+  [@@deriving router]
 end
 
 module UI = struct
@@ -66,15 +51,20 @@ module UI = struct
       </body>
     </html>
 
-  let app _req =
+  let app =
     <page title="React of OCaml">
       <div>
         <card title="Initial Data" delay=0.>
           "This components loads some async data but will block the \
            shell until this data is ready."
           <div>
-            <a href=(Routes.hello_href () ~modifier:`uppercase
-                       ~name:"world")>
+            <a href=(Routes.href
+                       (Hello
+                          {
+                            modifier = Some Uppercase;
+                            name = "world";
+                            repeat = None;
+                          }))>
               "Go to hello page"
             </a>
           </div>
@@ -102,33 +92,28 @@ module UI = struct
     </page>
 end
 
+let pages =
+  Routes.handle @@ fun route ->
+  match route with
+  | Home -> React_dream.render UI.app
+  | Hello { name; modifier; repeat } ->
+      let name =
+        match modifier with
+        | Some Capitalize -> String.capitalize_ascii name
+        | Some Uppercase -> String.uppercase_ascii name
+        | None -> name
+      in
+      let name =
+        match repeat with
+        | None -> name
+        | Some repeat ->
+            List.init repeat ~f:(fun _ -> name) |> String.concat ~sep:", "
+      in
+      React_dream.render
+        <div>
+          <div>"Hello, " (React.string name)</div>
+          <div>"Back to " <a href=(Routes.href Home)>"main page"</a></div>
+        </div>
+
 let () =
-  Dream.run ~interface:"0.0.0.0" ~port:8080
-  @@ Dream.logger
-  @@ Dream.router
-       [
-         Routes.to_page_route Routes.main UI.app;
-         Routes.to_page_route Routes.hello
-           (fun ~name ~modifier ~repeat _req ->
-             let name =
-               match modifier with
-               | Some `capitalize -> String.capitalize_ascii name
-               | Some `uppercase -> String.uppercase_ascii name
-               | None -> name
-             in
-             let name =
-               match repeat with
-               | Some repeat ->
-                   List.init repeat ~f:(fun _ -> name)
-                   |> String.concat ~sep:", "
-               | None -> name
-             in
-             <div>
-               <div>"Hello, " (React.string name)</div>
-               <div>
-                 "Back to " <a href=(Routes.main_href ())>"main page"</a>
-               </div>
-             </div>);
-         Ppx_router_runtime.to_route Routes.api_data (fun _req ->
-             Dream.json "{}");
-       ]
+  Dream.run ~interface:"0.0.0.0" ~port:8080 @@ Dream.logger @@ pages
