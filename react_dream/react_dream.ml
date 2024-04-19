@@ -25,34 +25,32 @@ let render ?(enable_client_components = false) ?(enable_ssr = true)
   let html_scripts =
     Html.(List.map scripts ~f:make_script |> splice ~sep:"\n")
   in
-  fun f : Dream.handler ->
-    fun req ->
-     match Dream.header req "accept" with
-     | Some accept
-       when enable_client_components
-            && String.equal accept rsc_content_type ->
-         Dream.stream (fun stream ->
-             render_to_model (f req) (fun data ->
-                 Dream.write stream data >>= fun () -> Dream.flush stream))
-     | _ ->
-         if enable_ssr then
-           render_to_html ~render_model:enable_client_components (f req)
-           >>= function
-           | Html_rendering_done { html } ->
-               Dream.html
-                 Html.(
-                   splice [ html_prelude; html; html_scripts ]
-                   |> to_string)
-           | Html_rendering_async { html_shell; html_iter } ->
-               Dream.stream (fun stream ->
-                   let write_and_flush html =
-                     Dream.write stream (Html.to_string html)
-                     >>= fun () -> Dream.flush stream
-                   in
-                   write_and_flush
-                     Html.(
-                       splice [ html_prelude; html_shell; html_scripts ])
-                   >>= fun () -> html_iter write_and_flush)
-         else
-           Dream.html
-             Html.(splice [ html_prelude; html_scripts ] |> to_string)
+  fun ui req ->
+    match Dream.header req "accept" with
+    | Some accept
+      when enable_client_components
+           && String.equal accept rsc_content_type ->
+        Dream.stream (fun stream ->
+            render_to_model ui (fun data ->
+                Dream.write stream data >>= fun () -> Dream.flush stream))
+    | _ ->
+        if enable_ssr then
+          render_to_html ~render_model:enable_client_components ui
+          >>= function
+          | Html_rendering_done { html } ->
+              Dream.html
+                Html.(
+                  splice [ html_prelude; html; html_scripts ] |> to_string)
+          | Html_rendering_async { html_shell; html_iter } ->
+              Dream.stream (fun stream ->
+                  let write_and_flush html =
+                    Dream.write stream (Html.to_string html) >>= fun () ->
+                    Dream.flush stream
+                  in
+                  write_and_flush
+                    Html.(
+                      splice [ html_prelude; html_shell; html_scripts ])
+                  >>= fun () -> html_iter write_and_flush)
+        else
+          Dream.html
+            Html.(splice [ html_prelude; html_scripts ] |> to_string)

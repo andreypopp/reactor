@@ -32,7 +32,7 @@ val render :
   ?enable_ssr:bool ->
   ?scripts:string list ->
   ?links:string list ->
-  (Dream.request -> React.element) ->
+  React.element ->
   Dream.handler
 (** [render ~enable_ssr ~scripts ~links app] is a [Dream.handler] which serves
     [app], where:
