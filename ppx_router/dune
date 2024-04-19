@@ -12,7 +12,7 @@
  (name ppx_router_runtime)
  (modules ppx_router_runtime)
  (public_name ppx_router.runtime)
- (libraries containers dream)
+ (libraries containers dream routes)
  (preprocess
   (pps ppxlib.metaquot)))
 
