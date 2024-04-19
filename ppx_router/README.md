@@ -37,7 +37,8 @@ let () =
 
 and define a handler for them:
 ```ocaml
-let handle = Routes.handle (function
+let handle = Routes.handle (fun route _req ->
+  match route with
   | Home -> Dream.html "Home page!"
   | Hello {name; repeat} ->
     let name =
@@ -51,8 +52,5 @@ let handle = Routes.handle (function
 
 Finally we can use the handler in a Dream app:
 ```ocaml
-let () =
-  Dream.run ~interface:"0.0.0.0" ~port:8080
-  @@ Dream.logger
-  @@ handle
+let () = Dream.run ~interface:"0.0.0.0" ~port:8080 handle
 ```
