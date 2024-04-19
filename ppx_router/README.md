@@ -25,10 +25,23 @@ module Routes = struct
   type t =
     | Home [@GET "/"]
     | Hello of { name : string; repeat : int option } [@GET "/hello/:name"]
+    [@@deriving router]
 end
 ```
 
-Now we can generate URLs for these routes:
+Notice the `[@@deriving router]` annotation, which instruct to generate code
+for routing based on the variant type definition.
+
+Each branch in the variant type definition corresponds to a separate route, it
+needs to have a `[@GET "/path"]` attribute (or `[@POST "/path"]`, etc.) which
+specify a path pattern for the route.
+
+The path pattern can contain named parameters, like `:name` in the example
+above. In this case the parameter will be extracted from the path and used in
+the route payload. All other fields from a route payload are considered query
+parameters.
+
+Now we can generate hrefs for these routes:
 ```ocaml
 let () =
   assert (Routes.href Home = "/");
