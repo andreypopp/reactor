@@ -10,7 +10,7 @@
   (dune (= "3.15.0+merlin-reader"))
   dream
   lwt
-  ppx_router
+  ppx_deriving_router
   mlx
   ocamlmerlin-mlx
   ocamlformat

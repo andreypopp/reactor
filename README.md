@@ -17,5 +17,3 @@ This repository hosts the following packages:
 
 - `realm` - a compatibility layer for code written to be compiled both native
   OCaml toolchain and Melange.
-
-- `ppx_router` - typed routes for Dream, WIP

@@ -6,19 +6,19 @@ open React_server
 module Modifier = struct
   type t = Capitalize | Uppercase
 
-  let rec of_url_query : t Ppx_router_runtime.url_query_decoder = function
+  let rec of_url_query : t Ppx_deriving_router_runtime.url_query_decoder = function
     | [] -> None
     | [ "capitalize" ] -> Some Capitalize
     | [ "uppercase" ] -> Some Uppercase
     | _ :: xs -> of_url_query xs
 
-  let to_url_query : t Ppx_router_runtime.url_query_encoder = function
+  let to_url_query : t Ppx_deriving_router_runtime.url_query_encoder = function
     | Capitalize -> [ "capitalize" ]
     | Uppercase -> [ "uppercase" ]
 end
 
 module Routes = struct
-  open Ppx_router_runtime.Types
+  open Ppx_deriving_router_runtime.Types
 
   type t =
     | Home [@GET "/"]
