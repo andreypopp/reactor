@@ -1,9 +1,6 @@
-console.log("react_browser_runtime.js: starting");
-
 // import this to be defined before we import React/ReactDOM
 window.__webpack_require__ = (id) => {
   let component = window.__exported_components[id];
-  console.log('window.__webpack_require__', id, component);
   if (component == null)
     throw new Error(`unable to resolve client component "${id}"`);
   return {__esModule: true, default: component};
