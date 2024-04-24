@@ -28,4 +28,5 @@
   ppxlib
   hmap
   realm
+  ppx_deriving_router
   yojson))

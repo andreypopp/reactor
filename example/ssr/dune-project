@@ -26,6 +26,7 @@
   ocamlformat-mlx
   ocaml-lsp-server
   ppx_deriving_json
+  ppx_deriving_router
   yojson)
  (sites
   (share static)))

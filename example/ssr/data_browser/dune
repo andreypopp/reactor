@@ -1,0 +1,5 @@
+(library
+ (name data_browser)
+ (wrapped false)
+ (modes melange)
+ (libraries routing_browser remote.browser))

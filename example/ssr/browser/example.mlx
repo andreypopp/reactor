@@ -1,3 +1,5 @@
+open Routing
+
 let%component link' ~href ~label () =
   let%browser_only onClick ev =
     React.Event.Mouse.preventDefault ev;
@@ -13,27 +15,29 @@ let%component button' ~onPress:onClick ~label () =
   </button>
 
 let%component hello ~name () =
-  let q, setq = React.useState (fun () -> Api.Hello.hello ~name) in
+  let q, setq =
+    React.useState (fun () -> Data.Hello.fetch (Hello { name }))
+  in
   let () =
     React.useEffect1
       (fun () ->
         React.startTransition (fun () ->
-            setq (fun _ -> Api.Hello.hello ~name));
+            setq (fun _ -> Data.Hello.fetch (Hello { name })));
         None)
       [| name |]
   in
-  let msg = React.use (Remote.run_query q) in
+  let msg = React.use q in
   let%browser_only (onClick [@ocaml.warning "-26"]) =
    fun _ev ->
     ignore
       (Promise.(
          let* () =
-           Remote.run_mutation
-           @@ Api.Hello.update_greeting ~greeting:Api.Greeting_informal
+           Data.Hello.run
+             (Update_greeting { greeting = Greeting_informal })
          in
-         Remote.invalidate (Api.Hello.hello ~name);
+         Data.Hello.invalidate (Hello { name });
          React.startTransition (fun () ->
-             setq (fun _ -> Api.Hello.hello ~name));
+             setq (fun _ -> Data.Hello.fetch (Hello { name })));
          return ())
         : unit Promise.t)
   in
@@ -68,9 +72,9 @@ let%component wait_and_print ~promise ?promise2 ~msg () =
 
 let%component nav' () =
   <ul>
-    <li><link' href=(Routing.href Home) label="Main page" /></li>
-    <li><link' href=(Routing.href Todo) label="TODOs" /></li>
-    <li><link' href=(Routing.href About) label="About" /></li>
+    <li><link' href=(href Home) label="Main page" /></li>
+    <li><link' href=(href Todo) label="TODOs" /></li>
+    <li><link' href=(href About) label="About" /></li>
   </ul>
 
 type about_mode = About_light | About_dark [@@deriving json]
@@ -117,25 +121,25 @@ let%export_component app ~(title : string) ~(inner : React.element) () =
     </ul>
   </div>
 
-let%component todo_item ~on_completed ~todo () =
+let%component todo_item ~on_completed ~(todo : Api.Todo.todo) () =
   let%browser_only onChange _ev =
-    on_completed todo (not todo.Api.completed)
+    on_completed todo (not todo.completed)
   in
   <li className="ma0 pa0 flex items-center">
     <label>
       <input className="scale3"
              type_="checkbox"
-             checked=todo.Api.completed
+             checked=todo.completed
              onChange />
-      <span className="pl2">(React.string todo.Api.text)</span>
+      <span className="pl2">(React.string todo.text)</span>
     </label>
   </li>
 
 let%component todo_section ~title ~on_completed ~todos () =
   let todos =
     List.map
-      (fun todo ->
-        let key = Int.to_string todo.Api.id in
+      (fun (todo : Api.Todo.todo) ->
+        let key = Int.to_string todo.id in
         <todo_item key on_completed todo />)
       todos
   in
@@ -175,45 +179,49 @@ let%component add_todo_form ~on_create () =
   </div>
 
 let%component todo_list' () =
-  let todos, set_todos = React.useState Api.Todo.list in
-  let todos = React.use (Remote.run_query todos) in
+  let todos, set_todos =
+    React.useState (fun () -> Data.Todo.fetch List)
+  in
+  let todos = React.use todos in
   let%browser_only refetch () =
     React.startTransition @@ fun () ->
-    let%browser_only () = Remote.invalidate (Api.Todo.list ()) in
-    set_todos (fun _ -> Api.Todo.list ())
+    Data.Todo.invalidate List;
+    set_todos (fun _ -> Data.Todo.fetch List)
   in
   let completed, to_be_done =
     List.partition_map
-      (fun todo ->
-        match todo.Api.completed with
+      (fun (todo : Api.Todo.todo) ->
+        match todo.completed with
         | true -> Left todo
         | false -> Right todo)
       todos
   in
   let%browser_only on_create text =
     Promise.(
-      let* _new_todo = Remote.run_mutation @@ Api.Todo.create ~text () in
+      let* new_todo = Data.Todo.run (Create { text }) in
+      Js.log2 "created todo" new_todo;
       refetch ();
       return ())
   in
-  let%browser_only on_completed todo completed =
+  let%browser_only on_completed (todo : Api.Todo.todo) completed =
     ignore
-      Promise.(
-        let* _new_todo =
-          Remote.run_mutation
-          @@ Api.Todo.update ~completed ~id:todo.Api.id ()
-        in
-        refetch ();
-        return ())
+      (Promise.(
+         let* _new_todo =
+           Data.Todo.run
+             (Update
+                { id = todo.id; completed = Some completed; text = None })
+         in
+         refetch ();
+         return ())
+        : unit Promise.t)
   in
   let%browser_only on_remove_completed _ev =
     ignore
-      Promise.(
-        let* _new_todo =
-          Remote.run_mutation @@ Api.Todo.remove_completed ()
-        in
-        refetch ();
-        return ())
+      (Promise.(
+         let* () = Data.Todo.run Remove_completed in
+         refetch ();
+         return ())
+        : unit Promise.t)
   in
   <div>
     <add_todo_form on_create />

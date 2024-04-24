@@ -3,10 +3,10 @@
  (public_name react-example-ssr)
  (package react-example-ssr)
  (libraries
-  api_native
   routing_native
   react.server
   react_dream
+  data_native
   dream
   example_native
   dune-site)

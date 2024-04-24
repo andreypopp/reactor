@@ -1,94 +1,14 @@
-open Fetch
-open Printf
-open Promise
+module Witness = Ppx_deriving_router_runtime.Witness
+module Promise = Realm.Promise
 
-(** Borrowed from https://github.com/dbuenzli/hmap/blob/master/src/hmap.ml
-
-    Copyright (c) 2016 Daniel C. Bünzli
-
-    Permission to use, copy, modify, and/or distribute this software for any
-    purpose with or without fee is hereby granted, provided that the above
-    copyright notice and this permission notice appear in all copies.
-
-    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-    WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-    MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-    ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-    WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-    ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE. *)
-module Typed_key : sig
-  type ('a, 'b) eq = Eq : ('a, 'a) eq
-  type 'a key
-
-  val create : unit -> 'a key
-  val equal : 'a 'b. 'a key -> 'b key -> ('a, 'b) eq option
-end = struct
-  module T = struct
-    type _ t = ..
-  end
-
-  module type T = sig
-    type t
-    type _ T.t += T : t T.t
-  end
-
-  type 'a key = (module T with type t = 'a)
-
-  let create () (type s) =
-    let module M = struct
-      type t = s
-      type _ T.t += T : t T.t
-    end in
-    (module M : T with type t = s)
-
-  type ('a, 'b) eq = Eq : ('a, 'a) eq
-
-  let equal : type a b. a key -> b key -> (a, b) eq option =
-   fun a b ->
-    let module A = (val a : T with type t = a) in
-    let module B = (val b : T with type t = b) in
-    match A.T with B.T -> Some Eq | _ -> None
-end
-
-type json = Js.Json.t
+type json = Ppx_deriving_json_runtime.t
 
 type 'a req = {
   path : string;
   input : string Lazy.t;
-  output_of_yojson : json -> 'a;
-  key : 'a Typed_key.key;
+  decode_response : Fetch.Response.t -> 'a Promise.t;
+  witness : 'a Witness.t;
 }
-
-type 'b query = Query : 'b req -> 'b query [@@unboxed]
-type 'b mutation = Mutation : 'b req -> 'b mutation [@@unboxed]
-type ('a, 'b) query_endpoint = 'a -> 'b query
-type ('a, 'b) mutation_endpoint = 'a -> 'b mutation
-
-let define_query ~yojson_of_input ~output_of_yojson ~path =
-  let key = Typed_key.create () in
-  fun input ->
-    Query
-      {
-        key;
-        path;
-        input = lazy (Js.Json.stringify (yojson_of_input input));
-        output_of_yojson;
-      }
-
-let define_mutation ~yojson_of_input ~output_of_yojson ~path =
-  let key = Typed_key.create () in
-  fun input ->
-    Mutation
-      {
-        key;
-        path;
-        input = lazy (Js.Json.stringify (yojson_of_input input));
-        output_of_yojson;
-      }
-
-let make_query endpoint input = endpoint input
-let make_mutation = make_query
 
 module Cache : sig
   val cached : 'a req -> (unit -> string Promise.t) -> 'a Promise.t
@@ -103,15 +23,19 @@ end = struct
       cache into a properly typed value. *)
 
   and cached_data =
-    | Cached_data : 'a Typed_key.key * 'a Promise.t -> cached_data
+    | Cached_data : 'a Witness.t * 'a Promise.t -> cached_data
 
-  let cached_data req json =
-    let data =
-      let* json = json in
-      let json = Js.Json.parseExn json in
-      return (req.output_of_yojson json)
-    in
-    data, Cached_data (req.key, data)
+  external new_Response : string -> Fetch.response = "Response"
+  [@@mel.new]
+
+  let cached_data req (data : string Promise.t) =
+    Promise.(
+      let data =
+        let* data = data in
+        let response = new_Response data in
+        req.decode_response response
+      in
+      data, Cached_data (req.witness, data))
 
   type t = record Js.Dict.t Js.Dict.t
 
@@ -157,7 +81,7 @@ end = struct
             record.data <- Js.Nullable.return cached_data;
             data
         | Some (Cached_data (key, data)) -> (
-            match Typed_key.equal req.key key with
+            match Witness.equal req.witness key with
             | None ->
                 (* This shouldn't happen as requests are identified by
                    path and we already found a corresponding cache record *)
@@ -175,33 +99,84 @@ end = struct
             [@u])
 end
 
-let run_query (Query req) =
-  Cache.cached req @@ fun () ->
-  let path =
-    sprintf "%s?input=%s" req.path
-      (Js.Global.encodeURIComponent (Lazy.force req.input))
-  in
-  let* response =
-    Fetch.fetchWithRequest
-    @@ Request.makeWithInit path
-    @@ RequestInit.make ~method_:Get ()
-  in
-  match Fetch.Response.ok response with
-  | true -> Response.text response
-  | false -> failwith "got non 200"
+module Make_fetch (Route : sig
+  type 'a t
 
-let run_mutation (Mutation req) =
-  let promise =
-    let* response =
-      Fetch.fetchWithRequest
-      @@ Request.makeWithInit req.path
-      @@ RequestInit.make ~method_:Post
-           ~body:(BodyInit.make (Lazy.force req.input))
-           ()
+  val http_method : 'a t -> [ `GET | `POST | `PUT | `DELETE ]
+  val href : 'a t -> string
+  val body : 'a t -> json option
+  val decode_response : 'a t -> Fetch.Response.t -> 'a Js.Promise.t
+end) : sig
+  type ('a, 'v) t = ?root:string -> 'a Route.t -> 'v
+
+  val fetch' : ('a, Fetch.response Promise.t) t
+  val fetch : ('a, 'a Promise.t) t
+end = struct
+  type ('a, 'v) t = ?root:string -> 'a Route.t -> 'v
+
+  let fetch' ?root route =
+    let href = Route.href route in
+    let href =
+      match root with None -> href | Some root -> root ^ href
     in
-    Response.text response
-  in
-  let* data = promise in
-  return (req.output_of_yojson (Js.Json.parseExn data))
+    let init =
+      let body : Fetch.bodyInit option =
+        match Route.body route with
+        | None -> None
+        | Some body -> Some (Fetch.BodyInit.make (Js.Json.stringify body))
+      in
+      let method_ =
+        match Route.http_method route with
+        | `GET -> Fetch.Get
+        | `POST -> Fetch.Post
+        | `PUT -> Fetch.Put
+        | `DELETE -> Fetch.Delete
+      in
+      Fetch.RequestInit.make ~method_ ?body ()
+    in
+    let req = Fetch.Request.makeWithInit href init in
+    Fetch.fetchWithRequest req
 
-let invalidate (Query req) = Cache.invalidate req
+  let fetch ?root route =
+    Promise.(
+      let* response = fetch' ?root route in
+      Route.decode_response route response)
+end
+
+module Make (Route : sig
+  type 'a t
+
+  val http_method : 'a t -> [ `GET | `POST | `PUT | `DELETE ]
+  val href : 'a t -> string
+  val body : 'a t -> Ppx_deriving_json_runtime.t option
+  val decode_response : 'a t -> Fetch.Response.t -> 'a Js.Promise.t
+  val witness : 'a t -> 'a Witness.t
+end) =
+struct
+  module F = Make_fetch (Route)
+
+  let run route = F.fetch route
+
+  let to_req route =
+    {
+      witness = Route.witness route;
+      path = Route.href route;
+      input =
+        lazy
+          (Js.Json.stringify
+             (match Route.body route with
+             | None -> Js.Json.null
+             | Some body -> body));
+      decode_response = Route.decode_response route;
+    }
+
+  let fetch route =
+    Cache.cached (to_req route) @@ fun () ->
+    Promise.(
+      let* response = F.fetch' route in
+      match Fetch.Response.ok response with
+      | true -> Fetch.Response.text response
+      | false -> failwith "got non 200")
+
+  let invalidate route = Cache.invalidate (to_req route)
+end

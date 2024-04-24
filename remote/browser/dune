@@ -4,6 +4,10 @@
  (public_name remote.browser)
  (modes melange)
  (flags :standard -open Realm)
- (libraries melange-fetch realm.browser)
+ (libraries
+  melange-fetch
+  realm.browser
+  ppx_deriving_json.browser_runtime
+  ppx_deriving_router.browser_runtime)
  (preprocess
   (pps melange.ppx)))

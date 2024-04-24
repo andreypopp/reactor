@@ -2,7 +2,7 @@
  (name routing_native)
  (wrapped false)
  (preprocess
-  (pps ppx_deriving_router))
+  (pps ppx_deriving_json.native ppx_deriving_router))
  (modes native))
 
 (subdir
@@ -12,6 +12,6 @@
   (wrapped false)
   (modes melange)
   (preprocess
-   (pps ppx_deriving_router.browser)))
+   (pps melange.ppx ppx_deriving_json.browser ppx_deriving_router.browser)))
  (copy_files#
   (files ../**[!.pp][!.mlx].ml)))

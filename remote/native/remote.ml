@@ -1,46 +1,27 @@
 open ContainersLabels
 open Lwt.Infix
+module Witness = Ppx_deriving_router_runtime.Witness
 
-type json = Yojson.Basic.t
+type json = Json.t
 
-type 'output query =
-  | Query : {
-      f : 'input -> 'output Lwt.t;
-      path : string;
-      input : 'input;
-      yojson_of_output : 'output -> json;
-      yojson_of_input : 'input -> json;
-      query_key : 'output query_key;
-    }
-      -> 'output query
+module Cache = struct
+  module M = Map.Make (struct
+    type t = string * string
 
-and 'output mutation =
-  | Mutation : {
-      f : 'input -> 'output Lwt.t;
-      input : 'input;
-    }
-      -> 'output mutation
+    let compare = Ord.(pair string string)
+  end)
 
-and 'a query_key = (string * string, 'a Promise.t) Hashtbl.t Hmap.key
+  type record = Record : 'a Witness.t * 'a Promise.t -> record
+  type t = record M.t
 
-type ('input, 'output) query_endpoint = 'input -> 'output query
-type ('input, 'output) mutation_endpoint = 'input -> 'output mutation
-
-let define_query ~yojson_of_input ~yojson_of_output ~path f =
-  let query_key = Hmap.Key.create () in
-  fun input ->
-    Query { f; yojson_of_output; yojson_of_input; path; input; query_key }
-
-let define_mutation ~yojson_of_input:_ ~yojson_of_output:_ ~path:_ f input
-    =
-  Mutation { f; input }
-
-let make_query endpoint input = endpoint input
-let make_mutation endpoint input = endpoint input
+  let empty = M.empty
+  let find = M.find_opt
+  let add = M.add
+end
 
 module Runner = struct
   type ctx = {
-    mutable cache : Hmap.t;
+    mutable cache : Cache.t;
     mutable running : running list;
     mutable all_running : running list;
   }
@@ -54,7 +35,7 @@ module Runner = struct
       }
         -> running
 
-  let create () = { cache = Hmap.empty; running = []; all_running = [] }
+  let create () = { cache = Cache.empty; running = []; all_running = [] }
   let ctx : ctx Lwt.key = Lwt.new_key ()
 
   let with_ctx ctx' f =
@@ -83,36 +64,56 @@ module Runner = struct
          ctx.all_running
 end
 
-let run_query
-    (Query
-      { f; path; input; yojson_of_input; yojson_of_output; query_key }) =
-  match Lwt.get Runner.ctx with
-  | None ->
-      failwith
-        "no Runner_ctx.t available, did you forgot to wrap the call site \
-         with Runner_ctx.with_ctx?"
-  | Some ctx -> (
-      let cache =
-        match Hmap.find query_key ctx.cache with
-        | Some cache -> cache
-        | None ->
-            let cache = Hashtbl.create 10 in
-            ctx.cache <- Hmap.add query_key cache ctx.cache;
-            cache
-      in
-      let input_json = yojson_of_input input in
-      let key = path, Yojson.Basic.to_string input_json in
-      match Hashtbl.find_opt cache key with
-      | Some promise -> promise
-      | None ->
-          let promise = f input in
-          Hashtbl.replace cache key promise;
-          let running =
-            Runner.Running
-              { path; input = input_json; yojson_of_output; promise }
-          in
-          ctx.running <- running :: ctx.running;
-          ctx.all_running <- running :: ctx.all_running;
-          promise)
+module Make (S : sig
+  type 'a t
 
-let run_mutation (Mutation { f; input }) = f input
+  val href : 'a t -> string
+  val handle : 'a t -> 'a Promise.t
+  val body : 'a t -> json option
+  val encode_response : 'a t -> 'a -> json
+  val witness : 'a t -> 'a Witness.t
+end) =
+struct
+  type 'a route = 'a S.t
+
+  let handle = S.handle
+  let run : type a. a route -> a Lwt.t = handle
+
+  let fetch : type a. a route -> a Lwt.t =
+   fun route ->
+    let witness = S.witness route in
+    let ctx =
+      match Lwt.get Runner.ctx with
+      | None ->
+          failwith
+            "no Runner_ctx.t available, did you forgot to wrap the call \
+             site with Runner_ctx.with_ctx?"
+      | Some ctx -> ctx
+    in
+    let path = S.href route in
+    let input_json = Option.value (S.body route) ~default:`Null in
+    let key = path, Yojson.Basic.to_string input_json in
+    let fetch () =
+      let promise = S.handle route in
+      ctx.cache <-
+        Cache.add key (Cache.Record (witness, promise)) ctx.cache;
+      let running =
+        Runner.Running
+          {
+            path;
+            input = input_json;
+            yojson_of_output = S.encode_response route;
+            promise;
+          }
+      in
+      ctx.running <- running :: ctx.running;
+      ctx.all_running <- running :: ctx.all_running;
+      promise
+    in
+    match Cache.find key ctx.cache with
+    | Some (Record (witness', promise)) -> (
+        match Witness.equal witness' witness with
+        | Some Eq -> promise
+        | None -> assert false)
+    | None -> fetch ()
+end

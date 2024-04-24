@@ -1,0 +1,4 @@
+(library
+ (name data_native)
+ (wrapped false)
+ (libraries routing_native remote.native))
