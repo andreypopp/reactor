@@ -1,8 +1,6 @@
 module Witness = Ppx_deriving_router_runtime.Witness
 module Promise = Realm.Promise
 
-type json = Ppx_deriving_json_runtime.t
-
 type 'a req = {
   path : string;
   input : string Lazy.t;
@@ -99,50 +97,6 @@ end = struct
             [@u])
 end
 
-module Make_fetch (Route : sig
-  type 'a t
-
-  val http_method : 'a t -> [ `GET | `POST | `PUT | `DELETE ]
-  val href : 'a t -> string
-  val body : 'a t -> json option
-  val decode_response : 'a t -> Fetch.Response.t -> 'a Js.Promise.t
-end) : sig
-  type ('a, 'v) t = ?root:string -> 'a Route.t -> 'v
-
-  val fetch' : ('a, Fetch.response Promise.t) t
-  val fetch : ('a, 'a Promise.t) t
-end = struct
-  type ('a, 'v) t = ?root:string -> 'a Route.t -> 'v
-
-  let fetch' ?root route =
-    let href = Route.href route in
-    let href =
-      match root with None -> href | Some root -> root ^ href
-    in
-    let init =
-      let body : Fetch.bodyInit option =
-        match Route.body route with
-        | None -> None
-        | Some body -> Some (Fetch.BodyInit.make (Js.Json.stringify body))
-      in
-      let method_ =
-        match Route.http_method route with
-        | `GET -> Fetch.Get
-        | `POST -> Fetch.Post
-        | `PUT -> Fetch.Put
-        | `DELETE -> Fetch.Delete
-      in
-      Fetch.RequestInit.make ~method_ ?body ()
-    in
-    let req = Fetch.Request.makeWithInit href init in
-    Fetch.fetchWithRequest req
-
-  let fetch ?root route =
-    Promise.(
-      let* response = fetch' ?root route in
-      Route.decode_response route response)
-end
-
 module Make (Route : sig
   type 'a t
 
@@ -153,7 +107,7 @@ module Make (Route : sig
   val witness : 'a t -> 'a Witness.t
 end) =
 struct
-  module F = Make_fetch (Route)
+  module F = Ppx_deriving_router_runtime.Make_fetch (Route)
 
   let run route = F.fetch route
 

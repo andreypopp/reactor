@@ -20,7 +20,7 @@ module Modifier = struct
 end
 
 module Routes = struct
-  open Ppx_deriving_router_runtime.Types
+  open Ppx_deriving_router_runtime.Primitives
 
   type t =
     | Home [@GET "/"]

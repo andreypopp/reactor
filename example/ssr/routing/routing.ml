@@ -1,5 +1,5 @@
 open Ppx_deriving_json_runtime.Primitives
-open Ppx_deriving_router_runtime.Types
+open Ppx_deriving_router_runtime.Primitives
 
 module Api = struct
   module Hello = struct
