@@ -29,7 +29,7 @@ jobs:
         uses: ocaml/setup-ocaml@v2
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
-          opam-local-packages: realm/*.opam remote/*.opam react/*.opam react_dream/react_dream.opam
+          opam-local-packages: realm/*.opam remote/*.opam react/*.opam
           opam-repositories: |
             default: https://github.com/ocaml/opam-repository.git
             andreypopp: https://github.com/andreypopp/opam-repository.git
@@ -39,8 +39,8 @@ jobs:
         with:
           node-version: 21
 
-      - run: opam install realm/realm.opam remote/remote.opam react/react_browser.opam react/react_server.opam react_dream/react_dream.opam --deps-only --with-test
+      - run: opam install realm/*.opam remote/*.opam react/*.opam --deps-only --with-test
 
       - run: opam exec -- dune build -p realm,remote,react_browser,react_server,react_dream
 
-      - run: opam exec -- dune runtest realm remote react react_dream
+      - run: opam exec -- dune runtest realm remote react

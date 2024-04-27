@@ -33,10 +33,19 @@
  (depends
   (ocaml
    (>= 4.14))
-  (melange
-   (>= 3))
+  melange
   dune
   reason-react
   remote
   realm
   ppxlib))
+
+(package
+ (name react_dream)
+ (depends
+  (ocaml
+   (>= 4.14))
+  dune
+  lwt
+  dream
+  react))

@@ -7,7 +7,7 @@ homepage: "https://github.com/andreypopp/reactor"
 bug-reports: "https://github.com/andreypopp/reactor/issues"
 depends: [
   "ocaml" {>= "4.14"}
-  "melange" {>= "3"}
+  "melange"
   "dune" {>= "3.11"}
   "lwt"
   "yojson"

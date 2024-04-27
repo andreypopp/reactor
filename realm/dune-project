@@ -18,8 +18,7 @@
  (depends
   (ocaml
    (>= 4.14))
-  (melange
-   (>= 3))
+  melange
   dune
   lwt
   yojson))
