@@ -2,7 +2,7 @@
  (name main)
  (public_name react-example-server-only)
  (package react_example_server_only)
- (libraries react.server react_dream dream)
+ (libraries react_server react_dream dream)
  (flags :standard -alert ++browser_only)
  (preprocess
-  (pps ppx_deriving_router react.ppx -native)))
+  (pps ppx_deriving_router react_server.ppx -native)))

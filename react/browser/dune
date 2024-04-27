@@ -1,5 +1,5 @@
 (library
- (public_name react.browser)
+ (public_name react_browser)
  (name react_browser)
  (wrapped false)
  (flags :standard -open Realm)
@@ -12,4 +12,4 @@
  (files
   (react_browser_runtime.js as browser/react_browser_runtime.js))
  (section lib)
- (package react))
+ (package react_browser))

@@ -6,16 +6,13 @@ license: "LICENSE"
 homepage: "https://github.com/andreypopp/reactor"
 bug-reports: "https://github.com/andreypopp/reactor/issues"
 depends: [
-  "ocaml" {>= "5.1"}
-  "melange" {>= "2"}
+  "ocaml" {>= "4.14"}
+  "melange" {>= "3"}
   "dune" {>= "3.11"}
   "reason-react"
   "remote"
   "realm"
-  "containers"
-  "lwt"
   "ppxlib"
-  "yojson"
   "odoc" {with-doc}
 ]
 build: [

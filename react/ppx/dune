@@ -1,5 +1,5 @@
 (library
- (public_name react.ppx)
+ (public_name react_server.ppx)
  (name react_ppx)
  (modules :standard \ ppx_test)
  ; (flags :standard -w -9)

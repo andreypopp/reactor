@@ -16,17 +16,27 @@
 (license LICENSE)
 
 (package
- (name react)
+ (name react_server)
  (depends
   (ocaml
-   (>= 5.1))
-  (melange
-   (>= 2))
+   (>= 4.14))
   dune
-  reason-react
   remote
   realm
   containers
   lwt
   ppxlib
   yojson))
+
+(package
+ (name react_browser)
+ (depends
+  (ocaml
+   (>= 4.14))
+  (melange
+   (>= 3))
+  dune
+  reason-react
+  remote
+  realm
+  ppxlib))
