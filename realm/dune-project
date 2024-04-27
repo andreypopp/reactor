@@ -17,9 +17,9 @@
  (name realm)
  (depends
   (ocaml
-   (>= 5.1))
+   (>= 4.14))
   (melange
-   (>= 2))
+   (>= 3))
   dune
   lwt
   yojson))

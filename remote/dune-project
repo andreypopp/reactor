@@ -19,9 +19,9 @@
  (name remote)
  (depends
   (ocaml
-   (>= 5.1))
+   (>= 4.14))
   (melange
-   (>= 2))
+   (>= 3))
   dune
   melange-fetch
   containers
