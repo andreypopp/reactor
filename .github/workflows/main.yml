@@ -29,6 +29,7 @@ jobs:
         uses: ocaml/setup-ocaml@v2
         with:
           ocaml-compiler: ${{ matrix.ocaml-compiler }}
+          opam-local-packages: realm/*.opam remote/*.opam react/*.opam
           opam-repositories: |
             default: https://github.com/ocaml/opam-repository.git
             andreypopp: https://github.com/andreypopp/opam-repository.git
