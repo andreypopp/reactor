@@ -74,4 +74,4 @@
   dune
   lwt
   dream
-  react))
+  react_server))
