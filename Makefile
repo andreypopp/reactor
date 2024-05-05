@@ -5,6 +5,7 @@ init: opam-switch opam-install pnpm-install
 opam-switch:
 	opam switch create . "5.1.1" --no-install -y
 	opam repo add andreypopp https://github.com/andreypopp/opam-repository.git
+	opam pin add dune.3.16.0-dev --dev
 
 opam-install:
 	opam install $(OPAM_PACKAGES) --deps-only -y

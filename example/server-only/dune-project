@@ -1,4 +1,4 @@
-(lang dune 3.11)
+(lang dune 3.16)
 
 (generate_opam_files true)
 
@@ -7,7 +7,7 @@
  (depends
   (ocaml
    (>= 5.1))
-  (dune (= "3.15.0+merlin-reader"))
+  dune
   dream
   lwt
   ppx_deriving_router
