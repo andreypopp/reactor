@@ -44,6 +44,7 @@
 (package
  (name react_server)
  (depends
+  (ocamlformat :with-test)
   (ocaml
    (>= 4.14))
   dune
@@ -57,6 +58,7 @@
 (package
  (name react_browser)
  (depends
+  (ocamlformat :with-test)
   (ocaml
    (>= 4.14))
   melange

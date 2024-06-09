@@ -6,6 +6,7 @@ license: "LICENSE"
 homepage: "https://github.com/andreypopp/reactor"
 bug-reports: "https://github.com/andreypopp/reactor/issues"
 depends: [
+  "ocamlformat" {with-test}
   "ocaml" {>= "4.14"}
   "melange"
   "dune" {>= "3.15"}
