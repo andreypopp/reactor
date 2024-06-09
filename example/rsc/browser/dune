@@ -1,11 +1,10 @@
 (library
- (name example)
+ (name browser)
  (wrapped false)
  (libraries
   melange.dom
   react_browser
   remote.browser
-  data_browser
   routing_browser
   realm.browser
   melange-webapi)
@@ -14,37 +13,17 @@
  (preprocess
   (pps melange.ppx react_server.ppx ppx_deriving_json.browser)))
 
-(subdir
- native
- (library
-  (name example_native)
-  (wrapped false)
-  (modes native)
-  (libraries
-   react_server.browser
-   remote.native
-   realm.native
-   data_native
-   routing_native)
-  (flags :standard -open Realm -alert ++browser_only -w -32-27-26)
-  (preprocess
-   (pps react_server.ppx -native ppx_deriving_json.native)))
- (copy_files#
-  (files ../**[!.pp][!.mlx].ml))
- (copy_files#
-  (files ../**.mlx)))
-
 (melange.emit
  (alias browser_js)
  (target output)
  (modules)
- (libraries example)
+ (libraries browser)
  (module_systems commonjs))
 
 (rule
  (target ./__boot.js)
  (deps
-  (:entry ./output/example/ssr/browser/example.js)
+  (:entry ./output/example/rsc/browser/browser.js)
   (:runtime %{lib:react_browser:browser/react_browser_runtime.js}))
  (action
   (with-stdout-to
@@ -68,10 +47,10 @@
    ./__boot.js)))
 
 (install
- (package react-example-ssr)
+ (package react-example-rsc)
  (section
   (site
-   (react-example-ssr static)))
+   (react-example-rsc static)))
  (files
   bundle.js
   (static/tachyons.css as bundle.css)))

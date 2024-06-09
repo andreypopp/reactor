@@ -7,7 +7,7 @@ homepage: "https://github.com/andreypopp/reactor"
 bug-reports: "https://github.com/andreypopp/reactor/issues"
 depends: [
   "ocaml" {>= "4.14"}
-  "dune" {>= "3.10"}
+  "dune" {>= "3.16"}
   "lwt"
   "dream"
   "react_server"

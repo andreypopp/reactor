@@ -1,0 +1,77 @@
+(library
+ (name example)
+ (wrapped false)
+ (libraries
+  melange.dom
+  react_browser
+  remote.browser
+  data_browser
+  routing_browser
+  realm.browser
+  melange-webapi)
+ (flags :standard -open Realm -open React_browser -alert ++browser_only)
+ (modes melange)
+ (preprocess
+  (pps melange.ppx react_server.ppx ppx_deriving_json.browser)))
+
+(subdir
+ native
+ (library
+  (name example_native)
+  (wrapped false)
+  (modes native)
+  (libraries
+   react_server.browser
+   remote.native
+   realm.native
+   data_native
+   routing_native)
+  (flags :standard -open Realm -alert ++browser_only -w -32-27-26)
+  (preprocess
+   (pps react_server.ppx -native ppx_deriving_json.native)))
+ (copy_files#
+  (files ../**[!.pp][!.mlx].ml))
+ (copy_files#
+  (files ../**.mlx)))
+
+(melange.emit
+ (alias browser_js)
+ (target output)
+ (modules)
+ (libraries example)
+ (module_systems commonjs))
+
+(rule
+ (target ./__boot.js)
+ (deps
+  (:entry ./output/example/rsc-ssr/browser/example.js)
+  (:runtime %{lib:react_browser:browser/react_browser_runtime.js}))
+ (action
+  (with-stdout-to
+   %{target}
+   (progn
+    (run echo "import './%{entry}';")
+    (run echo "import './%{runtime}';")))))
+
+(rule
+ (target ./bundle.js)
+ (deps
+  %{lib:react_browser:browser/react_browser_runtime.js}
+  (alias browser_js))
+ (action
+  (run
+   esbuild
+   --log-level=warning
+   --bundle
+   --loader:.js=jsx
+   --outfile=%{target}
+   ./__boot.js)))
+
+(install
+ (package react-example-rsc-ssr)
+ (section
+  (site
+   (react-example-rsc-ssr static)))
+ (files
+  bundle.js
+  (static/tachyons.css as bundle.css)))

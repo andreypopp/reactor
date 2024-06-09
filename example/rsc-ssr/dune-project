@@ -7,7 +7,7 @@
 (generate_opam_files true)
 
 (package
- (name react-example-ssr)
+ (name react-example-rsc-ssr)
  (depends
   (ocaml
    (>= 5.1))

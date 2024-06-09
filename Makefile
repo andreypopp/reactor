@@ -28,8 +28,11 @@ fmt:
 test:
 	dune runtest
 
-react-example-ssr:
-	dune exec -- react-example-ssr
+react-example-rsc:
+	dune exec -- react-example-rsc
+
+react-example-rsc-ssr:
+	dune exec -- react-example-rsc-ssr
 
 react-example-server-only:
 	dune exec -- react-example-server-only

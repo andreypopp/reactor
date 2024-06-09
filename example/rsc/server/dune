@@ -1,0 +1,16 @@
+(executable
+ (name main)
+ (public_name react-example-rsc)
+ (package react-example-rsc)
+ (libraries routing_server react_server react_dream dream dune-site)
+ (flags :standard -alert ++browser_only)
+ (preprocess
+  (pps react_server.ppx -native-export-only ppx_deriving_json.native)))
+
+ (copy_files#
+  (only_sources)
+  (files ../browser/browser.mlx))
+
+(generate_sites_module
+ (module static)
+ (sites react-example-rsc))

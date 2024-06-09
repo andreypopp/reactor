@@ -6,4 +6,7 @@ let t = Js.Dict.empty ()
 external window : t Js.Dict.t = "window"
 
 let () = Js.Dict.set window "__exported_components" t
-let register name render = Js.Dict.set t name render
+
+let register name render =
+  Js.log ("registering component: " ^ name);
+  Js.Dict.set t name render

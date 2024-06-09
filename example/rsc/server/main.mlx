@@ -1,0 +1,52 @@
+open! ContainersLabels
+open! Monomorphic
+
+module UI = struct
+  open React_server
+
+  let%component page ~title ~children () =
+    <html className="h-100">
+      <head><title>(React.string title)</title></head>
+      <body className="pa4 sans-serif dark-gray bg-washed-yellow h-100">
+        <h1><span>(React.string title)</span></h1> <div>children</div>
+      </body>
+    </html>
+
+  let home =
+    <page title="React of OCaml">
+      <Browser.home />
+    </page>
+
+  let about =
+    <page title="About">
+      <Browser.about />
+    </page>
+end
+
+let links = [ "/static/bundle.css" ]
+let scripts = [ "/static/bundle.js" ]
+
+let render ui =
+  React_dream.render ~enable_ssr:false ~enable_client_components:true
+    ~links ~scripts ui
+
+let handle =
+  let f : type a. a Routing.t -> Dream.request -> a Lwt.t =
+   fun route ->
+    match route with Home -> render UI.home | About -> render UI.about
+  in
+  Routing.handle { f }
+
+let () =
+  let static =
+    Static.Sites.static
+    |> List.head_opt
+    |> Option.get_exn_or "no /static dir found"
+  in
+  Dream.run ~interface:"127.0.0.1" ~port:8080
+  @@ Dream.logger
+  @@ Dream.router
+       [
+         Dream.get "static/**" (Dream.static static);
+         Dream.any "**" handle;
+       ]

@@ -1,0 +1,18 @@
+(library
+ (name routing_server)
+ (wrapped false)
+ (preprocess
+  (pps ppx_deriving_json.native ppx_deriving_router.dream))
+ (modes native))
+
+(subdir
+ browser
+ (library
+  (name routing_browser)
+  (wrapped false)
+  (modes melange)
+  (preprocess
+   (pps melange.ppx ppx_deriving_json.browser ppx_deriving_router.browser)))
+ (copy_files#
+  (only_sources)
+  (files ../**[!.pp][!.mlx].ml)))

@@ -1,0 +1,42 @@
+(lang dune 3.16)
+
+(using melange 0.1)
+
+(using dune_site 0.1)
+
+(generate_opam_files true)
+
+(package
+ (name react-example-rsc)
+ (depends
+  (ocaml
+   (>= 5.1))
+  (melange
+   (>= 2))
+  dune
+  remote
+  realm
+  dream
+  lwt
+  melange-webapi
+  dune-site
+  mlx
+  ocamlmerlin-mlx
+  ocamlformat
+  ocamlformat-mlx
+  ocaml-lsp-server
+  ppx_deriving_json
+  ppx_deriving_router
+  yojson)
+ (sites
+  (share static)))
+
+(dialect
+ (name mlx)
+ (implementation
+  (extension mlx)
+  (merlin_reader mlx)
+  (format
+   (run ocamlformat-mlx %{input-file}))
+  (preprocess
+   (run mlx-pp %{input-file}))))

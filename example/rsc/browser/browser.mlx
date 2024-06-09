@@ -1,0 +1,17 @@
+open! Routing
+open Ppx_deriving_json_runtime.Primitives
+
+let%export_component home () =
+  <div>
+    <h1>"Home"</h1>
+    <p>"Welcome to the home page!"</p>
+    <a href=(href About)>"About"</a>
+    <Ui.some_ui />
+  </div>
+
+let%export_component about () =
+  <div>
+    <h1>"About"</h1>
+    <a href=(href Home)>"Home"</a>
+    <Ui.some_ui />
+  </div>

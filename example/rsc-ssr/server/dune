@@ -1,7 +1,7 @@
 (executable
  (name main)
- (public_name react-example-ssr)
- (package react-example-ssr)
+ (public_name react-example-rsc-ssr)
+ (package react-example-rsc-ssr)
  (libraries
   routing_native
   react_server
@@ -16,4 +16,4 @@
 
 (generate_sites_module
  (module static)
- (sites react-example-ssr))
+ (sites react-example-rsc-ssr))

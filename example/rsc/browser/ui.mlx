@@ -1,0 +1,3 @@
+let%component some_ui () =
+  Js.log "rendering ok";
+  <div>"ok"</div>

@@ -1,7 +1,7 @@
 open Printf
 open Ppxlib
 
-type target = Target_native | Target_js
+type target = Target_native of { export_only : bool } | Target_js
 
 let mode = ref Target_js
 
@@ -224,7 +224,7 @@ module Ext_component = struct
       let component = Let_component.parse ~loc pat expr in
       match !mode with
       | Target_js -> expand_js ~ctxt ~loc component pat expr
-      | Target_native ->
+      | Target_native _ ->
           expand_native [%expr React_server.React.thunk] ~ctxt ~loc
             component pat expr
     with Error err -> [%stri let [%p pat] = [%e err]]
@@ -253,7 +253,7 @@ module Ext_async_component = struct
               "async components are not supported in browser"
           in
           [%stri let [%p pat] = [%e err]]
-      | Target_native ->
+      | Target_native _ ->
           let component = Let_component.parse ~loc pat expr in
           Ext_component.expand_native
             [%expr React_server.React.async_thunk] ~ctxt ~loc component
@@ -378,7 +378,8 @@ module Ext_export_component = struct
     [%expr
       React.jsx [%e pexp_ident ~loc (longident component.name)] [%e props]]
 
-  let expand_native ~ctxt (component : Let_component.t) pat _expr =
+  let expand_native ~ctxt ~export_only (component : Let_component.t) pat
+      _expr =
     let loc = Expansion_context.Extension.extension_point_loc ctxt in
     let expr =
       let body =
@@ -387,7 +388,13 @@ module Ext_export_component = struct
             React_server.React.client_thunk
               [%e component_id ~ctxt component.name.txt]
               [%e props_to_model ~ctxt component.props]
-              (React_server.React.thunk (fun () -> [%e component.body]))]
+              (React_server.React.thunk (fun () ->
+                   [%e
+                     if export_only then
+                       [%expr
+                         failwith
+                           "client component is rendering on server"]
+                     else component.body]))]
       in
       ListLabels.fold_left component.props ~init:body
         ~f:(fun
@@ -429,7 +436,8 @@ module Ext_export_component = struct
       let component = Let_component.parse ~loc pat expr in
       match !mode with
       | Target_js -> expand_js ~ctxt component pat expr
-      | Target_native -> expand_native ~ctxt component pat expr
+      | Target_native { export_only } ->
+          expand_native ~ctxt ~export_only component pat expr
     with Error err -> [%stri let [%p pat] = [%e err]]
 
   let ext =
@@ -484,13 +492,13 @@ module Browser_only_expression = struct
       | `Let_form (orig_expr, _recflag, bindings, body) -> (
           match mode with
           | Target_js -> orig_expr
-          | Target_native ->
+          | Target_native _ ->
               let bindings = build_bindings ~ctxt bindings in
               pexp_let ~loc:orig_expr.pexp_loc Nonrecursive bindings body)
       | `Fun_form (orig_expr, recflag, default, pat) -> (
           match mode with
           | Target_js -> orig_expr
-          | Target_native ->
+          | Target_native _ ->
               pexp_fun ~loc recflag default pat
                 [%expr raise React_server.React.Browser_only])
     with Error err -> err
@@ -531,7 +539,7 @@ module Browser_only_structure_item = struct
     try
       match !mode with
       | Target_js -> orig_stri
-      | Target_native ->
+      | Target_native _ ->
           let bindings =
             Browser_only_expression.build_bindings ~ctxt bindings
           in
@@ -847,14 +855,17 @@ module Jsx = struct
     try
       match !mode with
       | Target_js -> jsx_rewrite_js#structure xs
-      | Target_native -> jsx_rewrite_native#structure xs
+      | Target_native _ -> jsx_rewrite_native#structure xs
     with Error err -> [%str [%e err]]
 end
 
 let () =
   Driver.add_arg "-native"
-    (Unit (fun () -> mode := Target_native))
+    (Unit (fun () -> mode := Target_native { export_only = false }))
     ~doc:"preprocess for native build";
+  Driver.add_arg "-native-export-only"
+    (Unit (fun () -> mode := Target_native { export_only = true }))
+    ~doc:"preprocess for native build but only export component";
   Driver.register_transformation
     ~rules:
       [
