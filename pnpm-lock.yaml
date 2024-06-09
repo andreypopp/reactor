@@ -9,14 +9,14 @@ dependencies:
     specifier: ^0.20.2
     version: 0.20.2
   react:
-    specifier: 19.0.0-canary-96c584661-20240412
-    version: 19.0.0-canary-96c584661-20240412
+    specifier: rc
+    version: 19.0.0-rc-cc1ec60d0d-20240607
   react-dom:
-    specifier: 19.0.0-canary-96c584661-20240412
-    version: 19.0.0-canary-96c584661-20240412(react@19.0.0-canary-96c584661-20240412)
+    specifier: rc
+    version: 19.0.0-rc-cc1ec60d0d-20240607(react@19.0.0-rc-cc1ec60d0d-20240607)
   react-server-dom-webpack:
-    specifier: 19.0.0-canary-96c584661-20240412
-    version: 19.0.0-canary-96c584661-20240412(react-dom@19.0.0-canary-96c584661-20240412)(react@19.0.0-canary-96c584661-20240412)(webpack@5.88.2)
+    specifier: rc
+    version: 19.0.0-rc-cc1ec60d0d-20240607(react-dom@19.0.0-rc-cc1ec60d0d-20240607)(react@19.0.0-rc-cc1ec60d0d-20240607)(webpack@5.88.2)
   reactor:
     specifier: 'link:'
     version: 'link:'
@@ -641,32 +641,32 @@ packages:
       safe-buffer: 5.2.1
     dev: false
 
-  /react-dom@19.0.0-canary-96c584661-20240412(react@19.0.0-canary-96c584661-20240412):
-    resolution: {integrity: sha512-BF/9BKTieBBNUuZF8JiEbl9TaJdjo8eUtzh/tiE13Krr1vk5sd8NEXpdZxapc752eiBiINvrlOXdnTLJCj/xLQ==}
+  /react-dom@19.0.0-rc-cc1ec60d0d-20240607(react@19.0.0-rc-cc1ec60d0d-20240607):
+    resolution: {integrity: sha512-paspD9kAfKKuURVwKWJ0/g3qYw1DGi9h1k9xQV2iQN9cSVZ4JAOD727yjVLyp1zdzsoygjFfLMtSBdZ+oERYvA==}
     peerDependencies:
-      react: 19.0.0-canary-96c584661-20240412
+      react: 19.0.0-rc-cc1ec60d0d-20240607
     dependencies:
-      react: 19.0.0-canary-96c584661-20240412
-      scheduler: 0.25.0-canary-96c584661-20240412
+      react: 19.0.0-rc-cc1ec60d0d-20240607
+      scheduler: 0.25.0-rc-cc1ec60d0d-20240607
     dev: false
 
-  /react-server-dom-webpack@19.0.0-canary-96c584661-20240412(react-dom@19.0.0-canary-96c584661-20240412)(react@19.0.0-canary-96c584661-20240412)(webpack@5.88.2):
-    resolution: {integrity: sha512-c1SekCOXUmVcxJGkU6v4J6EEFZ35CGi8JDStBH1JakBk7XABR/lLLfzb8z1mwm3uDIt1euZZQmSWgqvZ02Fd0w==}
+  /react-server-dom-webpack@19.0.0-rc-cc1ec60d0d-20240607(react-dom@19.0.0-rc-cc1ec60d0d-20240607)(react@19.0.0-rc-cc1ec60d0d-20240607)(webpack@5.88.2):
+    resolution: {integrity: sha512-QVm+y5ELZ6+2kztgtG4N3DHvjuIJVj4b6tRpXUbOc79+Hxz5cvf2RhzRGVTyM6xfb9E1U0tcps1Q2uR8Sa2nEw==}
     engines: {node: '>=0.10.0'}
     peerDependencies:
-      react: 19.0.0-canary-96c584661-20240412
-      react-dom: 19.0.0-canary-96c584661-20240412
+      react: 19.0.0-rc-cc1ec60d0d-20240607
+      react-dom: 19.0.0-rc-cc1ec60d0d-20240607
       webpack: ^5.59.0
     dependencies:
       acorn-loose: 8.3.0
       neo-async: 2.6.2
-      react: 19.0.0-canary-96c584661-20240412
-      react-dom: 19.0.0-canary-96c584661-20240412(react@19.0.0-canary-96c584661-20240412)
+      react: 19.0.0-rc-cc1ec60d0d-20240607
+      react-dom: 19.0.0-rc-cc1ec60d0d-20240607(react@19.0.0-rc-cc1ec60d0d-20240607)
       webpack: 5.88.2(esbuild@0.20.2)
     dev: false
 
-  /react@19.0.0-canary-96c584661-20240412:
-    resolution: {integrity: sha512-4wZI4CuU4HeKOqy+nu+PlHigTuxYXKAM4d0HaeHtQsgTM8UdyHxgEJ9sjibA0nEhuvNCT9BuyHlVdWqwmcNR2A==}
+  /react@19.0.0-rc-cc1ec60d0d-20240607:
+    resolution: {integrity: sha512-q8A0/IdJ2wdHsjDNO1igFcSSFIMqSKmO7oJZtAjxIA9g0klK45Lxt15NQJ7z7cBvgD1r3xRTtQ/MAqnmwYHs1Q==}
     engines: {node: '>=0.10.0'}
     dev: false
 
@@ -674,8 +674,8 @@ packages:
     resolution: {integrity: sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ==}
     dev: false
 
-  /scheduler@0.25.0-canary-96c584661-20240412:
-    resolution: {integrity: sha512-yIgey951Qr5hSpwdrk1w2OJoywBXFdew8duq27Bo8WQ+4Zp02OX6GjZuS0iRnKxmYh/6FApkQOaYT1T0CdlBTQ==}
+  /scheduler@0.25.0-rc-cc1ec60d0d-20240607:
+    resolution: {integrity: sha512-yFVKy6SDJkN2bOJSeH6gNo4+1MTygTZXnLRY5IHvEB6P9+O6WYRWz9PkELLjnl64lQwRgiigwzWQRSMNEboOGQ==}
     dev: false
 
   /schema-utils@3.3.0:

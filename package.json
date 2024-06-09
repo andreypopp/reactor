@@ -5,9 +5,9 @@
   "license": "ISC",
   "dependencies": {
     "esbuild": "^0.20.2",
-    "react": "19.0.0-canary-96c584661-20240412",
-    "react-dom": "19.0.0-canary-96c584661-20240412",
-    "react-server-dom-webpack": "19.0.0-canary-96c584661-20240412",
+    "react": "rc",
+    "react-dom": "rc",
+    "react-server-dom-webpack": "rc",
     "reactor": "link:"
   }
 }
