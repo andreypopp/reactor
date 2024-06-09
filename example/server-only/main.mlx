@@ -6,17 +6,20 @@ open React_server
 module Modifier = struct
   type t = Capitalize | Uppercase
 
-  let rec of_url_query : t Ppx_deriving_router_runtime.url_query_decoder =
-    function
-    | [] -> None
-    | [ "capitalize" ] -> Some Capitalize
-    | [ "uppercase" ] -> Some Uppercase
-    | _ :: xs -> of_url_query xs
+  let of_url_query : t Ppx_deriving_router_runtime.Decode.decode_url_query
+      =
+   fun k xs ->
+    match List.assoc_opt ~eq:String.equal k xs with
+    | None -> Error "not found"
+    | Some "capitalize" -> Ok Capitalize
+    | Some "uppercase" -> Ok Uppercase
+    | Some _ -> Error "invalid value"
 
-  let to_url_query : t Ppx_deriving_router_runtime.url_query_encoder =
-    function
-    | Capitalize -> [ "capitalize" ]
-    | Uppercase -> [ "uppercase" ]
+  let to_url_query : t Ppx_deriving_router_runtime.Encode.encode_url_query
+      =
+   fun k -> function
+    | Capitalize -> [ k, "capitalize" ]
+    | Uppercase -> [ k, "uppercase" ]
 end
 
 module Routes = struct
@@ -94,10 +97,12 @@ module UI = struct
     </page>
 end
 
+let render ui = React_dream.render ui
+
 let pages =
   Routes.handle @@ fun route ->
   match route with
-  | Home -> React_dream.render UI.app
+  | Home -> render UI.app
   | Hello { name; modifier; repeat } ->
       let name =
         match modifier with
@@ -111,7 +116,7 @@ let pages =
         | Some repeat ->
             List.init repeat ~f:(fun _ -> name) |> String.concat ~sep:", "
       in
-      React_dream.render
+      render
         <div>
           <div>"Hello, " (React.string name)</div>
           <div>"Back to " <a href=(Routes.href Home)>"main page"</a></div>

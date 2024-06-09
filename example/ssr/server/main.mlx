@@ -77,19 +77,22 @@ end
 let links = [ "/static/bundle.css" ]
 let scripts = [ "/static/bundle.js" ]
 
-let render =
-  React_dream.render ~enable_client_components:true ~links ~scripts
+let render ?enable_ssr ui =
+  React_dream.render ?enable_ssr ~enable_client_components:true ~links
+    ~scripts ui
 
 let handle =
-  let f : type a. a Routing.t -> Dream.request -> a Lwt.t =
+  let f :
+      type a.
+      a Routing.t ->
+      Dream.request ->
+      a Ppx_deriving_router_runtime.return Lwt.t =
    fun route ->
     match route with
     | Routing.Home -> render UI.app
     | About -> render UI.about
     | Todo -> render UI.todos
-    | No_ssr ->
-        React_dream.render ~enable_client_components:true
-          ~enable_ssr:false ~links ~scripts UI.app
+    | No_ssr -> render ~enable_ssr:false UI.app
     | Api_hello route -> fun _req -> Data.Hello.handle route
     | Api_todo route -> fun _req -> Data.Todo.handle route
   in

@@ -2,7 +2,7 @@
  (name routing_native)
  (wrapped false)
  (preprocess
-  (pps ppx_deriving_json.native ppx_deriving_router))
+  (pps ppx_deriving_json.native ppx_deriving_router.dream))
  (modes native))
 
 (subdir

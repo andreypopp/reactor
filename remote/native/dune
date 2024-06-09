@@ -4,4 +4,9 @@
  (wrapped false)
  (modes native)
  (flags :standard -open Realm)
- (libraries containers hmap yojson realm.native ppx_deriving_router.runtime))
+ (libraries
+  containers
+  hmap
+  yojson
+  realm.native
+  ppx_deriving_router.dream_runtime))

@@ -39,6 +39,7 @@
   hmap
   realm
   ppx_deriving_router
+  ppx_deriving_router_dream
   yojson))
 
 (package
