@@ -1,6 +1,6 @@
 open ContainersLabels
 open Lwt.Infix
-module Witness = Ppx_deriving_router_runtime.Witness
+module Witness = Ppx_deriving_router_runtime_lib.Witness
 
 type json = Json.t
 

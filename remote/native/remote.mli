@@ -26,7 +26,7 @@ module Make (Route : sig
   val body : 'a t -> Json.t option
   val encode_response : 'a t -> 'a -> Json.t
   val handle : 'a t -> 'a Promise.t
-  val witness : 'a t -> 'a Ppx_deriving_router_runtime.Witness.t
+  val witness : 'a t -> 'a Ppx_deriving_router_runtime_lib.Witness.t
 end) : sig
   type 'a route = 'a Route.t
 

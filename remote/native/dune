@@ -9,4 +9,4 @@
   hmap
   yojson
   realm.native
-  ppx_deriving_router.dream_runtime))
+  ppx_deriving_router.runtime_lib))
