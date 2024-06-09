@@ -39,7 +39,6 @@ jobs:
           node-version: 21
 
       - run: opam install . --deps-only --with-test
-
       - run: opam exec -- dune build -p realm,remote,react_browser,react_server,react_dream
-
+      - run: opam exec -- dune build
       - run: opam exec -- dune runtest realm remote react
