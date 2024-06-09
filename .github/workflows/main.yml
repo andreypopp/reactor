@@ -38,8 +38,6 @@ jobs:
         with:
           node-version: 21
 
-      - run: opam pin add dune.3.16.0-dev --dev -y
-
       - run: opam install . --deps-only --with-test
 
       - run: opam exec -- dune build -p realm,remote,react_browser,react_server,react_dream
