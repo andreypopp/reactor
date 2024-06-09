@@ -1,4 +1,4 @@
-(lang dune 3.16)
+(lang dune 3.15)
 
 (generate_opam_files true)
 
@@ -21,7 +21,7 @@
  (name mlx)
  (implementation
   (extension mlx)
-  (merlin_reader mlx)
+  ; (merlin_reader mlx)
   (format
    (run ocamlformat-mlx %{input-file}))
   (preprocess
