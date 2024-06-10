@@ -232,5 +232,17 @@ let%component todo_list' () =
 
 let%export_component todo_list () = <div><nav' /> <todo_list' /></div>
 
+let%component wait_for_promise ~promise () =
+  let value = React.use promise in
+  <div>"Promise resolved: " (React.string value)</div>
+
+let%export_component demo_passing_promises_as_props ~(promise : string Promise.t) () =
+  <div>
+    <div>"waiting for promise to resolve:"</div>
+    <React.Suspense fallback=(<div>"..."</div>)>
+      <wait_for_promise promise />
+    </React.Suspense>
+  </div>
+
 let%browser_only () =
   Js.log "this will execute only in browser on startup"

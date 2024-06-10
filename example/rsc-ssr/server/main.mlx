@@ -25,8 +25,16 @@ module UI = struct
       </body>
     </html>
 
-  let app =
+  let app () =
+    let promise_as_prop =
+      Lwt_unix.sleep 3. >>= fun () ->
+      Lwt.return "PROMISE VALUE HERE"
+    in
     <page title="React of OCaml">
+      <div>
+        <h1>"Demo passing promises as props"</h1>
+        <Example.demo_passing_promises_as_props promise=promise_as_prop />
+      </div>
       <div className="flex flex-column g2 measure-wide">
         <Example.app title="Hello from Client Component"
                      inner=(React.string
@@ -89,10 +97,10 @@ let handle =
       a Ppx_deriving_router_runtime.return Lwt.t =
    fun route ->
     match route with
-    | Routing.Home -> render UI.app
+    | Routing.Home -> render (UI.app ())
     | About -> render UI.about
     | Todo -> render UI.todos
-    | No_ssr -> render ~enable_ssr:false UI.app
+    | No_ssr -> render ~enable_ssr:false (UI.app ())
     | Api_hello route -> fun _req -> Data.Hello.handle route
     | Api_todo route -> fun _req -> Data.Todo.handle route
   in
