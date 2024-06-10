@@ -44,9 +44,9 @@ function loadPage(path) {
         <Page loading={loading} />
       </React.StrictMode>
     );
-    if (window.location.pathname !== path) {
+    let {pathname, search} = window.location;
+    if (pathname + search !== path)
       window.history.pushState({}, null, path);
-    }
   });
 }
 
