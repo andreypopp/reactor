@@ -16,14 +16,16 @@ let node ~tag_name ~key ~props children : model =
   in
   `List [ `String "$"; `String tag_name; key; `Assoc props ]
 
-let suspense ~key children =
-  node ~tag_name:"$Sreact.suspense" ~key ~props:[] (Some children)
+let suspense ~key ~fallback children =
+  node ~tag_name:"$Sreact.suspense" ~key
+    ~props:[ "fallback", fallback ]
+    (Some children)
 
-let lazy_value idx = `String (sprintf "$L%i" idx)
-let promise_value idx = `String (sprintf "$@%i" idx)
+let lazy_value idx = `String (sprintf "$L%x" idx)
+let promise_value idx = `String (sprintf "$@%x" idx)
 
-let suspense_placeholder ~key idx =
-  node ~tag_name:"$Sreact.suspense" ~key ~props:[] (Some (lazy_value idx))
+let suspense_placeholder ~key ~fallback idx =
+  suspense ~key ~fallback (lazy_value idx)
 
 let ref ~import_module ~import_name =
   `List
@@ -84,8 +86,9 @@ let rec to_model ctx idx el =
                 :: props )
         in
         node ~tag_name ~key ~props children
-    | El_suspense { children; fallback = _; key } ->
-        suspense ~key (children |> to_model')
+    | El_suspense { children; fallback; key } ->
+        let fallback = to_model' fallback in
+        suspense ~key ~fallback (to_model' children)
     | El_thunk f ->
         let tree, _reqs = Remote.Runner.with_ctx ctx.remote_ctx f in
         to_model' tree
@@ -129,7 +132,7 @@ let rec to_model ctx idx el =
                 | Fail exn -> raise exn)
             | name, Json json -> name, json)
         in
-        node ~tag_name:(sprintf "$%i" idx) ~key:None ~props None
+        node ~tag_name:(sprintf "$%x" idx) ~key:None ~props None
   in
   push ctx (idx, C_value (to_model' el));
   if ctx.pending = 0 then close ctx

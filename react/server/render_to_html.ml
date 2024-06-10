@@ -128,18 +128,22 @@ module Emit_html = struct
       splice ~sep:"\n"
         [
           node "div"
-            [ "hidden", b true; "id", s (sprintf "S:%i" idx) ]
+            [ "hidden", b true; "id", s (sprintf "S:%x" idx) ]
             [ html ];
-          unsafe_rawf "<script>$RC('B:%i', 'S:%i')</script>" idx idx;
+          unsafe_rawf "<script>$RC('B:%x', 'S:%x')</script>" idx idx;
         ])
 
   let html_suspense inner =
     Html.(
       splice [ unsafe_rawf "<!--$?-->"; inner; unsafe_rawf "<!--/$-->" ])
 
-  let html_suspense_placeholder idx =
-    html_suspense
-    @@ Html.unsafe_rawf {|<template id="B:%i"></template>|} idx
+  let html_suspense_placeholder (fallback : Html.t) idx =
+    Html.(
+      html_suspense
+        (splice
+           [
+             unsafe_rawf {|<template id="B:%x"></template>|} idx; fallback;
+           ]))
 
   let splice = Html.splice ~sep:"<!-- -->"
 end
@@ -237,16 +241,17 @@ let rec client_to_html t = function
       in
       wait ()
   | El_async_thunk _ -> failwith "async component in client mode"
-  | El_suspense { children; fallback = _; key = _ } -> (
+  | El_suspense { children; fallback; key = _ } -> (
       match children with
       | El_null -> Lwt.return (Emit_html.html_suspense Html.empty)
       | _ ->
+          client_to_html t fallback >>= fun fallback ->
           Computation.fork t @@ fun t ->
           let idx = Computation.use_idx t in
           let async =
             client_to_html t children >|= Emit_html.html_chunk idx
           in
-          `Fork (async, Emit_html.html_suspense_placeholder idx))
+          `Fork (async, Emit_html.html_suspense_placeholder fallback idx))
   | El_client_thunk
       { import_module = _; import_name = _; props = _; thunk } ->
       client_to_html t thunk
@@ -310,7 +315,9 @@ let rec server_to_html ~render_model t = function
   | El_async_thunk f ->
       Computation.with_ctx_async t f >>= fun (tree, _reqs) ->
       server_to_html ~render_model t tree
-  | El_suspense { children; fallback = _; key } -> (
+  | El_suspense { children; fallback; key } -> (
+      server_to_html ~render_model t fallback
+      >>= fun (fallback, fallback_model) ->
       Computation.fork t @@ fun t ->
       let promise = server_to_html ~render_model t children in
       match Lwt.state promise with
@@ -328,16 +335,20 @@ let rec server_to_html ~render_model t = function
             Html.splice html
           in
           let html_sync =
-            ( Emit_html.html_suspense_placeholder idx,
+            ( Emit_html.html_suspense_placeholder fallback idx,
               if not render_model then Render_to_model.null
-              else Render_to_model.suspense_placeholder ~key idx )
+              else
+                Render_to_model.suspense_placeholder ~key
+                  ~fallback:fallback_model idx )
           in
           `Fork (html_async, html_sync)
       | Return (html, model) ->
           `Sync
             ( Emit_html.html_suspense html,
               if not render_model then Render_to_model.null
-              else Render_to_model.suspense ~key model )
+              else
+                Render_to_model.suspense ~key ~fallback:fallback_model
+                  model )
       | Fail exn -> `Fail exn)
   | El_client_thunk { import_module; import_name; props; thunk } ->
       let props =
@@ -375,7 +386,7 @@ let rec server_to_html ~render_model t = function
           let idx = Computation.use_idx t in
           let ref = Render_to_model.ref ~import_module ~import_name in
           Computation.emit_html t (Emit_model.html_model (idx, C_ref ref));
-          Render_to_model.node ~tag_name:(sprintf "$%i" idx) ~key:None
+          Render_to_model.node ~tag_name:(sprintf "$%x" idx) ~key:None
             ~props None
       in
       html, model
