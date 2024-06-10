@@ -66,10 +66,12 @@ function main() {
       );
     });
   } else {
-    loadPage(window.location.pathname);
+    let {pathname, search} = window.location;
+    loadPage(pathname + search);
   }
   window.addEventListener("popstate", (event) => {
-    loadPage(window.location.pathname);
+    let {pathname, search} = window.location;
+    loadPage(pathname + search);
   });
 }
 
