@@ -292,17 +292,13 @@ module Ext_export_component = struct
             let prop = pexp_ident ~loc (longident label) in
             let name = estring ~loc label.txt in
             let value =
-              match typ.ptyp_desc with
-              | Ptyp_constr ({ txt = ident; loc }, [])
-                when Longident.name ident = "element"
-                     || Longident.name ident = "React.element" ->
+              match typ with
+              | [%type: element] | [%type: React.element] ->
                   [%expr React_server.React.Element [%e prop]]
-              | Ptyp_constr ({ txt = ident; loc }, [ typ ])
-                when Longident.name ident = "promise"
-                     || Longident.name ident = "Promise.t" ->
+              | [%type: [%t? t] promise] | [%type: [%t? t] Promise.t] ->
                   [%expr
                     React_server.React.Promise
-                      ([%e prop], [%yojson_of: [%t typ]])]
+                      ([%e prop], [%to_json: [%t t]])]
               | _ ->
                   [%expr
                     let json = [%to_json: [%t typ]] [%e prop] in
@@ -325,20 +321,16 @@ module Ext_export_component = struct
           | Some typ ->
               let name = estring ~loc label.txt in
               let value =
-                match typ.ptyp_desc with
-                | Ptyp_constr ({ txt = ident; loc }, [])
-                  when Longident.name ident = "element"
-                       || Longident.name ident = "React.element" ->
+                match typ with
+                | [%type: element] | [%type: React.element] ->
                     [%expr
                       (Obj.magic Js.Dict.unsafeGet props [%e name]
                         : React.element)]
-                | Ptyp_constr ({ txt = ident; loc }, [ typ ])
-                  when Longident.name ident = "promise"
-                       || Longident.name ident = "Promise.t" ->
+                | [%type: [%t? t] promise] | [%type: [%t? t] Promise.t] ->
                     [%expr
                       let promise = Js.Dict.unsafeGet props [%e name] in
                       let promise' =
-                        (Obj.magic promise : [%t typ] Promise.t Js.Dict.t)
+                        (Obj.magic promise : [%t t] Promise.t Js.Dict.t)
                       in
                       match Js.Dict.get promise' "__promise" with
                       | Some promise -> promise
@@ -347,14 +339,14 @@ module Ext_export_component = struct
                             Promise.(
                               let* json =
                                 (Obj.magic (Js.Promise.resolve promise)
-                                  : string Promise.t)
+                                  : Realm.Json.t Promise.t)
                               in
-                              let data = [%of_json: [%t typ]] json in
+                              let data = [%of_json: [%t t]] json in
                               return data)
                           in
                           Js.Dict.set promise' "__promise" promise;
                           promise]
-                | _ ->
+                | typ ->
                     [%expr
                       let json = Js.Dict.unsafeGet props [%e name] in
                       [%of_json: [%t typ]] json]

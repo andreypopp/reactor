@@ -30,7 +30,7 @@ module Runner = struct
     | Running : {
         path : string;
         input : json;
-        yojson_of_output : 'a -> json;
+        json_of_output : 'a -> json;
         promise : 'a Promise.t;
       }
         -> running
@@ -102,7 +102,7 @@ struct
           {
             path;
             input = input_json;
-            yojson_of_output = S.encode_response route;
+            json_of_output = S.encode_response route;
             promise;
           }
       in

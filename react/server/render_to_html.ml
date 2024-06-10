@@ -189,11 +189,10 @@ end
 
 let handle_remote_reqs t reqs =
   Lwt_list.map_p
-    (fun (Remote.Runner.Running
-           { path; input; promise; yojson_of_output }) ->
+    (fun (Remote.Runner.Running { path; input; promise; json_of_output }) ->
       promise >|= fun output ->
       let html =
-        Emit_model.html_rpc_payload path input (yojson_of_output output)
+        Emit_model.html_rpc_payload path input (json_of_output output)
       in
       html)
     reqs
@@ -348,7 +347,7 @@ let rec server_to_html ~render_model t = function
             | React_model.Element element ->
                 server_to_html ~render_model t element
                 >|= fun (_html, model) -> name, model
-            | Promise (promise, value_to_yojson) ->
+            | Promise (promise, value_to_json) ->
                 Computation.fork t @@ fun t ->
                 let idx = Computation.use_idx t in
                 let sync =
@@ -358,7 +357,7 @@ let rec server_to_html ~render_model t = function
                 in
                 let async =
                   promise >|= fun value ->
-                  let json = value_to_yojson value in
+                  let json = value_to_json value in
                   Emit_model.html_model (idx, C_value json)
                 in
                 `Fork (async, sync)

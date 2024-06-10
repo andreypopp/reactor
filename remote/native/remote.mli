@@ -8,7 +8,7 @@ module Runner : sig
     | Running : {
         path : string;
         input : Json.t;
-        yojson_of_output : 'a -> Json.t;
+        json_of_output : 'a -> Json.t;
         promise : 'a Promise.t;
       }
         -> running

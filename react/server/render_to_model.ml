@@ -109,26 +109,21 @@ let rec to_model ctx idx el =
         let props =
           List.map props ~f:(function
             | name, React_model.Element element -> name, to_model' element
-            | name, Promise (promise, value_to_yojson) -> (
+            | name, Promise (promise, value_to_json) -> (
                 match Lwt.state promise with
                 | Return value ->
                     let idx = use_idx ctx in
-                    let json = value_to_yojson value in
-                    push ctx
-                      ( idx,
-                        C_value (`String (Yojson.Basic.to_string json)) );
+                    let json = value_to_json value in
+                    push ctx (idx, C_value json);
                     name, promise_value idx
                 | Sleep ->
                     let idx = use_idx ctx in
                     ctx.pending <- ctx.pending + 1;
                     Lwt.async (fun () ->
                         promise >|= fun value ->
-                        let json = value_to_yojson value in
+                        let json = value_to_json value in
                         ctx.pending <- ctx.pending - 1;
-                        push ctx
-                          ( idx,
-                            C_value
-                              (`String (Yojson.Basic.to_string json)) );
+                        push ctx (idx, C_value json);
                         if ctx.pending = 0 then close ctx);
                     name, promise_value idx
                 | Fail exn -> raise exn)
