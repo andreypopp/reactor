@@ -69,7 +69,9 @@ let render ?(enable_client_components = false) ?(enable_ssr = true)
               Chunked.stream ~is_len_encoded:false
                 ~headers:[ "Content-Type", "text/html" ]
               @@ fun s ->
-              let write_html h = Chunked.write s (Html.to_string h) in
+              let write_html h =
+                Chunked.write ~flush:true s (Html.to_string h)
+              in
               write_html header >>= fun () -> html_iter write_html
         else
           Dream.html
