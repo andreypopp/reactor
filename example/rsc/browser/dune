@@ -13,6 +13,7 @@
   -open=Realm
   -open=React_browser
   -open=Ppx_deriving_json_runtime.Primitives
+  -w -33
   -alert
   ++browser_only)
  (modes melange)

@@ -1,5 +1,4 @@
-open! Routing
-open Ppx_deriving_json_runtime.Primitives
+open Routing
 
 let%export_component home ~(promise : string Promise.t) () =
   <div>
