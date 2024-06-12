@@ -1,10 +1,16 @@
 open! Routing
 open Ppx_deriving_json_runtime.Primitives
 
-let%export_component home () =
+let%export_component home ~(promise : string Promise.t) () =
   <div>
     <h1>"Home"</h1>
     <p>"Welcome to the home page!"</p>
+    <h2>"Loading some data from server below:"</h2>
+    <p>
+      <React.Suspense fallback=(React.string "Loading...")>
+        <Ui.use_promise promise />
+      </React.Suspense>
+    </p>
     <a href=(href About)>"About"</a>
     <Ui.some_ui />
   </div>

@@ -12,9 +12,13 @@ module UI = struct
       </body>
     </html>
 
-  let home =
+  let home () =
+    let open Lwt.Infix in
+    let promise =
+      Lwt_unix.sleep 1.0 >|= fun () -> "Hello from OCaml React!"
+    in
     <page title="React of OCaml">
-      <Browser.home />
+      <Browser.home promise />
     </page>
 
   let about =
@@ -33,7 +37,7 @@ let render ui =
 let handle =
   let f : type a. a Routing.t -> Dream.request -> a Lwt.t =
    fun route ->
-    match route with Home -> render UI.home | About -> render UI.about
+    match route with Home -> render (UI.home ()) | About -> render UI.about
   in
   Routing.handle { f }
 

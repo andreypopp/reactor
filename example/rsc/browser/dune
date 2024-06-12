@@ -8,7 +8,13 @@
   routing_browser
   realm.browser
   melange-webapi)
- (flags :standard -open Realm -open React_browser -alert ++browser_only)
+ (flags
+  :standard
+  -open=Realm
+  -open=React_browser
+  -open=Ppx_deriving_json_runtime.Primitives
+  -alert
+  ++browser_only)
  (modes melange)
  (preprocess
   (pps melange.ppx react_server.ppx ppx_deriving_json.browser)))

@@ -1,3 +1,8 @@
 let%component some_ui () =
   Js.log "rendering ok";
   <div>"ok"</div>
+
+let%component use_promise ~promise () =
+  let v = React.use promise in
+  React.string ("a message from server: " ^ v)
+

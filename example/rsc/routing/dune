@@ -15,4 +15,4 @@
    (pps melange.ppx ppx_deriving_json.browser ppx_deriving_router.browser)))
  (copy_files#
   (only_sources)
-  (files ../**[!.pp][!.mlx].ml)))
+  (files ../*.{ml,mlx})))
