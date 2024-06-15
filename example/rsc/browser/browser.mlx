@@ -6,8 +6,15 @@ let%export_component home ~(promise : string Promise.t) () =
     <p>"Welcome to the home page!"</p>
     <h2>"Loading some data from server below:"</h2>
     <p>
-      <React.Suspense fallback=(React.string "Loading...")>
+      <React.Suspense fallback=(React.string
+                                  "Loading server initiated data...")>
         <Ui.use_promise promise />
+      </React.Suspense>
+    </p>
+    <p>
+      <React.Suspense fallback=(React.string
+                                  "Loading client initiated data...")>
+        <Ui.load_server_time />
       </React.Suspense>
     </p>
     <a href=(href About)>"About"</a>
@@ -16,7 +23,5 @@ let%export_component home ~(promise : string Promise.t) () =
 
 let%export_component about () =
   <div>
-    <h1>"About"</h1>
-    <a href=(href Home)>"Home"</a>
-    <Ui.some_ui />
+    <h1>"About"</h1> <a href=(href Home)>"Home"</a> <Ui.some_ui />
   </div>

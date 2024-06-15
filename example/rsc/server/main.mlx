@@ -17,14 +17,9 @@ module UI = struct
     let promise =
       Lwt_unix.sleep 1.0 >|= fun () -> "Hello from OCaml React!"
     in
-    <page title="React of OCaml">
-      <Browser.home promise />
-    </page>
+    <page title="React of OCaml"><Browser.home promise /></page>
 
-  let about =
-    <page title="About">
-      <Browser.about />
-    </page>
+  let about = <page title="About"><Browser.about /></page>
 end
 
 let links = [ "/static/bundle.css" ]
@@ -37,7 +32,13 @@ let render ui =
 let handle =
   let f : type a. a Routing.t -> Dream.request -> a Lwt.t =
    fun route ->
-    match route with Home -> render (UI.home ()) | About -> render UI.about
+    match route with
+    | Home -> render (UI.home ())
+    | About -> render UI.about
+    | Api_server_time ->
+        fun _req ->
+          let time = Unix.time () in
+          Lwt.return time
   in
   Routing.handle { f }
 
