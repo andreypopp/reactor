@@ -27,8 +27,7 @@ module UI = struct
 
   let app () =
     let promise_as_prop =
-      Lwt_unix.sleep 3. >>= fun () ->
-      Lwt.return "PROMISE VALUE HERE"
+      Lwt_unix.sleep 3. >>= fun () -> Lwt.return "PROMISE VALUE HERE"
     in
     <page title="React of OCaml">
       <div>

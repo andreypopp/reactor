@@ -152,7 +152,7 @@ let%component todo_section ~title ~on_completed ~todos () =
 
 let%component add_todo_form ~on_create () =
   let value, set_value = React.useState (fun () -> "") in
-  let input, set_input = ReactDOM.useDomRef () in
+  let input, set_input = ReactDOM.Ref.useCurrentDomRef () in
   let%browser_only onChange ev =
     let value = React.Event.Form.(target ev)##value in
     set_value (fun _ -> value)

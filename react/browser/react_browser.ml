@@ -15,10 +15,14 @@ end
 module ReactDOM = struct
   include ReactDOM
 
-  let useDomRef () =
-    let ref = React.useRef Js.Nullable.null in
-    let dom_ref = ReactDOM.Ref.domRef ref in
-    ref, dom_ref
+  module Ref = struct
+    include ReactDOM.Ref
+
+    let useCurrentDomRef () : currentDomRef * domRef =
+      let ref = React.useRef Js.Nullable.null in
+      let dom_ref = ReactDOM.Ref.domRef ref in
+      ref, dom_ref
+  end
 end
 
 module ReactServerDOM = struct
