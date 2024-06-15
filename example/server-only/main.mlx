@@ -74,13 +74,13 @@ module UI = struct
             </a>
           </div>
         </card>
-        <React.Suspense>
+        <React.Suspense fallback=(React.string "...")>
           <card title="Async Data" delay=1.>(React.string "HELLO")</card>
           <card title="Async Data" delay=1.>(React.string "HELLO")</card>
         </React.Suspense>
-        <React.Suspense>
+        <React.Suspense fallback=(React.string "...")>
           <card title="Async Data" delay=2.>(React.string "OUTER")</card>
-          <React.Suspense>
+          <React.Suspense fallback=(React.string "...")>
             <card title="Inner Async Data" delay=1.>
               (React.string "INNER")
             </card>
