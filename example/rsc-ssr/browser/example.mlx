@@ -1,5 +1,7 @@
 open Routing
 
+type Remote.tag += Tag_app | Tag_todo
+
 let%component link' ~href ~label () =
   let%browser_only onClick ev =
     React.Event.Mouse.preventDefault ev;
@@ -16,13 +18,13 @@ let%component button' ~onPress:onClick ~label () =
 
 let%component hello ~name () =
   let q, setq =
-    React.useState (fun () -> Data.Hello.fetch (Hello { name }))
+    React.useState (fun () -> Data.Hello.fetch ~tags:[Tag_app] (Hello { name }))
   in
   let () =
     React.useEffect1
       (fun () ->
         React.startTransition (fun () ->
-            setq (fun _ -> Data.Hello.fetch (Hello { name })));
+          setq (fun _ -> Data.Hello.fetch ~tags:[Tag_app] (Hello { name })));
         None)
       [| name |]
   in
@@ -35,7 +37,7 @@ let%component hello ~name () =
            Data.Hello.run
              (Update_greeting { greeting = Greeting_informal })
          in
-         Data.Hello.invalidate (Hello { name });
+         Data.Hello.invalidate_tag Tag_app;
          React.startTransition (fun () ->
              setq (fun _ -> Data.Hello.fetch (Hello { name })));
          return ())
@@ -179,14 +181,13 @@ let%component add_todo_form ~on_create () =
   </div>
 
 let%component todo_list' () =
-  let todos, set_todos =
-    React.useState (fun () -> Data.Todo.fetch List)
-  in
+  let fetch_todos _ = Data.Todo.fetch ~tags:[Tag_todo] List in
+  let todos, set_todos = React.useState fetch_todos in
   let todos = React.use todos in
   let%browser_only refetch () =
     React.startTransition @@ fun () ->
-    Data.Todo.invalidate List;
-    set_todos (fun _ -> Data.Todo.fetch List)
+    Data.Todo.invalidate_tag Tag_todo;
+    set_todos fetch_todos
   in
   let completed, to_be_done =
     List.partition_map
