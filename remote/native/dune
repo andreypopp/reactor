@@ -8,5 +8,6 @@
   containers
   hmap
   yojson
+  htmlgen
   realm.native
   ppx_deriving_router.runtime_lib))

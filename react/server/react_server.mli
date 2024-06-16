@@ -101,10 +101,10 @@ val render_to_model :
 
     Use {!module-Html.to_string} to serialize {!module-Html.t} values to string. *)
 type html_rendering =
-  | Html_rendering_done of { html : Html.t }
+  | Html_rendering_done of { html : Htmlgen.t }
   | Html_rendering_async of {
-      html_shell : Html.t;
-      html_iter : (Html.t -> unit Lwt.t) -> unit Lwt.t;
+      html_shell : Htmlgen.t;
+      html_iter : (Htmlgen.t -> unit Lwt.t) -> unit Lwt.t;
     }
 
 val render_to_html :
@@ -113,5 +113,3 @@ val render_to_html :
 
 type browser_only
 (** values of this type are impossible to use in server environment *)
-
-module Html : module type of Html

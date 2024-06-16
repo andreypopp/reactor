@@ -1,4 +1,4 @@
-(* Borrowed from https://github.com/dbuenzli/htmlit/blob/main/src/htmlit.ml
+(* Contains code form borrowed from https://github.com/dbuenzli/htmlit/blob/main/src/htmlit.ml
 
    Copyright (c) 2016 The htmlit programmers. All rights reserved.
    SPDX-License-Identifier: ISC
@@ -8,7 +8,8 @@ open Printf
 open ContainersLabels
 open Monomorphic
 
-type attrs = (string * attr_value) list
+type attrs = attr list
+and attr = string * attr_value
 
 and attr_value =
   [ `String of string | `Bool of bool | `Int of int | `Float of float ]
@@ -28,6 +29,7 @@ let splice ?(sep = "") xs = H_splice (xs, sep)
 let s v = `String v
 let b v = `Bool v
 let i v = `Int v
+let f v = `Float v
 
 let add_escaped b s =
   let adds = Buffer.add_string in

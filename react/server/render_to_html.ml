@@ -4,35 +4,36 @@ module Computation : sig
   type t
 
   val root :
-    (t * int -> Html.t Lwt.t) ->
-    (Html.t * Html.t Lwt_stream.t option) Lwt.t
+    (t * int -> Htmlgen.t Lwt.t) ->
+    (Htmlgen.t * Htmlgen.t Lwt_stream.t option) Lwt.t
 
   val fork :
     t ->
-    (t -> [ `Fail of exn | `Fork of Html.t Lwt.t * 'a | `Sync of 'a ]) ->
+    (t -> [ `Fail of exn | `Fork of Htmlgen.t Lwt.t * 'a | `Sync of 'a ]) ->
     'a Lwt.t
 
   val update_ctx : t -> 'a React_model.context -> 'a -> t
-  val with_ctx : t -> (unit -> 'a) -> 'a * Remote.Runner.running list
+  val with_ctx : t -> (unit -> 'a) -> 'a * Remote.Context.batch
 
   val with_ctx_async :
-    t -> (unit -> 'a Lwt.t) -> ('a * Remote.Runner.running list) Lwt.t
+    t -> (unit -> 'a Lwt.t) -> ('a * Remote.Context.batch) Lwt.t
 
   val use_idx : t -> int
-  val emit_html : t -> Html.t -> unit
+  val emit_html : t -> Htmlgen.t -> unit
+  val emit_batch : t -> Remote.Context.batch -> unit Lwt.t
 end = struct
   type ctx = {
     mutable idx : int;
     mutable pending : int;
-    push : Html.t option -> unit;
-    remote_runner_ctx : Remote.Runner.ctx;
+    push : Htmlgen.t option -> unit;
+    remote_ctx : Remote.Context.t;
   }
 
   type t = {
     ctx : ctx;
     react_ctx : Hmap.t;
     finished : unit Lwt.t;
-    mutable emit_html : Html.t -> unit;
+    mutable emit_html : Htmlgen.t -> unit;
   }
 
   let update_ctx t ctx v =
@@ -41,11 +42,11 @@ end = struct
 
   let with_ctx t f =
     let f () = React_model.with_context t.react_ctx f in
-    Remote.Runner.with_ctx t.ctx.remote_runner_ctx f
+    Remote.Context.with_ctx t.ctx.remote_ctx f
 
   let with_ctx_async t f =
     let f () = React_model.with_context t.react_ctx f in
-    Remote.Runner.with_ctx_async t.ctx.remote_runner_ctx f
+    Remote.Context.with_ctx_async t.ctx.remote_ctx f
 
   let use_idx t =
     t.ctx.idx <- t.ctx.idx + 1;
@@ -53,16 +54,15 @@ end = struct
 
   let emit_html t html = t.emit_html html
 
+  let emit_batch t batch =
+    Remote.Context.batch_to_html t.ctx.remote_ctx batch >|= fun html ->
+    emit_html t html
+
   let root f =
     let rendering, push = Lwt_stream.create () in
     let idx = 0 in
     let ctx =
-      {
-        push;
-        pending = 1;
-        idx;
-        remote_runner_ctx = Remote.Runner.create ();
-      }
+      { push; pending = 1; idx; remote_ctx = Remote.Context.create () }
     in
     let htmls = ref (Some []) in
     let finished, parent_done = Lwt.wait () in
@@ -80,7 +80,7 @@ end = struct
           chunks
       | None -> assert false
     in
-    let html = Html.splice [ Html.splice htmls; html ] in
+    let html = Htmlgen.splice [ Htmlgen.splice htmls; html ] in
     Lwt.wakeup_later parent_done ();
     ctx.pending <- ctx.pending - 1;
     match ctx.pending = 0 with
@@ -120,11 +120,11 @@ end
 
 module Emit_html = struct
   let html_rc =
-    Html.unsafe_rawf "<script>%s</script>"
+    Htmlgen.unsafe_rawf "<script>%s</script>"
       {|$RC=function(b,c,e){c=document.getElementById(c);c.parentNode.removeChild(c);var a=document.getElementById(b);if(a){b=a.previousSibling;if(e)b.data="$!",a.setAttribute("data-dgst",e);else{e=b.parentNode;a=b.nextSibling;var f=0;do{if(a&&8===a.nodeType){var d=a.data;if("/$"===d)if(0===f)break;else f--;else"$"!==d&&"$?"!==d&&"$!"!==d||f++}d=a.nextSibling;e.removeChild(a);a=d}while(a);for(;c.firstChild;)e.insertBefore(c.firstChild,a);b.data="$"}b._reactRetry&&b._reactRetry()}};|}
 
   let html_chunk idx html =
-    Html.(
+    Htmlgen.(
       splice ~sep:"\n"
         [
           node "div"
@@ -134,38 +134,29 @@ module Emit_html = struct
         ])
 
   let html_suspense inner =
-    Html.(
+    Htmlgen.(
       splice [ unsafe_rawf "<!--$?-->"; inner; unsafe_rawf "<!--/$-->" ])
 
-  let html_suspense_placeholder (fallback : Html.t) idx =
-    Html.(
+  let html_suspense_placeholder (fallback : Htmlgen.t) idx =
+    Htmlgen.(
       html_suspense
         (splice
            [
              unsafe_rawf {|<template id="B:%x"></template>|} idx; fallback;
            ]))
 
-  let splice = Html.splice ~sep:"<!-- -->"
+  let splice = Htmlgen.splice ~sep:"<!-- -->"
 end
 
 module Emit_model = struct
   let html_start =
-    Html.unsafe_rawf
+    Htmlgen.unsafe_rawf
       {|<script>
           let enc = new TextEncoder();
           let React_of_caml_ssr = (window.React_of_caml_ssr = {});
           React_of_caml_ssr.push = () => {
             let el = document.currentScript;
             React_of_caml_ssr._c.enqueue(enc.encode(el.dataset.payload))
-          };
-          React_of_caml_ssr.push_rpc = () => {
-            let el = document.currentScript;
-            let path = el.dataset.path;
-            let input = el.dataset.input;
-            let output = el.dataset.output;
-            window.__Remote_cache = window.__Remote_cache || {};
-            window.__Remote_cache[path] = window.__Remote_cache[path] || {};
-            window.__Remote_cache[path][input] = {json: Promise.resolve(output), data: null};
           };
           React_of_caml_ssr.close = () => {
             React_of_caml_ssr._c.close();
@@ -175,42 +166,24 @@ module Emit_model = struct
 
   let html_model model =
     let chunk = Render_to_model.chunk_to_string model in
-    Html.unsafe_rawf
+    Htmlgen.unsafe_rawf
       "<script data-payload='%s'>window.React_of_caml_ssr.push()</script>"
-      (Html.single_quote_escape chunk)
-
-  let html_rpc_payload path input output =
-    Html.unsafe_rawf
-      "<script data-path='%s' data-input='%s' \
-       data-output='%s'>window.React_of_caml_ssr.push_rpc()</script>"
-      (Html.single_quote_escape path)
-      (Html.single_quote_escape (Yojson.Basic.to_string input))
-      (Html.single_quote_escape (Yojson.Basic.to_string output))
+      (Htmlgen.single_quote_escape chunk)
 
   let html_end =
-    Html.unsafe_rawf "<script>window.React_of_caml_ssr.close()</script>"
+    Htmlgen.unsafe_rawf
+      "<script>window.React_of_caml_ssr.close()</script>"
 end
 
-let handle_remote_reqs t reqs =
-  Lwt_list.map_p
-    (fun (Remote.Runner.Running { path; input; promise; json_of_output }) ->
-      promise >|= fun output ->
-      let html =
-        Emit_model.html_rpc_payload path input (json_of_output output)
-      in
-      html)
-    reqs
-  >|= fun payload -> Computation.emit_html t (Html.splice payload)
-
 let rec client_to_html t = function
-  | React_model.El_null -> Lwt.return (Html.text "")
-  | El_text s -> Lwt.return (Html.text s)
+  | React_model.El_null -> Lwt.return (Htmlgen.text "")
+  | El_text s -> Lwt.return (Htmlgen.text s)
   | El_frag els -> client_to_html_many t els
   | El_context (key, value, children) ->
       let t = Computation.update_ctx t key value in
       client_to_html t children
   | El_html { tag_name; key = _; props; children = None } ->
-      Lwt.return (Html.node tag_name props [])
+      Lwt.return (Htmlgen.node tag_name props [])
   | El_html
       {
         tag_name;
@@ -219,7 +192,7 @@ let rec client_to_html t = function
         children = Some (Html_children children);
       } ->
       client_to_html t children >|= fun children ->
-      Html.node tag_name props [ children ]
+      Htmlgen.node tag_name props [ children ]
   | El_html
       {
         tag_name;
@@ -227,23 +200,22 @@ let rec client_to_html t = function
         props;
         children = Some (Html_children_raw { __html });
       } ->
-      Lwt.return (Html.node tag_name props [ Html.unsafe_raw __html ])
+      Lwt.return
+        (Htmlgen.node tag_name props [ Htmlgen.unsafe_raw __html ])
   | El_thunk f ->
       let rec wait () =
         match Computation.with_ctx t f with
         | exception React_model.Suspend (Any_promise promise) ->
             promise >>= fun _ -> wait ()
-        | v, [] -> client_to_html t v
-        | v, reqs ->
-            let payload = handle_remote_reqs t reqs in
-            let children = client_to_html t v in
-            Lwt.both children payload >|= fun (children, ()) -> children
+        | v, batch ->
+            Lwt.both (client_to_html t v) (Computation.emit_batch t batch)
+            >|= fst
       in
       wait ()
   | El_async_thunk _ -> failwith "async component in client mode"
   | El_suspense { children; fallback; key = _ } -> (
       match children with
-      | El_null -> Lwt.return (Emit_html.html_suspense Html.empty)
+      | El_null -> Lwt.return (Emit_html.html_suspense Htmlgen.empty)
       | _ ->
           client_to_html t fallback >>= fun fallback ->
           Computation.fork t @@ fun t ->
@@ -256,16 +228,16 @@ let rec client_to_html t = function
       { import_module = _; import_name = _; props = _; thunk } ->
       client_to_html t thunk
 
-and client_to_html_many t els : Html.t Lwt.t =
+and client_to_html_many t els : Htmlgen.t Lwt.t =
   Array.to_list els
   |> Lwt_list.map_p (client_to_html t)
   >|= Emit_html.splice
 
 let rec server_to_html ~render_model t = function
-  | React_model.El_null -> Lwt.return (Html.empty, Render_to_model.null)
+  | React_model.El_null -> Lwt.return (Htmlgen.empty, Render_to_model.null)
   | El_text s ->
       Lwt.return
-        ( Html.text s,
+        ( Htmlgen.text s,
           if not render_model then Render_to_model.null
           else Render_to_model.text s )
   | El_frag els -> server_to_html_many ~render_model t els
@@ -275,7 +247,7 @@ let rec server_to_html ~render_model t = function
       { tag_name; key; props; children = Some (Html_children children) }
     ->
       server_to_html ~render_model t children >|= fun (html, children) ->
-      ( Html.node tag_name props [ html ],
+      ( Htmlgen.node tag_name props [ html ],
         if not render_model then Render_to_model.null
         else
           Render_to_model.node ~tag_name ~key
@@ -289,7 +261,7 @@ let rec server_to_html ~render_model t = function
         children = Some (Html_children_raw { __html });
       } ->
       Lwt.return
-        ( Html.node tag_name props [ Html.unsafe_raw __html ],
+        ( Htmlgen.node tag_name props [ Htmlgen.unsafe_raw __html ],
           if not render_model then Render_to_model.null
           else
             let props = (props :> (string * json) list) in
@@ -301,7 +273,7 @@ let rec server_to_html ~render_model t = function
             Render_to_model.node ~tag_name ~key ~props None )
   | El_html { tag_name; key; props; children = None } ->
       Lwt.return
-        ( Html.node tag_name props [],
+        ( Htmlgen.node tag_name props [],
           if not render_model then Render_to_model.null
           else
             Render_to_model.node ~tag_name ~key
@@ -309,11 +281,13 @@ let rec server_to_html ~render_model t = function
               None )
   | El_thunk f ->
       let tree, _reqs = Computation.with_ctx t f in
-      (* TODO: need to register them somewhere? *)
-      (* let payload = handle_remote_reqs t reqs in *)
+      (* NOTE: ignoring [_reqs] here as server data requests won't be replayed
+         on client, while we still want to allow to use Remote library *)
       server_to_html ~render_model t tree
   | El_async_thunk f ->
       Computation.with_ctx_async t f >>= fun (tree, _reqs) ->
+      (* NOTE: ignoring [_reqs] here as server data requests won't be replayed
+         on client, while we still want to allow to use Remote library *)
       server_to_html ~render_model t tree
   | El_suspense { children; fallback; key } -> (
       server_to_html ~render_model t fallback
@@ -332,7 +306,7 @@ let rec server_to_html ~render_model t = function
                 Emit_model.html_model (idx, Render_to_model.C_value model)
                 :: html
             in
-            Html.splice html
+            Htmlgen.splice html
           in
           let html_sync =
             ( Emit_html.html_suspense_placeholder fallback idx,
@@ -399,10 +373,10 @@ and server_to_html_many ~render_model finished els =
   Emit_html.splice htmls, Render_to_model.list model
 
 type html_rendering =
-  | Html_rendering_done of { html : Html.t }
+  | Html_rendering_done of { html : Htmlgen.t }
   | Html_rendering_async of {
-      html_shell : Html.t;
-      html_iter : (Html.t -> unit Lwt.t) -> unit Lwt.t;
+      html_shell : Htmlgen.t;
+      html_iter : (Htmlgen.t -> unit Lwt.t) -> unit Lwt.t;
     }
 
 let render ~render_model el =
@@ -411,7 +385,7 @@ let render ~render_model el =
     server_to_html ~render_model t el >|= fun (html, model) ->
     if not render_model then html
     else
-      Html.splice
+      Htmlgen.splice
         [
           Emit_model.html_model (idx, Render_to_model.C_value model); html;
         ]
@@ -422,7 +396,7 @@ let render ~render_model el =
       let html =
         if not render_model then html_shell
         else
-          Html.splice
+          Htmlgen.splice
             [ Emit_model.html_start; html_shell; Emit_model.html_end ]
       in
       Html_rendering_done { html }
@@ -433,9 +407,9 @@ let render ~render_model el =
       in
       let html_shell =
         if not render_model then
-          Html.splice [ Emit_html.html_rc; html_shell ]
+          Htmlgen.splice [ Emit_html.html_rc; html_shell ]
         else
-          Html.(
+          Htmlgen.(
             splice
               [ Emit_model.html_start; Emit_html.html_rc; html_shell ])
       in

@@ -19,33 +19,50 @@ module Cache = struct
   let add = M.add
 end
 
-module Runner = struct
-  type ctx = {
+type tag = ..
+
+let tag_to_string (tag : tag) =
+  let tag = Obj.Extension_constructor.of_val tag in
+  Obj.Extension_constructor.name tag
+
+module Context = struct
+  type t = {
     mutable cache : Cache.t;
-    mutable running : running list;
-    mutable all_running : running list;
+    mutable running : fetch list;
+    mutable all_running : fetch list;
+    mutable runtime_emitted : bool;
   }
 
-  and running =
-    | Running : {
+  and fetch =
+    | Fetch : {
         path : string;
         input : json;
         json_of_output : 'a -> json;
         promise : 'a Promise.t;
+        tags : tag list;
       }
-        -> running
+        -> fetch
 
-  let create () = { cache = Cache.empty; running = []; all_running = [] }
-  let ctx : ctx Lwt.key = Lwt.new_key ()
+  and batch = fetch list
+
+  let create () =
+    {
+      cache = Cache.empty;
+      running = [];
+      all_running = [];
+      runtime_emitted = false;
+    }
+
+  let current : t Lwt.key = Lwt.new_key ()
 
   let with_ctx ctx' f =
-    let v = Lwt.with_value ctx (Some ctx') f in
+    let v = Lwt.with_value current (Some ctx') f in
     let running = ctx'.running in
     ctx'.running <- [];
     v, running
 
   let with_ctx_async ctx' f =
-    let v = Lwt.with_value ctx (Some ctx') f in
+    let v = Lwt.with_value current (Some ctx') f in
     Lwt.map
       (fun v ->
         let running = ctx'.running in
@@ -56,12 +73,73 @@ module Runner = struct
   let wait ctx =
     Lwt.join
     @@ List.filter_map
-         ~f:(fun (Running { promise; _ }) ->
+         ~f:(fun (Fetch { promise; _ }) ->
            match Lwt.state promise with
            | Fail _exn -> None
            | Return _v -> None
            | Sleep -> Some (promise >|= Fun.const ()))
          ctx.all_running
+
+  module To_html = struct
+    let runtime =
+      Htmlgen.unsafe_raw
+        {|
+        <script>
+        window.__Remote = window.__Remote || {};
+        window.__Remote.push = () => {
+          let el = document.currentScript;
+          let path = el.dataset.path;
+          let input = el.dataset.input;
+          let tags = JSON.parse(el.dataset.tags);
+          let output = el.dataset.output;
+          let record = {json: Promise.resolve(output), data: null, tags};
+
+          let by_req = window.__Remote_cache = window.__Remote_cache || {};
+          let by_tag = window.__Remote_cache_by_tag = window.__Remote_cache_by_tag || {};
+
+          by_req[path]        = by_req[path] || {};
+          by_req[path][input] = record;
+
+          tags.forEach(tag => {
+            by_tag[tag]              = by_tag[tag] || {};
+            by_tag[tag][path]        = by_tag[tag][path] || {};
+            by_tag[tag][path][input] = record;
+          });
+        };
+        </script>
+    |}
+
+    let fetch_to_html' ~path ~input ~tags output =
+      let tags =
+        `List (List.map tags ~f:(fun tag -> `String (tag_to_string tag)))
+      in
+      Htmlgen.unsafe_rawf
+        "<script data-path='%s' data-input='%s' data-tags='%s' \
+         data-output='%s'>window.__Remote.push()</script>"
+        (Htmlgen.single_quote_escape path)
+        (Htmlgen.single_quote_escape (Yojson.Basic.to_string input))
+        (Htmlgen.single_quote_escape (Yojson.Basic.to_string tags))
+        (Htmlgen.single_quote_escape (Yojson.Basic.to_string output))
+
+    let fetch_to_html
+        (Fetch { path; input; promise; json_of_output; tags }) =
+      promise >|= fun output ->
+      fetch_to_html' ~tags ~path ~input (json_of_output output)
+
+    let batch_to_html ctx = function
+      | [] -> Lwt.return Htmlgen.empty
+      | batch ->
+          Lwt_list.map_p fetch_to_html batch >|= fun htmls ->
+          let htmls =
+            if not ctx.runtime_emitted then (
+              ctx.runtime_emitted <- true;
+              runtime :: htmls)
+            else htmls
+          in
+          Htmlgen.splice htmls
+  end
+
+  let batch_to_html = To_html.batch_to_html
 end
 
 module Make (S : sig
@@ -79,11 +157,11 @@ struct
   let handle = S.handle
   let run : type a. a route -> a Lwt.t = handle
 
-  let fetch : type a. a route -> a Lwt.t =
-   fun route ->
+  let fetch : type a. ?tags:tag list -> a route -> a Lwt.t =
+   fun ?(tags = []) route ->
     let witness = S.witness route in
     let ctx =
-      match Lwt.get Runner.ctx with
+      match Lwt.get Context.current with
       | None ->
           failwith
             "no Runner_ctx.t available, did you forgot to wrap the call \
@@ -98,12 +176,13 @@ struct
       ctx.cache <-
         Cache.add key (Cache.Record (witness, promise)) ctx.cache;
       let running =
-        Runner.Running
+        Context.Fetch
           {
             path;
             input = input_json;
             json_of_output = S.encode_response route;
             promise;
+            tags;
           }
       in
       ctx.running <- running :: ctx.running;

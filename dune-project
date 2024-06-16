@@ -17,6 +17,14 @@
 (license LICENSE)
 
 (package
+ (name htmlgen)
+ (depends
+  (ocaml
+   (>= 4.14))
+  dune
+  containers))
+
+(package
  (name realm)
  (depends
   (ocaml
@@ -36,6 +44,7 @@
   melange-fetch
   containers
   ppxlib
+  htmlgen
   hmap
   realm
   ppx_deriving_router
@@ -50,6 +59,7 @@
   dune
   remote
   realm
+  htmlgen
   containers
   lwt
   ppxlib
@@ -76,4 +86,5 @@
   dune
   lwt
   dream
+  htmlgen
   react_server))

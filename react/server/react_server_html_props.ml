@@ -1,13 +1,10 @@
-type props = prop list
-and prop = string * value
+type props = Htmlgen.attrs
+type prop = Htmlgen.attr
 
-and value =
-  [ `String of string | `Bool of bool | `Int of int | `Float of float ]
-
-let s v : value = `String v
-let b v : value = `Bool v
-let i v : value = `Int v
-let f v : value = `Float v
+let s = Htmlgen.s
+let b = Htmlgen.b
+let i = Htmlgen.i
+let f = Htmlgen.f
 let ariaActivedescendant v = "aria-activedescendant", s v
 let ariaAtomic : bool -> prop = fun v -> "aria-atomic", b v
 let ariaAutocomplete : string -> prop = fun v -> "aria-autocomplete", s v

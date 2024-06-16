@@ -3,13 +3,13 @@ open Lwt.Infix
 open React_server
 
 let make_script src =
-  Html.(node "script" [ "src", s src; "async", b true ] [])
+  Htmlgen.(node "script" [ "src", s src; "async", b true ] [])
 
 let make_link href =
-  Html.(node "link" [ "href", s href; "rel", s "stylesheet" ] [])
+  Htmlgen.(node "link" [ "href", s href; "rel", s "stylesheet" ] [])
 
 let html_prelude ~links =
-  Html.(
+  Htmlgen.(
     splice ~sep:"\n"
       [
         unsafe_raw "<!doctype html>";
@@ -45,14 +45,15 @@ let render ?(enable_client_components = false) ?(enable_ssr = true)
     ?(scripts = []) ?(links = []) =
   let html_prelude = html_prelude ~links in
   let html_scripts =
-    Html.(List.map scripts ~f:make_script |> splice ~sep:"\n")
+    Htmlgen.(List.map scripts ~f:make_script |> splice ~sep:"\n")
   in
   fun ui req ->
     match Dream.header req "accept" with
     | Some accept
       when enable_client_components
            && String.equal accept rsc_content_type ->
-        Chunked.stream ~is_len_encoded:true @@ fun s ->
+        let headers = [ "X-Content-Type-Options", "nosniff" ] in
+        Chunked.stream ~headers ~is_len_encoded:true @@ fun s ->
         render_to_model ui (Chunked.write ~flush:true s)
     | _ ->
         if enable_ssr then
@@ -60,19 +61,20 @@ let render ?(enable_client_components = false) ?(enable_ssr = true)
           >>= function
           | Html_rendering_done { html } ->
               Dream.html
-                Html.(
+                Htmlgen.(
                   splice [ html_prelude; html; html_scripts ] |> to_string)
           | Html_rendering_async { html_shell; html_iter } ->
               let header =
-                Html.(splice [ html_prelude; html_shell; html_scripts ])
+                Htmlgen.(
+                  splice [ html_prelude; html_shell; html_scripts ])
               in
               Chunked.stream ~is_len_encoded:false
                 ~headers:[ "Content-Type", "text/html" ]
               @@ fun s ->
               let write_html h =
-                Chunked.write ~flush:true s (Html.to_string h)
+                Chunked.write ~flush:true s (Htmlgen.to_string h)
               in
               write_html header >>= fun () -> html_iter write_html
         else
           Dream.html
-            Html.(splice [ html_prelude; html_scripts ] |> to_string)
+            Htmlgen.(splice [ html_prelude; html_scripts ] |> to_string)

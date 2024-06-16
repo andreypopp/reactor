@@ -1,4 +1,10 @@
-(** Combinators for HTML generation. *)
+(** Combinators for HTML generation.
+
+    Contains code from https://github.com/dbuenzli/htmlit/blob/main/src/htmlit.ml
+
+    Copyright (c) 2016 The htmlit programmers. All rights reserved.
+    SPDX-License-Identifier: ISC
+*)
 
 (** {1 HTML model} *)
 
@@ -7,12 +13,15 @@
 type attrs = (string * attr_value) list
 (** A list of HTML attributes. *)
 
+and attr = string * attr_value
+
 and attr_value =
   [ `String of string | `Bool of bool | `Int of int | `Float of float ]
 
 val s : string -> attr_value
 val b : bool -> attr_value
 val i : int -> attr_value
+val f : float -> attr_value
 
 (** {2 HTML elements} *)
 

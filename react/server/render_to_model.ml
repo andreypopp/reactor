@@ -55,7 +55,7 @@ type ctx = {
   mutable idx : int;
   mutable pending : int;
   push : string option -> unit;
-  remote_ctx : Remote.Runner.ctx;
+  remote_ctx : Remote.Context.t;
 }
 
 let use_idx ctx =
@@ -90,10 +90,10 @@ let rec to_model ctx idx el =
         let fallback = to_model' fallback in
         suspense ~key ~fallback (to_model' children)
     | El_thunk f ->
-        let tree, _reqs = Remote.Runner.with_ctx ctx.remote_ctx f in
+        let tree, _reqs = Remote.Context.with_ctx ctx.remote_ctx f in
         to_model' tree
     | El_async_thunk f -> (
-        let tree = Remote.Runner.with_ctx_async ctx.remote_ctx f in
+        let tree = Remote.Context.with_ctx_async ctx.remote_ctx f in
         match Lwt.state tree with
         | Lwt.Return (tree, _reqs) -> to_model' tree
         | Lwt.Fail exn -> raise exn
@@ -140,10 +140,10 @@ let rec to_model ctx idx el =
 let render el on_chunk =
   let rendering, push = Lwt_stream.create () in
   let ctx =
-    { push; pending = 0; idx = 0; remote_ctx = Remote.Runner.create () }
+    { push; pending = 0; idx = 0; remote_ctx = Remote.Context.create () }
   in
   to_model ctx ctx.idx el;
   Lwt_stream.iter_s on_chunk rendering >|= fun () ->
-  match Lwt.state (Remote.Runner.wait ctx.remote_ctx) with
+  match Lwt.state (Remote.Context.wait ctx.remote_ctx) with
   | Sleep -> prerr_endline "some promises are not yet finished"
   | _ -> ()

@@ -1,23 +1,7 @@
-module Runner : sig
-  type ctx
+type tag = ..
+(** tags, attached to fetch requests, used for invalidating caches in batches *)
 
-  val create : unit -> ctx
-  val wait : ctx -> unit Lwt.t
-
-  type running =
-    | Running : {
-        path : string;
-        input : Json.t;
-        json_of_output : 'a -> Json.t;
-        promise : 'a Promise.t;
-      }
-        -> running
-
-  val with_ctx : ctx -> (unit -> 'a) -> 'a * running list
-
-  val with_ctx_async :
-    ctx -> (unit -> 'a Promise.t) -> ('a * running list) Promise.t
-end
+val tag_to_string : tag -> string
 
 module Make (Route : sig
   type 'a t
@@ -30,7 +14,7 @@ module Make (Route : sig
 end) : sig
   type 'a route = 'a Route.t
 
-  val fetch : 'a route -> 'a Promise.t
+  val fetch : ?tags:tag list -> 'a route -> 'a Promise.t
   (** [fetch route] runs [Route.handle route] but caches the results within the
       same [Runner.ctx]. *)
 
@@ -39,4 +23,28 @@ end) : sig
 
   val handle : 'a route -> 'a Promise.t
   (** [handle route] is equivalent to [Route.handle route] *)
+end
+
+module Context : sig
+  type t
+
+  val create : unit -> t
+  (** Create a new context. *)
+
+  val wait : t -> unit Lwt.t
+  (** Wait for all running fetches finish. *)
+
+  type batch
+  (** A batch of requests. *)
+
+  val batch_to_html : t -> batch -> Htmlgen.t Lwt.t
+  (** [fetch_to_html fetch] converts a fetch request to an HTML representation. *)
+
+  val with_ctx : t -> (unit -> 'a) -> 'a * batch
+  (** [with_ctx ctx f] runs [f] in the context [ctx]. All fetch requests made
+      during the execution of [f] are recorded and returned as a list. *)
+
+  val with_ctx_async :
+    t -> (unit -> 'a Promise.t) -> ('a * batch) Promise.t
+  (** [with_ctx_async ctx f] is similar to [with_ctx] but [f] can be async. *)
 end

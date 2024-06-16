@@ -6,6 +6,7 @@
  (libraries
   react_api
   containers
+  htmlgen
   yojson
   lwt
   lwt.unix
