@@ -454,7 +454,7 @@ module Browser_only_expression = struct
     | [%pat? ()] -> pat, [%expr ()]
     | _ -> (
         match expr.pexp_desc with
-        | Pexp_fun _ | Pexp_function _ ->
+        | Pexp_newtype _ | Pexp_fun _ | Pexp_function _ ->
             ( pat,
               [%expr
                 fun _ : React_server.browser_only ->
