@@ -117,3 +117,7 @@ let startTransition _thunk = raise Browser_only
 type 'a promise = 'a Lwt.t
 
 let use _promise = raise Browser_only
+
+let useOptimistic state _f =
+  let update _ = raise Browser_only in
+  state, update

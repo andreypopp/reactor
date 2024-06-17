@@ -10,3 +10,7 @@ let use promise =
   | Return v -> v
   | Sleep -> raise_notrace (Suspend (Any_promise promise))
   | Fail exn -> raise exn
+
+let useOptimistic state (_ : _ -> React_server.browser_only) =
+  let update _ : React_server.browser_only = raise Browser_only in
+  state, update

@@ -10,6 +10,15 @@ module React = struct
 
   external startTransition : (unit -> unit) -> unit = "startTransition"
   [@@mel.module "react"]
+
+  external startTransitionAsync : (unit -> unit Promise.t) -> unit
+    = "startTransition"
+  [@@mel.module "react"]
+
+  external useOptimistic :
+    'state -> ('state -> 'update -> 'state) -> 'state * ('update -> unit)
+    = "useOptimistic"
+  [@@mel.module "react"]
 end
 
 module ReactDOM = struct
