@@ -123,9 +123,13 @@ let%export_component app ~(title : string) ~(inner : React.element) () =
     </ul>
   </div>
 
-let%component todo_item ~on_completed ~(todo : Api.Todo.todo) () =
+let%component todo_item ~on_completed ~mode ~(todo : Api.Todo.todo) () =
   let%browser_only onChange _ev =
     on_completed todo (not todo.completed)
+  in
+  let label = match mode with
+    | `loaded -> React.null
+    | `local -> React.string " (loading...)"
   in
   <li className="ma0 pa0 flex items-center">
     <label>
@@ -133,16 +137,16 @@ let%component todo_item ~on_completed ~(todo : Api.Todo.todo) () =
              type_="checkbox"
              checked=todo.completed
              onChange />
-      <span className="pl2">(React.string todo.text)</span>
+      <span className="pl2">(React.string todo.text) label</span>
     </label>
   </li>
 
 let%component todo_section ~title ~on_completed ~todos () =
   let todos =
     List.map
-      (fun (todo : Api.Todo.todo) ->
-        let key = Int.to_string todo.id in
-        <todo_item key on_completed todo />)
+      (fun (mode, todo) ->
+        let key = Int.to_string todo.Api.Todo.id in
+        <todo_item key on_completed mode todo />)
       todos
   in
   <div className="pb2">
@@ -160,14 +164,11 @@ let%component add_todo_form ~on_create () =
     set_value (fun _ -> value)
   in
   let%browser_only create () =
-    ignore
-      Promise.(
-        let* () = on_create value in
-        set_value (fun _ -> "");
-        let el = Js.Nullable.toOption input.current in
-        let el = Option.bind el Webapi.Dom.HtmlElement.ofElement in
-        Option.iter Webapi.Dom.HtmlElement.focus el;
-        return ())
+    on_create value;
+    set_value (fun _ -> "");
+    let el = Js.Nullable.toOption input.current in
+    let el = Option.bind el Webapi.Dom.HtmlElement.ofElement in
+    Option.iter Webapi.Dom.HtmlElement.focus el
   in
   let%browser_only onKeyDown ev =
     match React.Event.Keyboard.key ev with
@@ -180,49 +181,69 @@ let%component add_todo_form ~on_create () =
     <button onClick>"Add"</button>
   </div>
 
+type todo_action = A : _ Api.Todo.t -> todo_action
+type todo = [ `loaded | `local ] * Api.Todo.todo
+
+(* define how we update local state optimistically *)
+let useOptimisticTodos todos =
+  let%browser_only update todos (A action) : todo list =
+    match action with
+    | List -> todos
+    | Create { text } ->
+      let todo = { Api.Todo.id = List.length todos; text; completed = false } in
+      (`local, todo)::todos
+    | Update { id; text; completed } ->
+      List.map (fun (mode, t) -> 
+        if t.Api.Todo.id = id then 
+          let text = Option.value ~default:t.text text in
+          let completed = Option.value ~default:t.completed completed in
+          `local, { t with text; completed }
+        else mode, t) todos
+    | Remove_completed ->
+      List.filter (fun (_, t) -> not t.Api.Todo.completed) todos
+  in
+  React.useOptimistic todos update
+
 let%component todo_list' () =
-  let fetch_todos _ = Data.Todo.fetch ~tags:[Tag_todo] List in
-  let todos, set_todos = React.useState fetch_todos in
-  let todos = React.use todos in
-  let%browser_only refetch () =
+  (* define how to fetch todos *)
+  let fetch_todos () = Data.Todo.fetch ~tags:[Tag_todo] List in
+  (* the currently fetching/fetched todos *)
+  let todos, set_todos =
+    let todos, set_todos = React.useState fetch_todos in
+    let todos = React.use todos in
+    let todos = List.map (fun x -> `loaded, x) todos in
+    todos, set_todos
+  in
+  (* todos with optimistic updates applied *)
+  let todos, update = useOptimisticTodos todos in
+  (* define how to modify todos *)
+  let%browser_only run_action (type a) (action : a Api.Todo.t) =
     React.startTransition @@ fun () ->
-    Data.Todo.invalidate_tag Tag_todo;
-    set_todos fetch_todos
+    (* update local state optimistically *)
+    update (A action);
+    let fetching =
+      Promise.(
+        (* invalidate the cache *)
+        Data.Todo.invalidate_tag Tag_todo;
+        (* run the action *)
+        let* _ = Data.Todo.run action in
+        (* refetch the todos *)
+        fetch_todos ())
+    in
+    set_todos (fun _ -> fetching)
+  in
+  let%browser_only on_create text = run_action (Create { text }) in
+  let%browser_only on_remove_completed _ev = run_action Remove_completed in
+  let%browser_only on_completed (todo : Api.Todo.todo) completed =
+    run_action (Update { id = todo.id; completed = Some completed; text = None })
   in
   let completed, to_be_done =
     List.partition_map
-      (fun (todo : Api.Todo.todo) ->
-        match todo.completed with
-        | true -> Left todo
-        | false -> Right todo)
+      (fun (_, todo as item) ->
+        match todo.Api.Todo.completed with
+        | true -> Left item
+        | false -> Right item)
       todos
-  in
-  let%browser_only on_create text =
-    Promise.(
-      let* new_todo = Data.Todo.run (Create { text }) in
-      Js.log2 "created todo" new_todo;
-      refetch ();
-      return ())
-  in
-  let%browser_only on_completed (todo : Api.Todo.todo) completed =
-    ignore
-      (Promise.(
-         let* _new_todo =
-           Data.Todo.run
-             (Update
-                { id = todo.id; completed = Some completed; text = None })
-         in
-         refetch ();
-         return ())
-        : unit Promise.t)
-  in
-  let%browser_only on_remove_completed _ev =
-    ignore
-      (Promise.(
-         let* () = Data.Todo.run Remove_completed in
-         refetch ();
-         return ())
-        : unit Promise.t)
   in
   <div>
     <add_todo_form on_create />

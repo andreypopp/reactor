@@ -29,34 +29,46 @@ module Todo = Remote.Make (struct
 
   let href route = Routing.href (Routing.Api_todo route)
 
-  type db = { seq : int ref; todos : (int, todo) Hashtbl.t }
+  type db = { mutable seq : int; mutable todos : todo list }
 
-  let db = { seq = ref 0; todos = Hashtbl.create 10 }
+  let db = { seq = 0; todos = [] }
+
+  let slowly () = 
+    (* Simulate a slow database operation *)
+    Lwt_unix.sleep 3.
 
   let handle : type a. a Todo.t -> a Lwt.t =
    fun route ->
     match route with
-    | List -> Lwt.return (Hashtbl.values_list db.todos)
+    | List -> 
+        Lwt.return db.todos
     | Create { text } ->
-        let id = Ref.get_then_incr db.seq in
-        let todo = { id; text; completed = false } in
-        Hashtbl.replace db.todos todo.id todo;
+        slowly () >>= fun () ->
+        let todo = { id = db.seq; text; completed = false } in
+        db.seq <- db.seq + 1;
+        db.todos <- todo :: db.todos;
         Lwt.return todo
-    | Update { id; text; completed } -> (
-        match Hashtbl.find_opt db.todos id with
-        | None -> Lwt.return_none
-        | Some todo ->
-            Hashtbl.replace db.todos id
-              {
-                todo with
-                text = Option.value text ~default:todo.text;
-                completed = Option.value completed ~default:todo.completed;
-              };
-            Lwt.return_some todo)
+    | Update { id; text; completed } ->
+        slowly () >>= fun () ->
+        let found = ref None in
+        db.todos <-
+          List.map db.todos ~f:(fun todo ->
+              if Int.equal todo.id id then (
+                let todo =
+                  {
+                    todo with
+                    text = Option.value text ~default:todo.text;
+                    completed =
+                      Option.value completed ~default:todo.completed;
+                  }
+                in
+                found := Some todo;
+                todo)
+              else todo);
+        Lwt.return !found
     | Remove_completed ->
-        Hashtbl.filter_map_inplace
-          (fun _id (todo : todo) ->
-            match todo.completed with true -> None | false -> Some todo)
-          db.todos;
+        slowly () >>= fun () ->
+        db.todos <-
+          List.filter db.todos ~f:(fun todo -> not todo.completed);
         Lwt.return ()
 end)
