@@ -22,6 +22,6 @@ end) : sig
   val invalidate : 'a Route.t -> unit
   (** invalidate the cache for a given route *)
 
-  val invalidate_tag : tag -> unit
-  (** invalidate the cache for a given tag *)
+  val invalidate_tags : tag list -> unit
+  (** invalidate the cache for given tags *)
 end

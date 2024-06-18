@@ -263,5 +263,5 @@ struct
       | false -> failwith "got non 200")
 
   let invalidate route = Cache.invalidate (to_req route [])
-  let invalidate_tag tag = Cache.invalidate_tag tag
+  let invalidate_tags tags = List.iter Cache.invalidate_tag tags
 end
