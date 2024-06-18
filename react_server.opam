@@ -8,7 +8,7 @@ bug-reports: "https://github.com/andreypopp/reactor/issues"
 depends: [
   "ocamlformat" {with-test}
   "ocaml" {>= "4.14"}
-  "dune" {>= "3.15"}
+  "dune" {>= "3.16"}
   "remote"
   "realm"
   "htmlgen"

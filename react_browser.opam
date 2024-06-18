@@ -9,7 +9,7 @@ depends: [
   "ocamlformat" {with-test}
   "ocaml" {>= "4.14"}
   "melange"
-  "dune" {>= "3.15"}
+  "dune" {>= "3.16"}
   "reason-react"
   "remote"
   "realm"
