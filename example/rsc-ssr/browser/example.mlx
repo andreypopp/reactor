@@ -1,6 +1,6 @@
 open Routing
 
-type Remote.tag += Tag_app | Tag_todo
+type Remote.tag += Tag_app
 
 let%component link' ~href ~label () =
   let%browser_only onClick ev =
@@ -37,7 +37,7 @@ let%component hello ~name () =
            Data.Hello.run
              (Update_greeting { greeting = Greeting_informal })
          in
-         Data.Hello.invalidate_tag Tag_app;
+         Data.Hello.invalidate_tags [Tag_app];
          React.startTransition (fun () ->
              setq (fun _ -> Data.Hello.fetch (Hello { name })));
          return ())
@@ -128,8 +128,9 @@ let%component todo_item ~on_completed ~mode ~(todo : Api.Todo.todo) () =
     on_completed todo (not todo.completed)
   in
   let label = match mode with
-    | `loaded -> React.null
-    | `local -> React.string " (loading...)"
+    | `remote -> React.null
+    | `creating -> React.string " (creating...)"
+    | `updating -> React.string " (updating...)"
   in
   <li className="ma0 pa0 flex items-center">
     <label>
@@ -181,61 +182,71 @@ let%component add_todo_form ~on_create () =
     <button onClick>"Add"</button>
   </div>
 
-type todo_action = A : _ Api.Todo.t -> todo_action
-type todo = [ `loaded | `local ] * Api.Todo.todo
 
 (* define how we update local state optimistically *)
-let useOptimisticTodos todos =
-  let%browser_only update todos (A action) : todo list =
-    match action with
-    | List -> todos
-    | Create { text } ->
-      let todo = { Api.Todo.id = List.length todos; text; completed = false } in
-      (`local, todo)::todos
-    | Update { id; text; completed } ->
-      List.map (fun (mode, t) -> 
-        if t.Api.Todo.id = id then 
-          let text = Option.value ~default:t.text text in
-          let completed = Option.value ~default:t.completed completed in
-          `local, { t with text; completed }
-        else mode, t) todos
-    | Remove_completed ->
-      List.filter (fun (_, t) -> not t.Api.Todo.completed) todos
-  in
-  React.useOptimistic todos update
+module Todo_state = struct
+  (* a todo is either remote todo or a todo being created or updated *)
+  type todo = [ `remote | `creating | `updating ] * Api.Todo.todo
+
+  type action = A : _ Api.Todo.t -> action
+
+  type Remote.tag += Tag_todo
+  let tags = [Tag_todo]
+
+  let use () =
+    let tags = [Tag_todo] in
+    let fetch_todos () = 
+      Promise.(
+        let* todos = Data.Todo.fetch ~tags List in
+        return (List.map (fun x -> `remote, x) todos))
+    in
+    let todos, set_fetching =
+      let fetching, set_fetching = React.useState fetch_todos in
+      React.use fetching, set_fetching
+    in
+    let%browser_only update todos (A action) : todo list =
+      match action with
+      | List -> todos
+      | Create { text } ->
+        let todo = { Api.Todo.id = List.length todos; text; completed = false } in
+        (`creating, todo)::todos
+      | Update { id; text; completed } ->
+        List.map (fun (mode, t) -> 
+          if t.Api.Todo.id = id then 
+            let text = Option.value ~default:t.text text in
+            let completed = Option.value ~default:t.completed completed in
+            `updating, { t with text; completed }
+          else mode, t) todos
+      | Remove_completed ->
+        List.filter (fun (_, t) -> not t.Api.Todo.completed) todos
+    in
+    let todos, modify_locally =
+      React.useOptimistic todos update
+    in
+    let%browser_only modify (A action) =
+      React.startTransition @@ fun () ->
+      modify_locally (A action);
+      let fetching =
+        Promise.(
+          let* _ = Data.Todo.run action in
+          Data.Todo.invalidate_tags tags;
+          fetch_todos ())
+      in
+      set_fetching (fun _ -> fetching)
+    in
+    todos, modify
+end
 
 let%component todo_list' () =
-  (* define how to fetch todos *)
-  let fetch_todos () = Data.Todo.fetch ~tags:[Tag_todo] List in
-  (* the currently fetching/fetched todos *)
-  let todos, set_todos =
-    let todos, set_todos = React.useState fetch_todos in
-    let todos = React.use todos in
-    let todos = List.map (fun x -> `loaded, x) todos in
-    todos, set_todos
+  let todos, modify = Todo_state.use () in
+  let%browser_only on_create text = 
+    modify (A (Create { text }))
   in
-  (* todos with optimistic updates applied *)
-  let todos, update = useOptimisticTodos todos in
-  (* define how to modify todos *)
-  let%browser_only run_action (type a) (action : a Api.Todo.t) =
-    React.startTransition @@ fun () ->
-    (* update local state optimistically *)
-    update (A action);
-    let fetching =
-      Promise.(
-        (* invalidate the cache *)
-        Data.Todo.invalidate_tag Tag_todo;
-        (* run the action *)
-        let* _ = Data.Todo.run action in
-        (* refetch the todos *)
-        fetch_todos ())
-    in
-    set_todos (fun _ -> fetching)
+  let%browser_only on_completed todo completed =
+    modify (A (Update { id = todo.Api.Todo.id; completed = Some completed; text = None }))
   in
-  let%browser_only on_create text = run_action (Create { text }) in
-  let%browser_only on_remove_completed _ev = run_action Remove_completed in
-  let%browser_only on_completed (todo : Api.Todo.todo) completed =
-    run_action (Update { id = todo.id; completed = Some completed; text = None })
+  let%browser_only on_remove_completed _ev =
+    modify (A Remove_completed)
   in
   let completed, to_be_done =
     List.partition_map
