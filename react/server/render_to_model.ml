@@ -117,6 +117,7 @@ let rec to_model ctx idx el =
                 | Return value ->
                     let idx = use_idx ctx in
                     let json = value_to_json value in
+                    (* NOTE: important to yield a chunk here for React.js *)
                     push ctx (idx, C_value json);
                     name, promise_value idx
                 | Sleep ->
@@ -145,5 +146,8 @@ let render el on_chunk =
   to_model ctx ctx.idx el;
   Lwt_stream.iter_s on_chunk rendering >|= fun () ->
   match Lwt.state (Remote.Context.wait ctx.remote_ctx) with
-  | Sleep -> prerr_endline "some promises are not yet finished"
+  | Sleep ->
+      (* NOTE: this can happen if a promise which was fired a component wasn't
+         waited for *)
+      prerr_endline "some promises are not yet finished"
   | _ -> ()

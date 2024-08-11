@@ -48,7 +48,7 @@ and children = element array
 
 and html_children =
   | Html_children of element
-  | Html_children_raw of unsafe_html
+  | Html_children_raw of unsafe_html  (** __dangerouslySetInnerHTML *)
 
 and client_props = (string * client_prop) list
 
