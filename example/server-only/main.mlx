@@ -6,8 +6,7 @@ open React_server
 module Modifier = struct
   type t = Capitalize | Uppercase
 
-  let of_url_query : t Ppx_deriving_router_runtime.Decode.decode_url_query
-      =
+  let of_url_query : t Ppx_deriving_router_runtime.Decode.decode_url_query =
    fun k xs ->
     match List.assoc_opt ~eq:String.equal k xs with
     | None -> Error "not found"
@@ -15,11 +14,10 @@ module Modifier = struct
     | Some "uppercase" -> Ok Uppercase
     | Some _ -> Error "invalid value"
 
-  let to_url_query : t Ppx_deriving_router_runtime.Encode.encode_url_query
-      =
+  let to_url_query : t Ppx_deriving_router_runtime.Encode.encode_url_query =
    fun k -> function
-    | Capitalize -> [ k, "capitalize" ]
-    | Uppercase -> [ k, "uppercase" ]
+    | Capitalize -> [ (k, "capitalize") ]
+    | Uppercase -> [ (k, "uppercase") ]
 end
 
 module Routes = struct
@@ -60,8 +58,8 @@ module UI = struct
     <page title="React of OCaml">
       <div>
         <card title="Initial Data" delay=0.>
-          "This components loads some async data but will block the \
-           shell until this data is ready."
+          "This components loads some async data but will block the shell \
+           until this data is ready."
           <div>
             <a href=(Routes.href
                        (Hello
@@ -122,5 +120,4 @@ let pages =
           <div>"Back to " <a href=(Routes.href Home)>"main page"</a></div>
         </div>
 
-let () =
-  Dream.run ~interface:"127.0.0.1" ~port:8080 @@ Dream.logger @@ pages
+let () = Dream.run ~interface:"127.0.0.1" ~port:8080 @@ Dream.logger @@ pages

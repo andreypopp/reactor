@@ -1,6 +1,6 @@
 open Routing
 
-type Remote.tag += Tag_app
+let tag_app = Remote.Tag.make "app"
 
 let%component link' ~href ~label () =
   let%browser_only onClick ev =
@@ -18,13 +18,13 @@ let%component button' ~onPress:onClick ~label () =
 
 let%component hello ~name () =
   let q, setq =
-    React.useState (fun () -> Data.Hello.fetch ~tags:[Tag_app] (Hello { name }))
+    React.useState (fun () -> Data.Hello.fetch ~tags:[tag_app] (Hello { name }))
   in
   let () =
     React.useEffect1
       (fun () ->
         React.startTransition (fun () ->
-          setq (fun _ -> Data.Hello.fetch ~tags:[Tag_app] (Hello { name })));
+          setq (fun _ -> Data.Hello.fetch ~tags:[tag_app] (Hello { name })));
         None)
       [| name |]
   in
@@ -37,7 +37,7 @@ let%component hello ~name () =
            Data.Hello.run
              (Update_greeting { greeting = Greeting_informal })
          in
-         Data.Hello.invalidate_tags [Tag_app];
+         Data.Hello.invalidate_tags [tag_app];
          React.startTransition (fun () ->
              setq (fun _ -> Data.Hello.fetch (Hello { name })));
          return ())
@@ -190,11 +190,11 @@ module Todo_state = struct
 
   type action = A : _ Api.Todo.t -> action
 
-  type Remote.tag += Tag_todo
-  let tags = [Tag_todo]
+  let tag_todo = Remote.Tag.make "todo"
+  let tags = [tag_todo]
 
   let use () =
-    let tags = [Tag_todo] in
+    let tags = [tag_todo] in
     let fetch_todos () = 
       Promise.(
         let* todos = Data.Todo.fetch ~tags List in

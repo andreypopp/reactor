@@ -1,26 +1,30 @@
 module Witness = Ppx_deriving_router_runtime.Witness
 module Promise = Realm.Promise
 
-type tag = ..
+module Tag : sig
+  type t
 
-let tag_to_string (tag : tag) : string =
-  let tag : Caml_exceptions.t = Obj.magic tag in
-  let tag = Caml_exceptions.caml_exn_slot_name tag in
-  let tag = String.split_on_char '/' tag in
-  match tag with [ tag; _ ] -> tag | _ -> failwith "tag_key"
+  val make : string -> t
+  val to_string : t -> string
+end = struct
+  type t = string
+
+  let make x = x
+  let to_string x = x
+end
 
 type 'a req = {
   path : string;
   input : string Lazy.t;
   decode_response : Fetch.Response.t -> 'a Promise.t;
   witness : 'a Witness.t;
-  tags : tag list;
+  tags : Tag.t list;
 }
 
 module Cache : sig
   val cached : 'a req -> (unit -> string Promise.t) -> 'a Promise.t
   val invalidate : 'a req -> unit
-  val invalidate_tag : tag -> unit
+  val invalidate_tag : Tag.t -> unit
 end = struct
   module Record : sig
     type t = {
@@ -125,7 +129,7 @@ end = struct
 
   module By_tag : sig
     val set : prev_tags:string list -> 'a req -> Record.t -> unit
-    val invalidate : tag -> unit
+    val invalidate : Tag.t -> unit
   end = struct
     type t = By_req.t Js.Dict.t
 
@@ -152,7 +156,7 @@ end = struct
 
     let set ~prev_tags (req : _ req) record =
       let by_tag = Lazy.force instance in
-      let tags = List.map tag_to_string req.tags in
+      let tags = List.map Tag.to_string req.tags in
       List.iter
         (fun tag ->
           if not (List.mem tag tags) then
@@ -169,7 +173,7 @@ end = struct
 
     let invalidate tag =
       let t = Lazy.force instance in
-      match Js.Dict.get t (tag_to_string tag) with
+      match Js.Dict.get t (Tag.to_string tag) with
       | None -> ()
       | Some cache -> By_req.iter cache ~f:Record.invalidate
   end
@@ -187,13 +191,13 @@ end = struct
           By_tag.set ~prev_tags:record.Record.tags req record;
           record.json <- Js.Nullable.return json;
           record.data <- Js.Nullable.return cached_data;
-          record.tags <- List.map tag_to_string req.tags
+          record.tags <- List.map Tag.to_string req.tags
       | None ->
           let record =
             {
               Record.json = Js.Nullable.return json;
               data = Js.Nullable.return cached_data;
-              tags = List.map tag_to_string req.tags;
+              tags = List.map Tag.to_string req.tags;
             }
           in
           By_tag.set ~prev_tags:[] req record;

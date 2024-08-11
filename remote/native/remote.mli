@@ -1,7 +1,9 @@
-type tag = ..
-(** tags, attached to fetch requests, used for invalidating caches in batches *)
+(** Tag requests to invalidate cached responses. *)
+module Tag : sig
+  type t
 
-val tag_to_string : tag -> string
+  val make : string -> t
+end
 
 module Make (Route : sig
   type 'a t
@@ -14,7 +16,7 @@ module Make (Route : sig
 end) : sig
   type 'a route = 'a Route.t
 
-  val fetch : ?tags:tag list -> 'a route -> 'a Promise.t
+  val fetch : ?tags:Tag.t list -> 'a route -> 'a Promise.t
   (** [fetch route] runs [Route.handle route] but caches the results within the
       same [Runner.ctx]. *)
 

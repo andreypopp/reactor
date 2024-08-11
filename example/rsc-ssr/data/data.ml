@@ -33,15 +33,14 @@ module Todo = Remote.Make (struct
 
   let db = { seq = 0; todos = [] }
 
-  let slowly () = 
+  let slowly () =
     (* Simulate a slow database operation *)
     Lwt_unix.sleep 3.
 
   let handle : type a. a Todo.t -> a Lwt.t =
    fun route ->
     match route with
-    | List -> 
-        Lwt.return db.todos
+    | List -> Lwt.return db.todos
     | Create { text } ->
         slowly () >>= fun () ->
         let todo = { id = db.seq; text; completed = false } in

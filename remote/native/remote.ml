@@ -4,6 +4,18 @@ module Witness = Ppx_deriving_router_runtime_lib.Witness
 
 type json = Json.t
 
+module Tag : sig
+  type t
+
+  val make : string -> t
+  val to_string : t -> string
+end = struct
+  type t = string
+
+  let make x = x
+  let to_string x = x
+end
+
 module Cache = struct
   module M = Map.Make (struct
     type t = string * string
@@ -19,12 +31,6 @@ module Cache = struct
   let add = M.add
 end
 
-type tag = ..
-
-let tag_to_string (tag : tag) =
-  let tag = Obj.Extension_constructor.of_val tag in
-  Obj.Extension_constructor.name tag
-
 module Context = struct
   type t = {
     mutable cache : Cache.t;
@@ -39,7 +45,7 @@ module Context = struct
         input : json;
         json_of_output : 'a -> json;
         promise : 'a Promise.t;
-        tags : tag list;
+        tags : Tag.t list;
       }
         -> fetch
 
@@ -111,7 +117,7 @@ module Context = struct
 
     let fetch_to_html' ~path ~input ~tags output =
       let tags =
-        `List (List.map tags ~f:(fun tag -> `String (tag_to_string tag)))
+        `List (List.map tags ~f:(fun tag -> `String (Tag.to_string tag)))
       in
       Htmlgen.unsafe_rawf
         "<script data-path='%s' data-input='%s' data-tags='%s' \
@@ -157,7 +163,7 @@ struct
   let handle = S.handle
   let run : type a. a route -> a Lwt.t = handle
 
-  let fetch : type a. ?tags:tag list -> a route -> a Lwt.t =
+  let fetch : type a. ?tags:Tag.t list -> a route -> a Lwt.t =
    fun ?(tags = []) route ->
     let witness = S.witness route in
     let ctx =
