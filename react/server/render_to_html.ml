@@ -1,6 +1,6 @@
 open! Import
 
-module Computation : sig
+module Fiber : sig
   type t
 
   val root :
@@ -180,7 +180,7 @@ let rec client_to_html t = function
   | El_text s -> Lwt.return (Htmlgen.text s)
   | El_frag els -> client_to_html_many t els
   | El_context (key, value, children) ->
-      let t = Computation.update_ctx t key value in
+      let t = Fiber.update_ctx t key value in
       client_to_html t children
   | El_html { tag_name; key = _; props; children = None } ->
       Lwt.return (Htmlgen.node tag_name props [])
@@ -204,11 +204,11 @@ let rec client_to_html t = function
         (Htmlgen.node tag_name props [ Htmlgen.unsafe_raw __html ])
   | El_thunk f ->
       let rec wait () =
-        match Computation.with_ctx t f with
+        match Fiber.with_ctx t f with
         | exception React_model.Suspend (Any_promise promise) ->
             promise >>= fun _ -> wait ()
         | v, batch ->
-            Lwt.both (client_to_html t v) (Computation.emit_batch t batch)
+            Lwt.both (client_to_html t v) (Fiber.emit_batch t batch)
             >|= fst
       in
       wait ()
@@ -218,8 +218,8 @@ let rec client_to_html t = function
       | El_null -> Lwt.return (Emit_html.html_suspense Htmlgen.empty)
       | _ ->
           client_to_html t fallback >>= fun fallback ->
-          Computation.fork t @@ fun t ->
-          let idx = Computation.use_idx t in
+          Fiber.fork t @@ fun t ->
+          let idx = Fiber.use_idx t in
           let async =
             client_to_html t children >|= Emit_html.html_chunk idx
           in
@@ -280,23 +280,23 @@ let rec server_to_html ~render_model t = function
               ~props:(props :> (string * json) list)
               None )
   | El_thunk f ->
-      let tree, _reqs = Computation.with_ctx t f in
+      let tree, _reqs = Fiber.with_ctx t f in
       (* NOTE: ignoring [_reqs] here as server data requests won't be replayed
          on client, while we still want to allow to use Remote library *)
       server_to_html ~render_model t tree
   | El_async_thunk f ->
-      Computation.with_ctx_async t f >>= fun (tree, _reqs) ->
+      Fiber.with_ctx_async t f >>= fun (tree, _reqs) ->
       (* NOTE: ignoring [_reqs] here as server data requests won't be replayed
          on client, while we still want to allow to use Remote library *)
       server_to_html ~render_model t tree
   | El_suspense { children; fallback; key } -> (
       server_to_html ~render_model t fallback
       >>= fun (fallback, fallback_model) ->
-      Computation.fork t @@ fun t ->
+      Fiber.fork t @@ fun t ->
       let promise = server_to_html ~render_model t children in
       match Lwt.state promise with
       | Sleep ->
-          let idx = Computation.use_idx t in
+          let idx = Fiber.use_idx t in
           let html_async =
             promise >|= fun (html, model) ->
             let html = [ Emit_html.html_chunk idx html ] in
@@ -333,8 +333,8 @@ let rec server_to_html ~render_model t = function
                 server_to_html ~render_model t element
                 >|= fun (_html, model) -> name, model
             | Promise (promise, value_to_json) ->
-                Computation.fork t @@ fun t ->
-                let idx = Computation.use_idx t in
+                Fiber.fork t @@ fun t ->
+                let idx = Fiber.use_idx t in
                 let sync =
                   ( name,
                     if not render_model then Render_to_model.null
@@ -357,9 +357,9 @@ let rec server_to_html ~render_model t = function
       let model =
         if not render_model then Render_to_model.null
         else
-          let idx = Computation.use_idx t in
+          let idx = Fiber.use_idx t in
           let ref = Render_to_model.ref ~import_module ~import_name in
-          Computation.emit_html t (Emit_model.html_model (idx, C_ref ref));
+          Fiber.emit_html t (Emit_model.html_model (idx, C_ref ref));
           Render_to_model.node ~tag_name:(sprintf "$%x" idx) ~key:None
             ~props None
       in
@@ -381,7 +381,7 @@ type html_rendering =
 
 let render ~render_model el =
   let html =
-    Computation.root @@ fun (t, idx) ->
+    Fiber.root @@ fun (t, idx) ->
     server_to_html ~render_model t el >|= fun (html, model) ->
     if not render_model then html
     else
